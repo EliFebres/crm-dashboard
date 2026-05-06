@@ -58,6 +58,10 @@ const ROW_3_STAGGER_MS = 2000;
 // Must match the 3s in the .row-stagger-4 rules in globals.css.
 const ROW_4_STAGGER_MS = 3000;
 
+// Row 5 (Fixed Income — Security Type + Maturity Breakdown) sits one cadence below row 4.
+// Must match the 4s in the .row-stagger-5 rules in globals.css.
+const ROW_5_STAGGER_MS = 4000;
+
 // Duration of the .section-exit animation defined in globals.css. Asset Class filter
 // keeps a deselected section mounted this long so its fade-out + collapse can play
 // before React sweeps it from the DOM.
@@ -354,10 +358,31 @@ export default function PortfolioTrendsDashboard() {
     { id: 'NotRated', label: 'Not Rated', color: '#ADCCDA', textColor: '#18181b' },
     { id: 'Other',    label: 'Other',     color: '#F5DB95', textColor: '#18181b' },
   ];
+
+  type SecurityTypeBucket = 'Government' | 'Municipal' | 'Corporate' | 'Securitized' | 'CashEq' | 'Derivative';
+  const SECURITY_TYPE_BUCKETS: ReadonlyArray<{ id: SecurityTypeBucket; label: string; color: string; textColor: string }> = [
+    { id: 'Government',  label: 'Government',        color: '#3d7d27', textColor: '#ffffff' },
+    { id: 'Municipal',   label: 'Municipal',         color: '#1398A4', textColor: '#ffffff' },
+    { id: 'Corporate',   label: 'Corporate',         color: '#005E74', textColor: '#ffffff' },
+    { id: 'Securitized', label: 'Securitized',       color: '#91D479', textColor: '#18181b' },
+    { id: 'CashEq',      label: 'Cash & Equivalent', color: '#C4F4F8', textColor: '#18181b' },
+    { id: 'Derivative',  label: 'Derivative',        color: '#ADCCDA', textColor: '#18181b' },
+  ];
+
+  type MaturityBucket = 'M0_3' | 'M3_5' | 'M5_10' | 'M10_20' | 'M20Plus';
+  const MATURITY_BUCKETS: ReadonlyArray<{ id: MaturityBucket; label: string; color: string; textColor: string }> = [
+    { id: 'M0_3',    label: '0–3 yr',   color: '#3D7D27', textColor: '#ffffff' },
+    { id: 'M3_5',    label: '3–5 yr',   color: '#1398A4', textColor: '#ffffff' },
+    { id: 'M5_10',   label: '5–10 yr',  color: '#005E74', textColor: '#ffffff' },
+    { id: 'M10_20', label: '10–20 yr', color: '#91D479', textColor: '#18181b' },
+    { id: 'M20Plus', label: '20+ yr',   color: '#C4F4F8', textColor: '#18181b' },
+  ];
   // creditWeight = % of fixed-income holdings in credit/corporate (i.e. non-Treasury,
   // non-agency). The bar's portfolio dots are placed by this value's delta vs the index.
   const FI_PORTFOLIO_DATA: Record<PortfolioName, {
     creditBreakdown: Record<CreditBucket, number>;
+    securityType: Record<SecurityTypeBucket, number>;
+    maturityBreakdown: Record<MaturityBucket, number>;
     creditSpreadBps: number;
     creditSpreadHistory: number[]; // 8 quarters, oldest → newest
     creditWeight: number;
@@ -369,6 +394,8 @@ export default function PortfolioTrendsDashboard() {
   }> = {
     'Avg. Client': {
       creditBreakdown: { AAA: 22, AA: 24, A: 26, BBB: 17, BelowBBB: 5, NotRated: 4, Other: 2 },
+      securityType: { Government: 32, Municipal: 8, Corporate: 28, Securitized: 22, CashEq: 8, Derivative: 2 },
+      maturityBreakdown: { M0_3: 22, M3_5: 24, M5_10: 30, M10_20: 14, M20Plus: 10 },
       creditSpreadBps: 92,
       creditSpreadHistory: [105, 100, 92, 98, 105, 84, 86, 99],
       creditWeight: 50,
@@ -380,6 +407,8 @@ export default function PortfolioTrendsDashboard() {
     },
     'Core+ Model': {
       creditBreakdown: { AAA: 14, AA: 22, A: 28, BBB: 22, BelowBBB: 8, NotRated: 4, Other: 2 },
+      securityType: { Government: 22, Municipal: 6, Corporate: 38, Securitized: 26, CashEq: 6, Derivative: 2 },
+      maturityBreakdown: { M0_3: 18, M3_5: 22, M5_10: 32, M10_20: 16, M20Plus: 12 },
       creditSpreadBps: 115,
       creditSpreadHistory: [125, 120, 112, 118, 130, 105, 108, 122],
       creditWeight: 65,
@@ -395,8 +424,12 @@ export default function PortfolioTrendsDashboard() {
   // number per period rather than two raw OAS readings.
   const FI_INDEX = {
     creditBreakdownLabel: 'Bloomberg US Aggregate',
+    securityTypeLabel: 'Bloomberg US Aggregate',
+    maturityBreakdownLabel: 'Bloomberg US Aggregate',
     spreadLabel: 'Credit − Gov Index',
     creditBreakdown: { AAA: 68, AA: 4, A: 12, BBB: 13, BelowBBB: 0, NotRated: 2, Other: 1 } as Record<CreditBucket, number>,
+    securityType: { Government: 42, Municipal: 1, Corporate: 27, Securitized: 28, CashEq: 2, Derivative: 0 } as Record<SecurityTypeBucket, number>,
+    maturityBreakdown: { M0_3: 26, M3_5: 22, M5_10: 28, M10_20: 14, M20Plus: 10 } as Record<MaturityBucket, number>,
     spreadBps: 80,
     // Bloomberg US Credit OAS, quarter-ends Q2 2024 → Q1 2026. Q2 2025 reflects post-tariff
     // (April 2025) retracement from the ~121 intra-quarter peak; Q3 2025 = 74 was the
@@ -2277,6 +2310,263 @@ export default function PortfolioTrendsDashboard() {
                       </p>
                     );
                   })()}
+                </div>
+              </div>
+            </div>
+
+            {/* FI Row 3: Security Type + Maturity Breakdown — equal width */}
+            <div className="grid grid-cols-2 gap-4 mb-4 row-stagger-5">
+              {/* Security Type — horizontal stacked bars per portfolio + index */}
+              <div className="relative overflow-hidden bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-5 rounded-xl flex flex-col min-h-[340px]">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent pointer-events-none" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+                <div className="relative z-10 flex flex-col flex-1">
+                  <div className="flex items-center justify-between mb-4 -mt-2 -ml-2">
+                    <div>
+                      <h4 className="text-sm font-medium text-white">Security Type</h4>
+                      <p className="text-xs text-muted">Allocation by instrument type ({period})</p>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`flex-1 flex flex-col gap-3 transition-[padding-top] duration-500 ${
+                      displayedPortfolios.filter(p => !p.entering).length === 1
+                        ? 'justify-start pt-4'
+                        : 'justify-center pt-0'
+                    }`}
+                  >
+                    {displayedPortfolios.map(({ name, idx, exiting, entering, settled }, rowIdx) => {
+                      const dist = FI_PORTFOLIO_DATA[name].securityType;
+                      const color = PORTFOLIO_PALETTE[idx] ?? PORTFOLIO_PALETTE[0];
+                      return (
+                        <div
+                          key={name}
+                          className={`${
+                            exiting ? 'row-exit' : entering ? 'row-enter' : settled ? '' : 'data-pop'
+                          } flex flex-col gap-1`}
+                          style={{
+                            animationDelay:
+                              exiting || entering || settled ? '0ms' : `${ROW_5_STAGGER_MS + 80 + rowIdx * 120}ms`,
+                          }}
+                        >
+                          <span
+                            className={`text-xs font-medium text-zinc-400 ${
+                              exiting ? 'label-exit' : entering ? 'label-enter' : ''
+                            }`}
+                          >
+                            {name}
+                          </span>
+                          <div
+                            className={`${
+                              exiting ? 'bar-shrink' : settled ? '' : 'bar-grow'
+                            } flex ${
+                              displayedPortfolios.length === 1 ? 'h-14' : 'h-10'
+                            } rounded-sm overflow-hidden border border-zinc-800/60 bg-zinc-500 gap-px transition-[height] duration-[900ms]`}
+                            style={{
+                              containerType: 'size',
+                              animationDelay: exiting || settled
+                                ? '0ms'
+                                : entering
+                                ? '900ms'
+                                : `${ROW_5_STAGGER_MS + 80 + rowIdx * 120}ms`,
+                              animationDuration: entering ? '1500ms' : undefined,
+                            }}
+                          >
+                            {SECURITY_TYPE_BUCKETS.map(bucket => {
+                              const pct = dist[bucket.id];
+                              if (pct === 0) return null;
+                              return (
+                                <div
+                                  key={bucket.id}
+                                  className="h-full flex items-center justify-center overflow-hidden transition-[width] duration-700 ease-out cursor-pointer"
+                                  style={{ width: `${pct}%`, backgroundColor: bucket.color }}
+                                  {...dotHoverHandlers(`${name} • ${bucket.label}`, [`${pct}%`])}
+                                >
+                                  {pct > 3 && (
+                                    <span className="font-semibold tabular-nums" style={{ fontSize: '32cqh', color: bucket.textColor }}>{pct}%</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Index row */}
+                    <div
+                      className={`data-pop flex flex-col gap-1 transition-[padding-top] duration-[900ms] ${
+                        displayedPortfolios.length === 1 ? 'pt-3' : 'pt-0'
+                      }`}
+                      style={{ animationDelay: `${ROW_5_STAGGER_MS + 80 + displayedPortfolios.length * 120}ms` }}
+                    >
+                      <span className="text-xs font-medium text-zinc-400">{FI_INDEX.securityTypeLabel}</span>
+                      <div
+                        className={`bar-grow flex ${
+                          displayedPortfolios.length === 1 ? 'h-14' : 'h-10'
+                        } rounded-sm overflow-hidden border border-zinc-800/60 bg-zinc-500 gap-px transition-[height] duration-[900ms]`}
+                        style={{
+                          containerType: 'size',
+                          animationDelay: `${ROW_5_STAGGER_MS + 80 + displayedPortfolios.length * 120}ms`,
+                        }}
+                      >
+                        {SECURITY_TYPE_BUCKETS.map(bucket => {
+                          const pct = FI_INDEX.securityType[bucket.id];
+                          if (pct === 0) return null;
+                          return (
+                            <div
+                              key={bucket.id}
+                              className="h-full flex items-center justify-center overflow-hidden transition-[width] duration-700 ease-out cursor-pointer"
+                              style={{ width: `${pct}%`, backgroundColor: bucket.color }}
+                              {...dotHoverHandlers(`${FI_INDEX.securityTypeLabel} • ${bucket.label}`, [`${pct}%`])}
+                            >
+                              {pct > 3 && (
+                                <span className="font-semibold tabular-nums" style={{ fontSize: '32cqh', color: bucket.textColor }}>{pct}%</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bucket legend */}
+                  <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2 mt-4">
+                    {SECURITY_TYPE_BUCKETS.map(bucket => (
+                      <div key={bucket.id} className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: bucket.color }} />
+                        <span className="text-xs text-muted">{bucket.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Maturity Breakdown — horizontal stacked bars per portfolio + index */}
+              <div className="relative overflow-hidden bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-5 rounded-xl flex flex-col min-h-[340px]">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent pointer-events-none" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+                <div className="relative z-10 flex flex-col flex-1">
+                  <div className="flex items-center justify-between mb-4 -mt-2 -ml-2">
+                    <div>
+                      <h4 className="text-sm font-medium text-white">Maturity Breakdown</h4>
+                      <p className="text-xs text-muted">Allocation by maturity bucket ({period})</p>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`flex-1 flex flex-col gap-3 transition-[padding-top] duration-500 ${
+                      displayedPortfolios.filter(p => !p.entering).length === 1
+                        ? 'justify-start pt-4'
+                        : 'justify-center pt-0'
+                    }`}
+                  >
+                    {displayedPortfolios.map(({ name, idx, exiting, entering, settled }, rowIdx) => {
+                      const dist = FI_PORTFOLIO_DATA[name].maturityBreakdown;
+                      const color = PORTFOLIO_PALETTE[idx] ?? PORTFOLIO_PALETTE[0];
+                      return (
+                        <div
+                          key={name}
+                          className={`${
+                            exiting ? 'row-exit' : entering ? 'row-enter' : settled ? '' : 'data-pop'
+                          } flex flex-col gap-1`}
+                          style={{
+                            animationDelay:
+                              exiting || entering || settled ? '0ms' : `${ROW_5_STAGGER_MS + 80 + rowIdx * 120}ms`,
+                          }}
+                        >
+                          <span
+                            className={`text-xs font-medium text-zinc-400 ${
+                              exiting ? 'label-exit' : entering ? 'label-enter' : ''
+                            }`}
+                          >
+                            {name}
+                          </span>
+                          <div
+                            className={`${
+                              exiting ? 'bar-shrink' : settled ? '' : 'bar-grow'
+                            } flex ${
+                              displayedPortfolios.length === 1 ? 'h-14' : 'h-10'
+                            } rounded-sm overflow-hidden border border-zinc-800/60 bg-zinc-500 gap-px transition-[height] duration-[900ms]`}
+                            style={{
+                              containerType: 'size',
+                              animationDelay: exiting || settled
+                                ? '0ms'
+                                : entering
+                                ? '900ms'
+                                : `${ROW_5_STAGGER_MS + 80 + rowIdx * 120}ms`,
+                              animationDuration: entering ? '1500ms' : undefined,
+                            }}
+                          >
+                            {MATURITY_BUCKETS.map(bucket => {
+                              const pct = dist[bucket.id];
+                              if (pct === 0) return null;
+                              return (
+                                <div
+                                  key={bucket.id}
+                                  className="h-full flex items-center justify-center overflow-hidden transition-[width] duration-700 ease-out cursor-pointer"
+                                  style={{ width: `${pct}%`, backgroundColor: bucket.color }}
+                                  {...dotHoverHandlers(`${name} • ${bucket.label}`, [`${pct}%`])}
+                                >
+                                  {pct > 3 && (
+                                    <span className="font-semibold tabular-nums" style={{ fontSize: '32cqh', color: bucket.textColor }}>{pct}%</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Index row */}
+                    <div
+                      className={`data-pop flex flex-col gap-1 transition-[padding-top] duration-[900ms] ${
+                        displayedPortfolios.length === 1 ? 'pt-3' : 'pt-0'
+                      }`}
+                      style={{ animationDelay: `${ROW_5_STAGGER_MS + 80 + displayedPortfolios.length * 120}ms` }}
+                    >
+                      <span className="text-xs font-medium text-zinc-400">{FI_INDEX.maturityBreakdownLabel}</span>
+                      <div
+                        className={`bar-grow flex ${
+                          displayedPortfolios.length === 1 ? 'h-14' : 'h-10'
+                        } rounded-sm overflow-hidden border border-zinc-800/60 bg-zinc-500 gap-px transition-[height] duration-[900ms]`}
+                        style={{
+                          containerType: 'size',
+                          animationDelay: `${ROW_5_STAGGER_MS + 80 + displayedPortfolios.length * 120}ms`,
+                        }}
+                      >
+                        {MATURITY_BUCKETS.map(bucket => {
+                          const pct = FI_INDEX.maturityBreakdown[bucket.id];
+                          if (pct === 0) return null;
+                          return (
+                            <div
+                              key={bucket.id}
+                              className="h-full flex items-center justify-center overflow-hidden transition-[width] duration-700 ease-out cursor-pointer"
+                              style={{ width: `${pct}%`, backgroundColor: bucket.color }}
+                              {...dotHoverHandlers(`${FI_INDEX.maturityBreakdownLabel} • ${bucket.label}`, [`${pct}%`])}
+                            >
+                              {pct > 3 && (
+                                <span className="font-semibold tabular-nums" style={{ fontSize: '32cqh', color: bucket.textColor }}>{pct}%</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bucket legend */}
+                  <div className="flex items-center justify-center flex-wrap gap-x-4 gap-y-2 mt-4">
+                    {MATURITY_BUCKETS.map(bucket => (
+                      <div key={bucket.id} className="flex items-center gap-1.5">
+                        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: bucket.color }} />
+                        <span className="text-xs text-muted">{bucket.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

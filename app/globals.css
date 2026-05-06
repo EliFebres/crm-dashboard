@@ -317,6 +317,14 @@ body {
 .row-stagger-4 .col-expand    { animation-delay: 3s; }
 .row-stagger-4 .col-collapse  { animation-delay: 3s; }
 
+/* Row 5 stagger — second Fixed Income row (Security Type + Maturity Breakdown).
+   One cadence below row-stagger-4 so it cascades after Credit Breakdown finishes. */
+.row-stagger-5 .data-pop      { animation-delay: 4s; }
+.row-stagger-5 .data-fade     { animation-delay: 4s; }
+.row-stagger-5 .bar-grow      { animation-delay: 4s; }
+.row-stagger-5 .col-expand    { animation-delay: 4s; }
+.row-stagger-5 .col-collapse  { animation-delay: 4s; }
+
 /* Scroll-triggered fade-in */
 .scroll-fade-in {
   opacity: 0;
