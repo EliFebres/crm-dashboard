@@ -9,6 +9,7 @@ import type { Engagement } from '@/app/lib/types/engagements';
 import type { ChangeFlash, EngagementField } from '@/app/lib/hooks/useDashboardChanges';
 import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChanges';
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
+import { canUserEditEngagement, type User } from '@/app/lib/auth/types';
 
 // Sort configuration types
 type SortDirection = 'asc' | 'desc' | null;
@@ -81,6 +82,7 @@ interface InteractionsTableProps {
   removedRowIds?: Map<number, ChangeFlash>;
   rowFieldChanges?: Map<number, Partial<Record<EngagementField, ChangeFlash>>>;
   readOnly?: boolean;
+  currentUser?: User | null;
 }
 
 interface GhostRow {
@@ -88,7 +90,7 @@ interface GhostRow {
   expiresAt: number;
 }
 
-const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortColumn, sortDirection, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onNNAChange, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false }) => {
+const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortColumn, sortDirection, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onNNAChange, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false, currentUser }) => {
   const sortConfig: SortConfig = useMemo(
     () => ({ column: sortColumn as SortColumn, direction: sortDirection as SortDirection }),
     [sortColumn, sortDirection]
@@ -260,11 +262,12 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
   const renderTableRow = (engagement: Engagement, keyPrefix: string = '', isGhost: boolean = false) => {
     const rowFlash = !isGhost && newRowIds?.has(engagement.id) ? FLASH_CLASS[newRowIds.get(engagement.id)!.kind] : '';
     const ghostClass = isGhost ? 'ghost-row' : '';
+    const canEdit = !readOnly && canUserEditEngagement(currentUser, engagement.teamMembers);
     return (
     <tr
       key={`${keyPrefix}${isGhost ? 'ghost-' : ''}${engagement.id}`}
-      className={`hover:bg-white/[0.02] transition-colors ${readOnly ? '' : 'cursor-pointer'} ${rowFlash} ${ghostClass}`.trim()}
-      onClick={isGhost || readOnly ? undefined : () => onRowClick(engagement)}
+      className={`hover:bg-white/[0.02] transition-colors ${canEdit ? 'cursor-pointer' : ''} ${rowFlash} ${ghostClass}`.trim()}
+      onClick={isGhost || !canEdit ? undefined : () => onRowClick(engagement)}
     >
       <td className="px-4 py-3">
         <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
@@ -341,7 +344,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         )}
       </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        {readOnly ? (
+        {!canEdit ? (
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-1 text-sm font-mono ${
               engagement.nna ? 'text-emerald-400' : 'text-muted'
@@ -371,7 +374,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         )}
       </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        {readOnly ? (
+        {!canEdit ? (
           <span
             className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${getStatusStyle(engagement.status)} ${flashTextFor(engagement.id, 'status')}`}
           >
@@ -483,7 +486,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         title="Notes"
         subtitle={notesModalEngagement?.externalClient || notesModalEngagement?.internalClient.name || ''}
         engagementId={notesModalEngagement?.id ?? 0}
-        readOnly={readOnly}
+        readOnly={readOnly || !canUserEditEngagement(currentUser, notesModalEngagement?.teamMembers ?? [])}
         onNoteAdded={() => {
           if (notesModalEngagement) {
             onNoteAdded(notesModalEngagement.id);

@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite } from '@/app/lib/db';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
-import { canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import type { NoteEntry } from '@/app/lib/types/engagements';
 import { logActivity } from '@/app/lib/activity/log';
 
@@ -37,13 +37,24 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     }
     if (!canModify(payload)) return readOnlyError();
 
-    const { noteId } = await params;
+    const { id: engagementIdParam, noteId } = await params;
     const id = Number(noteId);
+    const engagementId = Number(engagementIdParam);
     const { noteText } = await req.json();
 
     if (!noteText || !noteText.trim()) {
       return NextResponse.json({ error: 'noteText is required.' }, { status: 400 });
     }
+
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
+    }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(payload, currentTeamMembers)) return notTeamMemberError();
 
     // Atomic ownership check + update: if author_id doesn't match, 0 rows returned
     const updated = await queryWrite<Record<string, unknown>>(
@@ -99,6 +110,16 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     const { id: engagementIdParam, noteId } = await params;
     const id = Number(noteId);
     const engagementId = Number(engagementIdParam);
+
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
+    }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(payload, currentTeamMembers)) return notTeamMemberError();
 
     // Atomic ownership check + delete: if author_id doesn't match, 0 rows returned
     const deleted = await queryWrite(

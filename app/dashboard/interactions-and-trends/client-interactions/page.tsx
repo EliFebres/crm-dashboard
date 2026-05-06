@@ -23,7 +23,7 @@ import type { DashboardData, DashboardMetrics, EngagementFilters } from '@/app/l
 import type { EngagementMetric, Engagement } from '@/app/lib/types/engagements';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import { toDisplayName, isReadOnlyUser } from '@/app/lib/auth/types';
+import { toDisplayName, isReadOnlyUser, canUserEditEngagement } from '@/app/lib/auth/types';
 import { useDashboardChanges } from '@/app/lib/hooks/useDashboardChanges';
 
 // =============================================================================
@@ -353,6 +353,8 @@ export default function EngagementsDashboard() {
   };
 
   const handleStatusChange = (engagementId: number, newStatus: string) => {
+    const target = engagements.find(e => e.id === engagementId);
+    if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
     patchEngagements(e => ({
       ...e,
       status: newStatus,
@@ -370,11 +372,14 @@ export default function EngagementsDashboard() {
   };
 
   const handleNNAChange = (engagementId: number, nna: number | undefined) => {
+    const target = engagements.find(e => e.id === engagementId);
+    if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
     patchEngagements(e => ({ ...e, nna }), engagementId);
     updateEngagementNNA(engagementId, nna).catch(console.error);
   };
 
   const handleRowClick = (engagement: Engagement) => {
+    if (!canUserEditEngagement(user, engagement.teamMembers)) return;
     setEditingEngagement({
       id: engagement.id,
       data: {
@@ -637,6 +642,7 @@ export default function EngagementsDashboard() {
               removedRowIds={dashboardChanges.removedRowIds}
               rowFieldChanges={dashboardChanges.rowFieldChanges}
               readOnly={readOnly}
+              currentUser={user}
             />
           </>
         )}

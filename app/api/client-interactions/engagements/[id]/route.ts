@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, executeTransaction } from '@/app/lib/db';
 import { rowToEngagement } from '@/app/lib/db/queries';
-import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { toISODate } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
@@ -53,6 +53,19 @@ export async function PATCH(
     const { id } = await params;
     const engagementId = Number(id);
     const body = await req.json();
+
+    // Team-member gate: only users on the engagement's current team_members list
+    // (or admins) may edit. Check the stored value, not anything in the body, so
+    // a non-member can't add themselves and then mutate.
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
+    }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
 
     const setClauses: string[] = [];
     const values: unknown[] = [];
@@ -212,19 +225,16 @@ export async function DELETE(
     const { id } = await params;
     const engagementId = Number(id);
 
-    // Non-admins can only delete engagements they created
-    if (auth.payload.role !== 'admin') {
-      const rows = await query<{ created_by_id: string | null }>(
-        `SELECT created_by_id FROM engagements WHERE id = ?`,
-        [engagementId]
-      );
-      if (rows.length === 0) {
-        return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
-      }
-      if (rows[0].created_by_id !== auth.payload.sub) {
-        return NextResponse.json({ error: 'Not authorized to delete this engagement' }, { status: 403 });
-      }
+    // Only assigned Team Members (or admins) may delete.
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
     }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
 
     const teamClause = sc.team ? 'AND team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];

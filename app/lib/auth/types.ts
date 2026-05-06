@@ -27,6 +27,15 @@ export function isReadOnlyUser(user: Pick<User, 'team'> | null | undefined): boo
   return (READ_ONLY_TEAMS as readonly string[]).includes(user.team);
 }
 
+export function canUserEditEngagement(
+  user: Pick<User, 'firstName' | 'lastName' | 'role' | 'team'> | null | undefined,
+  teamMembers: string[]
+): boolean {
+  if (!user || isReadOnlyUser(user)) return false;
+  if (user.role === 'admin') return true;
+  return teamMembers.includes(toDisplayName(user.firstName, user.lastName));
+}
+
 /**
  * Converts a first/last name pair to the display format used in the team_members
  * table and in engagement team_members JSON arrays. e.g. "Eli" + "Febres" → "Eli F."

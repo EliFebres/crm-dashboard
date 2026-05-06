@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT, SESSION_COOKIE } from './jwt';
 import type { JWTPayload } from './jwt';
 import type { ServerConstraints } from '../db/queries';
-import { READ_ONLY_TEAMS } from './types';
+import { READ_ONLY_TEAMS, toDisplayName } from './types';
 import { touchPresence } from '../activity/log';
 
 export type AuthResult =
@@ -41,6 +41,19 @@ export function canModify(payload: JWTPayload): boolean {
 export function readOnlyError(): NextResponse {
   return NextResponse.json(
     { error: 'This account has read-only access and cannot modify data.' },
+    { status: 403 }
+  );
+}
+
+export function canEditEngagement(payload: JWTPayload, teamMembers: string[]): boolean {
+  if (!canModify(payload)) return false;
+  if (payload.role === 'admin') return true;
+  return teamMembers.includes(toDisplayName(payload.firstName, payload.lastName));
+}
+
+export function notTeamMemberError(): NextResponse {
+  return NextResponse.json(
+    { error: 'Only assigned Team Members can edit this project.' },
     { status: 403 }
   );
 }
