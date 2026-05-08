@@ -489,7 +489,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         engagementId={notesModalEngagement?.id ?? 0}
         readOnly={readOnly || !canUserEditEngagement(currentUser, notesModalEngagement?.teamMembers ?? [])}
         filepath={notesModalEngagement?.filepath ?? null}
-        canEditFilepath={!readOnly}
+        canEditFilepath={!readOnly && canUserEditEngagement(currentUser, notesModalEngagement?.teamMembers ?? [])}
         onFilepathSaved={(next) => {
           if (notesModalEngagement) {
             onFilepathSaved(notesModalEngagement.id, next);

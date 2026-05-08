@@ -405,20 +405,6 @@ export async function updateEngagementFilepath(id: number, filepath: string | nu
 }
 
 /**
- * Asks the server to launch Windows Explorer at the engagement's stored filepath.
- * Endpoint: POST /api/client-interactions/engagements/:id/open-folder
- */
-export async function openEngagementFolder(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/${id}/open-folder`, {
-    method: 'POST',
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to open folder');
-  }
-}
-
-/**
  * Deletes an engagement record permanently.
  * Endpoint: DELETE /api/client-interactions/engagements/:id
  */

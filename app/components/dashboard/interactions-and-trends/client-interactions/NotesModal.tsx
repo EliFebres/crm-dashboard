@@ -8,7 +8,6 @@ import {
   updateEngagementNote,
   deleteEngagementNote,
   updateEngagementFilepath,
-  openEngagementFolder,
 } from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import type { NoteEntry } from '@/app/lib/types/engagements';
@@ -184,21 +183,6 @@ const NotesModal: React.FC<NotesModalProps> = ({
     }
   };
 
-  const handleFilepathClick = async (e: React.MouseEvent) => {
-    if (!filepath) return;
-    if (e.shiftKey) {
-      await copyFilepathToClipboard();
-      return;
-    }
-    try {
-      await openEngagementFolder(engagementId);
-    } catch {
-      // Fall back to copying so the user can paste it manually
-      await copyFilepathToClipboard();
-      showFlash("Couldn't open — copied instead");
-    }
-  };
-
   const handleDeleteNote = async (noteId: number) => {
     setDeletingNoteId(noteId);
     try {
@@ -275,8 +259,8 @@ const NotesModal: React.FC<NotesModalProps> = ({
               <div className="mt-2 flex items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 text-muted flex-shrink-0" />
                 <button
-                  onClick={handleFilepathClick}
-                  title={`${filepath}\n\nClick to open in File Explorer · Shift+click to copy`}
+                  onClick={copyFilepathToClipboard}
+                  title={`${filepath}\n\nClick to copy`}
                   className="min-w-0 truncate text-left text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline transition-colors"
                 >
                   {filepath}
