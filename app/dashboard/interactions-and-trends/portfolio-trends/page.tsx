@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Building2, Info, Landmark, Layers, PieChart, User } from 'lucide-react';
+import { Building2, Info, Landmark, Layers, PieChart, Users } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import BenchmarkBarChart from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/BenchmarkBarChart';
 import AssetClassFilterButton, { type EquityScope } from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/AssetClassFilterButton';
@@ -12,13 +12,10 @@ import {
 } from '@/app/lib/data/portfolioTrends';
 import type { BenchmarkComparison } from '@/app/lib/types/trends';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
-import { useCurrentUser } from '@/app/lib/auth/context';
-import { toDisplayName } from '@/app/lib/auth/types';
 
-// Static filter options — mirrors the Client Interactions dashboard's structure.
-// Filter selection is purely cosmetic on this dashboard for now; the underlying
-// portfolio data is dummy and not yet wired up.
-const OFFICE_GROUP = { label: 'Office', options: ['Austin Office', 'Charlotte Office'] };
+// Static filter options. Filter selection is purely cosmetic on this dashboard
+// for now; the underlying portfolio data is dummy and not yet wired up.
+const TEAMS = ['Portfolio Consulting', 'Equity Specialists', 'Fixed Income Specialists'];
 const DEPARTMENTS = ['Broker-Dealer', 'IAG', 'Institutional', 'Retirement Group'];
 
 // Portfolios selector — drives which series render on the cards. Avg. Client is the
@@ -179,13 +176,8 @@ function useDeltaColumns(
 }
 
 export default function PortfolioTrendsDashboard() {
-  const { user } = useCurrentUser();
-  const isGuest = user?.team === 'Guest';
-  const canSeeAllTeams = user?.role === 'admin' || user?.team === 'Leadership' || isGuest;
-  const currentUser = user ? toDisplayName(user.firstName, user.lastName) : 'All Team Members';
-
   // Filter state
-  const [teamMemberFilter, setTeamMemberFilter] = useState('All Team Members');
+  const [teamFilter, setTeamFilter] = useState('All Teams');
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
   const [portfolioFilter, setPortfolioFilterRaw] = useState<PortfolioName[]>(['Avg. Client']);
   const quarterEndOptions = useMemo(() => getRecentQuarterEnds(8), []);
@@ -285,13 +277,6 @@ export default function PortfolioTrendsDashboard() {
     1600, displayedPortfolios, portfolioFilter
   );
 
-
-  // Guests don't have "Team Members" — their only scope is the cross-team aggregate.
-  useEffect(() => {
-    if (isGuest && teamMemberFilter === 'All Team Members') {
-      setTeamMemberFilter('All Teams');
-    }
-  }, [isGuest, teamMemberFilter]);
 
   // XY chart data — drives dot positions, crosshair positions, and tooltip text.
   const styleXY = {
@@ -746,33 +731,14 @@ export default function PortfolioTrendsDashboard() {
           searchValue=""
           onSearchChange={() => {}}
           filters={[
-            ...(isGuest
-              ? [{
-                  id: 'teamMember',
-                  icon: User,
-                  label: 'Team Member',
-                  options: ['All Teams'],
-                  value: teamMemberFilter,
-                  onChange: (v: string | string[]) => setTeamMemberFilter(v as string),
-                }]
-              : [{
-                  id: 'teamMember',
-                  icon: User,
-                  label: 'Team Member',
-                  options: [
-                    'All Team Members',
-                    ...OFFICE_GROUP.options,
-                    currentUser,
-                    ...(canSeeAllTeams ? ['All Teams'] : []),
-                  ],
-                  optionGroups: [
-                    ...(canSeeAllTeams ? [{ label: 'Scope', options: ['All Teams'] }] : []),
-                    OFFICE_GROUP,
-                    { label: 'Members', options: [currentUser] },
-                  ],
-                  value: teamMemberFilter,
-                  onChange: (v: string | string[]) => setTeamMemberFilter(v as string),
-                }]),
+            {
+              id: 'team',
+              icon: Users,
+              label: 'Teams',
+              options: ['All Teams', ...TEAMS],
+              value: teamFilter,
+              onChange: (v: string | string[]) => setTeamFilter(v as string),
+            },
             {
               id: 'department',
               icon: Building2,
