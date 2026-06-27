@@ -1,5 +1,5 @@
 // Data and functions for Client Engagements Dashboard
-// Used for mock data (when DUCKDB_DIR is not set) and by scripts/seed-db.ts
+// Used for mock data (when SQLITE_DIR is not set) and by scripts/seed-db.ts
 
 
 import type { Engagement, DayData, GCGAdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';

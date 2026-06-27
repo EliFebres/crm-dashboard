@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, execute } from '@/app/lib/db';
+import { query, execute, hasDb } from '@/app/lib/db';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import type { NoteEntry } from '@/app/lib/types/engagements';
@@ -24,7 +24,7 @@ function rowToNoteEntry(row: Record<string, unknown>): NoteEntry {
 // GET /api/client-interactions/engagements/:id/notes
 // Returns all note entries for an engagement, oldest first.
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
   try {
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 // Appends a new note entry attributed to the authenticated user.
 // Body: { noteText: string }
 export async function POST(req: NextRequest, { params }: RouteParams) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
   try {

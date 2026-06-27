@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryWrite } from '@/app/lib/db';
+import { query, queryWrite, hasDb } from '@/app/lib/db';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import type { NoteEntry } from '@/app/lib/types/engagements';
@@ -24,7 +24,7 @@ function rowToNoteEntry(row: Record<string, unknown>): NoteEntry {
 // Updates note text. Only the note's author may edit it.
 // Body: { noteText: string }
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
   try {
@@ -94,7 +94,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 // DELETE /api/client-interactions/engagements/:id/notes/:noteId
 // Deletes a note. Only the note's author may delete it.
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
   try {

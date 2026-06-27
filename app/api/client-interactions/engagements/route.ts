@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, execute } from '@/app/lib/db';
+import { query, queryWrite, hasDb } from '@/app/lib/db';
 import { rowToEngagement } from '@/app/lib/db/queries';
 import { computeEngagementsList } from '@/app/lib/db/aggregations';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
@@ -55,8 +55,8 @@ export async function GET(req: NextRequest) {
 // POST /api/client-interactions/engagements
 // Body: engagement fields (camelCase)
 export async function POST(req: NextRequest) {
-  if (!process.env.DUCKDB_DIR) {
-    return NextResponse.json({ error: 'Database not configured. Set DUCKDB_PATH to enable write operations.' }, { status: 503 });
+  if (!hasDb()) {
+    return NextResponse.json({ error: 'Database not configured. Set SQLITE_DIR to enable write operations.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -64,12 +64,6 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-
-    // Get next ID from sequence
-    const seqRows = await query<Record<string, unknown>>(
-      `SELECT nextval('engagements_id_seq') AS nextval`
-    );
-    const id = Number(seqRows[0].nextval);
 
     const department = body.internalClient?.gcgDepartment ?? body.department ?? '';
 
@@ -79,9 +73,6 @@ export async function POST(req: NextRequest) {
       const n = Number(body.linkedFromId);
       if (!Number.isFinite(n) || n <= 0) {
         return NextResponse.json({ error: 'Invalid linkedFromId' }, { status: 400 });
-      }
-      if (n === id) {
-        return NextResponse.json({ error: 'Cannot link an engagement to itself' }, { status: 400 });
       }
       const parent = await query<{ id: number }>(
         `SELECT id FROM engagements WHERE id = ? AND team = ?`,
@@ -93,16 +84,16 @@ export async function POST(req: NextRequest) {
       linkedFromId = n;
     }
 
-    await execute(
+    const insertRows = await queryWrite<{ id: number }>(
       `INSERT INTO engagements (
-        id, external_client, internal_client_name, internal_client_dept,
+        external_client, internal_client_name, internal_client_dept,
         intake_type, ad_hoc_channel, type, team_members, department,
         date_started, date_finished, status, portfolio_logged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
         linked_from_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING id`,
       [
-        id,
         body.externalClient ?? null,
         body.internalClient?.name ?? null,
         body.internalClient?.gcgDepartment ?? null,
@@ -125,6 +116,7 @@ export async function POST(req: NextRequest) {
         linkedFromId,
       ]
     );
+    const id = Number(insertRows[0].id);
 
     const rows = await query<Record<string, unknown>>(
       `SELECT * FROM engagements WHERE id = ?`,

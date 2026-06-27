@@ -14,7 +14,7 @@ export interface InternalEngagementFilters extends EngagementFilters {
 
 /**
  * Resolves an "Austin Office" / "Charlotte Office" filter to the live list of
- * member display names. team_members lives in users.duckdb, so we can't JOIN to
+ * member display names. team_members lives in users.sqlite, so we can't JOIN to
  * it from the engagements connection — caller must pre-resolve and pass the
  * results to buildFilterClause via _officeMembers.
  *
@@ -49,7 +49,7 @@ export const SORT_COLUMN_MAP: Record<string, string> = {
   intakeType: 'intake_type',
   nna: 'nna',
   portfolioLogged: 'portfolio_logged',
-  teamMembers: `json_extract_string(team_members, '$[0]')`,
+  teamMembers: `json_extract(team_members, '$[0]')`,
 };
 
 export interface ServerConstraints {
@@ -113,8 +113,8 @@ export function buildFilterClause(
   }
 
   // Team member filter: check if the engagement's JSON team_members array contains
-  // any of the requested names. json_contains(col, '"Name"') checks for an exact
-  // JSON string match in the array.
+  // any of the requested names. json_each() expands the JSON array into rows so
+  // EXISTS can test for an exact element match.
   // - 'All Teams' is the cross-team aggregate scope (admin/Leadership/Guest only)
   //   and 'All Team Members' is the no-filter default — both pass through.
   // - 'Austin Office' / 'Charlotte Office' are pseudo-values: the caller resolves
@@ -131,8 +131,10 @@ export function buildFilterClause(
       // an unfiltered query.
       conditions.push('1=0');
     } else {
-      const memberConditions = members.map(() => `json_contains(${col('team_members')}, ?)`);
-      members.forEach(m => params.push(JSON.stringify(m)));
+      const memberConditions = members.map(
+        () => `EXISTS (SELECT 1 FROM json_each(${col('team_members')}) WHERE value = ?)`,
+      );
+      members.forEach(m => params.push(m));
       conditions.push(`(${memberConditions.join(' OR ')})`);
     }
   }
@@ -155,7 +157,7 @@ export function buildFilterClause(
 }
 
 /**
- * Maps a raw DuckDB row object to the typed Engagement interface.
+ * Maps a raw SQLite row object to the typed Engagement interface.
  * Parses JSON array columns and converts dates to display format.
  */
 export function rowToEngagement(row: Record<string, unknown>): Engagement {

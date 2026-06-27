@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 
     const search = sp.get('search');
     if (search) {
-      where.push('(user_email ILIKE ? OR user_name ILIKE ? OR action ILIKE ? OR CAST(details AS VARCHAR) ILIKE ?)');
+      where.push('(user_email LIKE ? OR user_name LIKE ? OR action LIKE ? OR CAST(details AS TEXT) LIKE ?)');
       const term = `%${search}%`;
       params.push(term, term, term, term);
     }

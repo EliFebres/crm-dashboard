@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, query } from '@/app/lib/db';
+import { execute, query, hasDb } from '@/app/lib/db';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
@@ -12,7 +12,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
   const auth = await requireAuth(req);

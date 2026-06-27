@@ -2,10 +2,11 @@
  * Server-side aggregation functions for the Client Interactions dashboard.
  *
  * DATA SOURCE:
- * - If DUCKDB_DIR env var is set → query DuckDB (real data)
- * - If DUCKDB_DIR is not set    → return mock data (development/demo)
+ * - If SQLITE_DIR env var is set → query SQLite (real data)
+ * - If SQLITE_DIR is not set    → return mock data (development/demo)
  */
 import { query } from './index';
+import { hasDb } from './connection';
 import {
   getMockMetrics,
   getMockDepartmentBreakdown,
@@ -36,7 +37,7 @@ export const STATIC_FILTER_OPTIONS: FilterOptions = {
 // =============================================================================
 
 export async function computeMetrics(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<DashboardMetrics> {
-  if (!process.env.DUCKDB_DIR) return getMockMetrics(filters);
+  if (!hasDb()) return getMockMetrics(filters);
 
   const resolved = await resolveOfficeMembers(filters);
   const period = resolved.period || '1Y';
@@ -57,8 +58,8 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
   const inProgressFilters = { ...resolved, status: undefined };
   const { whereClause: ipWhere, params: ipParams } = buildFilterClause(inProgressFilters, '', serverConstraints);
   const sparklineAndClause = ipWhere
-    ? `${ipWhere} AND date_started >= (CURRENT_DATE - INTERVAL '8 weeks')`
-    : `WHERE date_started >= (CURRENT_DATE - INTERVAL '8 weeks')`;
+    ? `${ipWhere} AND date_started >= date('now', '-56 days')`
+    : `WHERE date_started >= date('now', '-56 days')`;
 
   // ---- Fire all 4 queries in parallel — none depends on another's result ----
   const [projectRows, prevRows, inProgressRows, sparklineRows] = await Promise.all([
@@ -95,14 +96,14 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
       SELECT
         COUNT(*) FILTER (WHERE status = 'In Progress') AS count,
         COUNT(*) FILTER (WHERE status = 'In Progress'
-          OR (date_finished >= date_trunc('week', CURRENT_DATE) AND status != 'In Progress')
+          OR (date_finished >= date('now', '-' || ((strftime('%w','now') + 6) % 7) || ' days') AND status != 'In Progress')
         ) AS last_week
       FROM engagements ${ipWhere || ''}
     `, ipParams),
     // Weekly in-progress sparkline (last 8 weeks, same filters)
     query<Record<string, unknown>>(`
       SELECT
-        strftime(date_started, '%Y-W%W') AS week_key,
+        strftime('%Y-W%W', date_started) AS week_key,
         COUNT(*) FILTER (WHERE status = 'In Progress') AS in_progress_count
       FROM engagements ${sparklineAndClause}
       GROUP BY week_key
@@ -208,7 +209,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
 // =============================================================================
 
 export async function computeDepartmentBreakdown(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<DepartmentBreakdown> {
-  if (!process.env.DUCKDB_DIR) return getMockDepartmentBreakdown(filters);
+  if (!hasDb()) return getMockDepartmentBreakdown(filters);
 
   const resolved = await resolveOfficeMembers(filters);
   const { whereClause, params } = buildFilterClause(resolved, '', serverConstraints);
@@ -252,7 +253,7 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
 // =============================================================================
 
 export async function computeContributionData(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<ContributionDataResponse> {
-  if (!process.env.DUCKDB_DIR) return getMockContributionData(filters);
+  if (!hasDb()) return getMockContributionData(filters);
 
   const resolved = await resolveOfficeMembers(filters);
   // Apply all filters EXCEPT period — heatmap always shows a rolling 104-week window
@@ -337,7 +338,7 @@ export async function computeContributionData(filters: EngagementFilters, server
 // =============================================================================
 
 export async function computeEngagementsList(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<EngagementsResponse> {
-  if (!process.env.DUCKDB_DIR) return getMockEngagementsList(filters);
+  if (!hasDb()) return getMockEngagementsList(filters);
 
   const resolved = await resolveOfficeMembers(filters);
   const { whereClause, params } = buildFilterClause(resolved, '', serverConstraints);

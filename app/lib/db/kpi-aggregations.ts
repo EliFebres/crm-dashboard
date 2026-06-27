@@ -6,10 +6,11 @@
  * module — team privacy is a hard constraint.
  *
  * DATA SOURCE:
- * - If DUCKDB_DIR is set → queries DuckDB.
+ * - If SQLITE_DIR is set → queries SQLite.
  * - Otherwise returns empty/zero stubs (dev-without-db mode).
  */
 import { query } from './index';
+import { hasDb } from './connection';
 import type { ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
@@ -74,10 +75,6 @@ function buildKpiWhere(
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   return { whereClause, params };
-}
-
-function hasDb(): boolean {
-  return Boolean(process.env.DUCKDB_DIR);
 }
 
 function pct(num: number, denom: number): number {
@@ -206,7 +203,7 @@ export async function computeJourneySankey(
     CASE
       WHEN ${SQL_COMPLETED} AND nna IS NOT NULL AND nna > 0 THEN 'Completed w/ NNA'
       WHEN ${SQL_COMPLETED} THEN 'Completed no NNA'
-      WHEN NOT (${SQL_COMPLETED}) AND date_started < CURRENT_DATE - INTERVAL '60 days' THEN 'Stalled'
+      WHEN NOT (${SQL_COMPLETED}) AND date_started < date('now', '-60 days') THEN 'Stalled'
       ELSE 'Still Open'
     END
   `;
@@ -325,12 +322,12 @@ export async function computeJourneyTemplates(
           CASE
             WHEN leaf_status IN ('Completed', 'Follow Up') AND leaf_nna IS NOT NULL AND leaf_nna > 0 THEN 'Completed w/ NNA'
             WHEN leaf_status IN ('Completed', 'Follow Up') THEN 'Completed no NNA'
-            WHEN leaf_status NOT IN ('Completed', 'Follow Up') AND leaf_started < CURRENT_DATE - INTERVAL '60 days' THEN 'Stalled'
+            WHEN leaf_status NOT IN ('Completed', 'Follow Up') AND leaf_started < date('now', '-60 days') THEN 'Stalled'
             ELSE 'Still Open'
           END AS signature,
         COUNT(*) AS journeys,
-        AVG(CAST(leaf_nna AS DOUBLE)) AS avg_nna,
-        AVG(CAST(leaf_finished - leaf_started AS DOUBLE)) AS avg_days,
+        AVG(CAST(leaf_nna AS REAL)) AS avg_nna,
+        AVG(julianday(leaf_finished) - julianday(leaf_started)) AS avg_days,
         COUNT(*) FILTER (WHERE leaf_status IN ('Completed', 'Follow Up')) AS completed_count
       FROM terminal
       WHERE rn = 1
@@ -469,8 +466,8 @@ export async function computeStaleEngagements(
         internal_client_name AS client,
         type,
         status,
-        CAST(CURRENT_DATE - date_started AS INTEGER) AS days_open,
-        CAST(date_started AS VARCHAR) AS date_started
+        CAST(julianday(date('now')) - julianday(date_started) AS INTEGER) AS days_open,
+        CAST(date_started AS TEXT) AS date_started
       FROM engagements
       ${whereClause
         ? `${whereClause} AND ${SQL_OPEN}`
@@ -511,12 +508,12 @@ export async function computeDormantClients(
         internal_client_dept AS dept,
         COUNT(*)             AS total_count,
         MAX(date_started)    AS last_started,
-        CAST(CURRENT_DATE - MAX(date_started) AS INTEGER) AS days_since
+        CAST(julianday(date('now')) - julianday(MAX(date_started)) AS INTEGER) AS days_since
       FROM engagements
       ${whereClause}
       GROUP BY internal_client_name, internal_client_dept
       HAVING COUNT(*) >= 3
-         AND MAX(date_started) < CURRENT_DATE - INTERVAL '60 days'
+         AND MAX(date_started) < date('now', '-60 days')
       ORDER BY days_since DESC
       LIMIT 10
     `,

@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
     if (isFirstUser) {
       await executeUsers(
         `INSERT INTO users (id, email, first_name, last_name, title, department, team, office, role, status, password_hash, created_at, approved_at)
-         VALUES (?, ?, ?, ?, ?, 'Default', ?, ?, ?, ?, ?, now(), now())`,
+         VALUES (?, ?, ?, ?, ?, 'Default', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [id, email.toLowerCase(), firstName.trim(), lastName.trim(), title.trim(), team, office, role, status, passwordHash]
       );
     } else {
       await executeUsers(
         `INSERT INTO users (id, email, first_name, last_name, title, department, team, office, role, status, password_hash, created_at)
-         VALUES (?, ?, ?, ?, ?, 'Default', ?, ?, ?, ?, ?, now())`,
+         VALUES (?, ?, ?, ?, ?, 'Default', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         [id, email.toLowerCase(), firstName.trim(), lastName.trim(), title.trim(), team, office, role, status, passwordHash]
       );
     }

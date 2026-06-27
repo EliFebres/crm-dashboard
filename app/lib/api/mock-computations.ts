@@ -1,6 +1,6 @@
 /**
  * Mock data computation functions for the Client Interactions dashboard.
- * Used as a fallback when DUCKDB_DIR is not set in the environment.
+ * Used as a fallback when SQLITE_DIR is not set in the environment.
  */
 
 import type { Engagement } from '../types/engagements';

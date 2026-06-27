@@ -1,6 +1,6 @@
 /**
  * =============================================================================
- * DuckDB Restore Script
+ * SQLite Restore Script
  * =============================================================================
  *
  * Restores database files from a backup created by backup-db.ts.
@@ -14,15 +14,15 @@
  *   npm run db:restore -- --force                   # Bypass the size-check guard
  *
  * Safety rails:
- *   - Before overwriting, the current .duckdb files are copied to
+ *   - Before overwriting, the current .sqlite files are snapshotted to
  *     Backups/pre-restore-<timestamp>/ (never auto-pruned). If you realize
  *     afterwards that the restore was wrong, point --backup at that folder.
- *   - If the backup's engagements.duckdb is >20% smaller than the current
- *     engagements.duckdb, the restore is refused unless --force is passed.
+ *   - If the backup's engagements.sqlite is >20% smaller than the current
+ *     engagements.sqlite, the restore is refused unless --force is passed.
  *     Catches the "accidentally restore an empty backup over live data" case.
  *
- * IMPORTANT: Stop the app server before restoring.
- * DuckDB requires exclusive access to write to the database files.
+ * IMPORTANT: Stop the app server before restoring so no connection holds a WAL
+ * over the file you're replacing.
  * =============================================================================
  */
 
@@ -65,11 +65,11 @@ async function confirm(question: string): Promise<boolean> {
 }
 
 async function main() {
-  const dbDir = process.env.DUCKDB_DIR;
+  const dbDir = process.env.SQLITE_DIR || process.env.DUCKDB_DIR;
   const backupDir = process.env.BACKUP_DIR;
 
   if (!dbDir) {
-    console.error('ERROR: DUCKDB_DIR is not set. Add it to .env');
+    console.error('ERROR: SQLITE_DIR is not set. Add it to .env');
     process.exit(1);
   }
   if (!backupDir) {
@@ -115,11 +115,11 @@ async function main() {
   if (!dbArg || dbArg === 'both' || dbArg === 'all') {
     filesToRestore = DB_FILES;
   } else if (dbArg === 'engagements') {
-    filesToRestore = ['engagements.duckdb'];
+    filesToRestore = ['engagements.sqlite'];
   } else if (dbArg === 'users') {
-    filesToRestore = ['users.duckdb'];
+    filesToRestore = ['users.sqlite'];
   } else if (dbArg === 'activity') {
-    filesToRestore = ['activity.duckdb'];
+    filesToRestore = ['activity.sqlite'];
   } else {
     console.error(`ERROR: Unknown --db value "${dbArg}". Use: engagements, users, activity, or all`);
     process.exit(1);
@@ -184,7 +184,7 @@ async function main() {
   // 10 seconds ago."
   let snapshotPath: string;
   try {
-    snapshotPath = takePreRestoreSnapshot(resolvedDbDir, resolvedBackupDir);
+    snapshotPath = await takePreRestoreSnapshot(resolvedDbDir, resolvedBackupDir);
     console.log(`  📸 pre-restore snapshot: ${path.basename(snapshotPath)}`);
   } catch (err) {
     console.error('\nFailed to take pre-restore safety snapshot:', err);
@@ -195,28 +195,22 @@ async function main() {
 
   for (const dbFile of filesToRestore) {
     const srcMain = path.join(chosenDir, dbFile);
-    const srcWal  = `${srcMain}.wal`;
     const destMain = path.join(resolvedDbDir, dbFile);
-    const destWal  = `${destMain}.wal`;
 
     if (!fs.existsSync(srcMain)) {
       console.log(`  - ${dbFile} not in this backup, skipped`);
       continue;
     }
 
-    if (fs.existsSync(destWal)) {
-      fs.rmSync(destWal);
+    // Clear any leftover WAL/SHM sidecars so an old write-ahead log can't
+    // shadow the freshly restored main file on next open.
+    for (const sidecar of [`${destMain}-wal`, `${destMain}-shm`]) {
+      if (fs.existsSync(sidecar)) fs.rmSync(sidecar);
     }
 
     fs.copyFileSync(srcMain, destMain);
     const size = (fs.statSync(destMain).size / 1024).toFixed(1);
-
-    if (fs.existsSync(srcWal)) {
-      fs.copyFileSync(srcWal, destWal);
-      console.log(`  ✓ ${dbFile} (${size} KB) + .wal`);
-    } else {
-      console.log(`  ✓ ${dbFile} (${size} KB)`);
-    }
+    console.log(`  ✓ ${dbFile} (${size} KB)`);
   }
 
   console.log(`\nRestore complete. If anything looks wrong, roll back with:`);

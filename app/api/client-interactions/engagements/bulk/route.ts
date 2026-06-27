@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { executeTransaction } from '@/app/lib/db';
+import { executeTransaction, hasDb } from '@/app/lib/db';
 import { requireAuth, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
 import { parseUploadedFile } from '@/app/lib/bulk-upload/parser';
 import { validateRows } from '@/app/lib/bulk-upload/validator';
@@ -13,9 +13,9 @@ import { logActivity } from '@/app/lib/activity/log';
 // Query: ?commit=true to actually insert (otherwise returns preview/errors only)
 // Body: multipart/form-data with a "file" field (.xlsx or .csv)
 export async function POST(req: NextRequest) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json(
-      { error: 'Database not configured. Set DUCKDB_DIR to enable write operations.' },
+      { error: 'Database not configured. Set SQLITE_DIR to enable write operations.' },
       { status: 503 }
     );
   }
@@ -91,22 +91,16 @@ export async function POST(req: NextRequest) {
 
   // Commit — insert all valid rows atomically
   try {
-    await executeTransaction(async (conn) => {
+    await executeTransaction((tx) => {
       for (const row of validRows) {
-        const seqResult = await conn.runAndReadAll(
-          `SELECT nextval('engagements_id_seq') AS nextval`
-        );
-        const id = Number(seqResult.getRowObjects()[0].nextval);
-
-        await conn.run(
+        const result = tx.run(
           `INSERT INTO engagements (
-            id, external_client, internal_client_name, internal_client_dept,
+            external_client, internal_client_name, internal_client_dept,
             intake_type, ad_hoc_channel, type, team_members, department,
             date_started, date_finished, status, portfolio_logged, portfolio,
             nna, notes, tickers_mentioned, team
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            id,
             row.externalClient ?? null,
             row.internalClientName,
             row.internalClientDept,
@@ -126,20 +120,16 @@ export async function POST(req: NextRequest) {
             auth.payload.team,
           ]
         );
+        const id = Number(result.lastInsertRowid);
 
         // Insert structured notes into engagement_notes table if present
         if (row.structuredNotes) {
           const notes = JSON.parse(row.structuredNotes) as { text: string; author: string; authorId?: string; date?: string }[];
           for (const note of notes) {
-            const noteSeq = await conn.runAndReadAll(
-              `SELECT nextval('engagement_notes_id_seq') AS nextval`
-            );
-            const noteId = Number(noteSeq.getRowObjects()[0].nextval);
-            await conn.run(
-              `INSERT INTO engagement_notes (id, engagement_id, note_text, author_name, author_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)`,
+            tx.run(
+              `INSERT INTO engagement_notes (engagement_id, note_text, author_name, author_id, created_at)
+               VALUES (?, ?, ?, ?, ?)`,
               [
-                noteId,
                 id,
                 note.text,
                 note.author,

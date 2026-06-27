@@ -1,7 +1,7 @@
 /**
  * Converts a date string to ISO date ("2025-01-15" or null).
  * Accepts YYYY-MM-DD (from <input type="date">) or display format ("Jan 15, 2025").
- * Used when writing to DuckDB.
+ * Used when writing to SQLite.
  */
 export function toISODate(dateStr: string | null | undefined): string | null {
   if (!dateStr || dateStr === '—') return null;
@@ -29,7 +29,7 @@ function localDateISO(d: Date): string {
 }
 
 /**
- * Converts an ISO date string ("2025-01-15") from DuckDB to display format ("Jan 15, 2025").
+ * Converts an ISO date string ("2025-01-15") from SQLite to display format ("Jan 15, 2025").
  * Returns "—" for null/undefined (used for in-progress engagements with no finish date).
  */
 export function toDisplayDate(isoDate: string | null | undefined): string {

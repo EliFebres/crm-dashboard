@@ -1,10 +1,11 @@
 /**
  * =============================================================================
- * DuckDB Backup Script
+ * SQLite Backup Script
  * =============================================================================
  *
- * Copies the DuckDB database files to a timestamped backup directory and
- * prunes old auto-backup folders older than the retention window (14 days).
+ * Snapshots the SQLite database files to a timestamped backup directory (via
+ * SQLite's online backup API — consistent and safe while the app is running)
+ * and prunes old auto-backup folders older than the retention window (14 days).
  * pre-restore-* snapshots and any other human-named folders are never pruned.
  *
  * The app also runs this automatically once per day on server startup; this
@@ -15,12 +16,8 @@
  *   npm run db:backup -- --force    # bypass the empty-DB guard
  *
  * Requires in .env:
- *   DUCKDB_DIR  — path to directory containing the .duckdb files
+ *   SQLITE_DIR  — path to directory containing the .sqlite files
  *   BACKUP_DIR  — path to directory where backups will be stored
- *
- * Safe to run while the app is running — DuckDB ensures the main .duckdb file
- * is always in a consistent state. If a .wal file exists, it is copied too so
- * the backup pair can self-recover on first open.
  * =============================================================================
  */
 
@@ -31,11 +28,11 @@ import path from 'path';
 import { runBackup } from '../app/lib/db/backupCore';
 
 async function main() {
-  const dbDir = process.env.DUCKDB_DIR;
+  const dbDir = process.env.SQLITE_DIR || process.env.DUCKDB_DIR;
   const backupDir = process.env.BACKUP_DIR;
 
   if (!dbDir) {
-    console.error('ERROR: DUCKDB_DIR is not set. Add it to .env');
+    console.error('ERROR: SQLITE_DIR is not set. Add it to .env');
     process.exit(1);
   }
   if (!backupDir) {

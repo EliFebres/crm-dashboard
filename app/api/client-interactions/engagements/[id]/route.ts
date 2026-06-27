@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryWrite, executeTransaction } from '@/app/lib/db';
+import { query, queryWrite, executeTransaction, hasDb } from '@/app/lib/db';
 import { rowToEngagement } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { toISODate } from '@/app/lib/db/dateUtils';
@@ -41,8 +41,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!process.env.DUCKDB_DIR) {
-    return NextResponse.json({ error: 'Database not configured. Set DUCKDB_PATH to enable write operations.' }, { status: 503 });
+  if (!hasDb()) {
+    return NextResponse.json({ error: 'Database not configured. Set SQLITE_DIR to enable write operations.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -213,8 +213,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!process.env.DUCKDB_DIR) {
-    return NextResponse.json({ error: 'Database not configured. Set DUCKDB_PATH to enable write operations.' }, { status: 503 });
+  if (!hasDb()) {
+    return NextResponse.json({ error: 'Database not configured. Set SQLITE_DIR to enable write operations.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -246,9 +246,9 @@ export async function DELETE(
     const internalClient = preDelete[0]?.internal_client_name ?? null;
 
     // Null out any children's link, then delete — in one transaction so we don't leave orphans.
-    await executeTransaction(async (conn) => {
-      await conn.run(`UPDATE engagements SET linked_from_id = NULL WHERE linked_from_id = ?`, [engagementId]);
-      await conn.run(
+    await executeTransaction((tx) => {
+      tx.run(`UPDATE engagements SET linked_from_id = NULL WHERE linked_from_id = ?`, [engagementId]);
+      tx.run(
         `DELETE FROM engagements WHERE id = ? ${teamClause}`,
         [engagementId, ...teamParams]
       );

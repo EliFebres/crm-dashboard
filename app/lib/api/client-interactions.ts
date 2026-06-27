@@ -4,7 +4,7 @@
  * =============================================================================
  *
  * API functions for the Client Interactions Dashboard.
- * All data is served from DuckDB via Next.js Route Handlers under /api/client-interactions/.
+ * All data is served from SQLite via Next.js Route Handlers under /api/client-interactions/.
  *
  * STRUCTURE:
  * 1. TypeScript Interfaces
