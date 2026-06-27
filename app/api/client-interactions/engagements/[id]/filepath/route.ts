@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, hasDb } from '@/app/lib/db';
-import { rowToEngagement } from '@/app/lib/db/queries';
+import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
@@ -66,7 +66,7 @@ export async function PATCH(
     }
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ?`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [engagementId]
     );
 

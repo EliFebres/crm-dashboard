@@ -13,7 +13,7 @@ import {
   getMockContributionData,
   getMockEngagementsList,
 } from '../api/mock-computations';
-import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP } from './queries';
+import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
@@ -42,13 +42,13 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
   const resolved = await resolveOfficeMembers(filters);
   const period = resolved.period || '1Y';
   const prevDates = getPreviousPeriodDates(period);
-  const { whereClause: currWhere, params: currParams } = buildFilterClause({ ...resolved, period }, '', serverConstraints);
+  const { whereClause: currWhere, params: currParams } = buildFilterClause({ ...resolved, period }, 'e', serverConstraints);
 
   // ---- Build all WHERE clauses before firing queries in parallel ----
 
   // Previous period
   const prevFilters = { ...resolved, period: undefined };
-  const { whereClause: baseWhere, params: baseParams } = buildFilterClause(prevFilters, '', serverConstraints);
+  const { whereClause: baseWhere, params: baseParams } = buildFilterClause(prevFilters, 'e', serverConstraints);
   const prevAndClause = baseWhere
     ? `${baseWhere} AND date_started >= ? AND date_started <= ?`
     : `WHERE date_started >= ? AND date_started <= ?`;
@@ -56,7 +56,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
 
   // In-progress count + sparkline (share the same base filter)
   const inProgressFilters = { ...resolved, status: undefined };
-  const { whereClause: ipWhere, params: ipParams } = buildFilterClause(inProgressFilters, '', serverConstraints);
+  const { whereClause: ipWhere, params: ipParams } = buildFilterClause(inProgressFilters, 'e', serverConstraints);
   const sparklineAndClause = ipWhere
     ? `${ipWhere} AND date_started >= date('now', '-56 days')`
     : `WHERE date_started >= date('now', '-56 days')`;
@@ -81,7 +81,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         COUNT(*) FILTER (WHERE nna > 0 AND nna < 50000000)                        AS nna_tier1,
         COUNT(*) FILTER (WHERE nna > 0 AND nna >= 50000000  AND nna < 200000000)  AS nna_tier2,
         COUNT(*) FILTER (WHERE nna > 0 AND nna >= 200000000)                      AS nna_tier3
-      FROM engagements ${currWhere}
+      FROM engagements e ${CLIENT_JOIN} ${currWhere}
     `, currParams),
     // Previous period: for change% calculations
     query<Record<string, unknown>>(`
@@ -89,7 +89,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR') AS prev_projects,
         COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')                       AS prev_adhoc,
         COALESCE(SUM(nna), 0)                                                    AS prev_nna
-      FROM engagements ${prevAndClause}
+      FROM engagements e ${CLIENT_JOIN} ${prevAndClause}
     `, prevParams),
     // In-progress: current count + last week's count (currently in-progress OR finished this week)
     query<Record<string, unknown>>(`
@@ -98,14 +98,14 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         COUNT(*) FILTER (WHERE status = 'In Progress'
           OR (date_finished >= date('now', '-' || ((strftime('%w','now') + 6) % 7) || ' days') AND status != 'In Progress')
         ) AS last_week
-      FROM engagements ${ipWhere || ''}
+      FROM engagements e ${CLIENT_JOIN} ${ipWhere || ''}
     `, ipParams),
     // Weekly in-progress sparkline (last 8 weeks, same filters)
     query<Record<string, unknown>>(`
       SELECT
         strftime('%Y-W%W', date_started) AS week_key,
         COUNT(*) FILTER (WHERE status = 'In Progress') AS in_progress_count
-      FROM engagements ${sparklineAndClause}
+      FROM engagements e ${CLIENT_JOIN} ${sparklineAndClause}
       GROUP BY week_key
       ORDER BY week_key
     `, ipParams),
@@ -212,11 +212,11 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
   if (!hasDb()) return getMockDepartmentBreakdown(filters);
 
   const resolved = await resolveOfficeMembers(filters);
-  const { whereClause, params } = buildFilterClause(resolved, '', serverConstraints);
+  const { whereClause, params } = buildFilterClause(resolved, 'e', serverConstraints);
 
   const rows = await query<Record<string, unknown>>(`
     SELECT internal_client_dept AS dept, COUNT(*) AS cnt
-    FROM engagements ${whereClause}
+    FROM engagements e ${CLIENT_JOIN} ${whereClause}
     GROUP BY internal_client_dept
   `, params);
 
@@ -258,7 +258,7 @@ export async function computeContributionData(filters: EngagementFilters, server
   const resolved = await resolveOfficeMembers(filters);
   // Apply all filters EXCEPT period — heatmap always shows a rolling 104-week window
   const heatmapFilters = { ...resolved, period: undefined };
-  const { whereClause, params } = buildFilterClause(heatmapFilters, '', serverConstraints);
+  const { whereClause, params } = buildFilterClause(heatmapFilters, 'e', serverConstraints);
 
   const heatmapStart = new Date();
   heatmapStart.setDate(heatmapStart.getDate() - 104 * 7);
@@ -273,7 +273,7 @@ export async function computeContributionData(filters: EngagementFilters, server
       CAST(date_finished AS VARCHAR) AS finish_date,
       COUNT(*) FILTER (WHERE intake_type != 'GCG Ad-Hoc') AS project_count,
       COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')  AS ad_hoc_count
-    FROM engagements ${dateFilter}
+    FROM engagements e ${CLIENT_JOIN} ${dateFilter}
     GROUP BY CAST(date_finished AS VARCHAR)
     ORDER BY finish_date
   `, [...params, heatmapStartISO]);
@@ -341,7 +341,7 @@ export async function computeEngagementsList(filters: EngagementFilters, serverC
   if (!hasDb()) return getMockEngagementsList(filters);
 
   const resolved = await resolveOfficeMembers(filters);
-  const { whereClause, params } = buildFilterClause(resolved, '', serverConstraints);
+  const { whereClause, params } = buildFilterClause(resolved, 'e', serverConstraints);
   const page = filters.page || 1;
   const pageSize = filters.pageSize || 50;
   const offset = (page - 1) * pageSize;
@@ -368,13 +368,13 @@ export async function computeEngagementsList(filters: EngagementFilters, serverC
 
   const [countRows, dataRows] = await Promise.all([
     query<Record<string, unknown>>(
-      `SELECT COUNT(*) AS total FROM engagements ${whereClause}`,
+      `SELECT COUNT(*) AS total FROM engagements e ${CLIENT_JOIN} ${whereClause}`,
       params
     ),
     query<Record<string, unknown>>(
-      `SELECT *,
-         (SELECT COUNT(*) FROM engagement_notes WHERE engagement_id = engagements.id) AS note_count
-       FROM engagements ${whereClause}
+      `SELECT e.*, c.name AS client_name,
+         (SELECT COUNT(*) FROM engagement_notes WHERE engagement_id = e.id) AS note_count
+       FROM engagements e ${CLIENT_JOIN} ${whereClause}
        ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]

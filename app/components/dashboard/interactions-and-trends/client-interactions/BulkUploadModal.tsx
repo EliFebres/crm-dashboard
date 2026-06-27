@@ -5,6 +5,7 @@ import { X, Upload, Download, AlertTriangle, CheckCircle, AlertCircle, Loader2, 
 
 interface PreviewRow {
   rowNumber: number;
+  crn: string | null;
   externalClient: string | null;
   internalClientName: string;
   internalClientDept: string;
@@ -323,7 +324,7 @@ const BulkUploadModal: React.FC<BulkUploadModalProps> = ({ isOpen, onClose, onIm
                 <table className="w-full text-xs whitespace-nowrap">
                   <thead className="sticky top-0">
                     <tr className="bg-zinc-800">
-                      {['#', 'External Client', 'Internal Client', 'Dept', 'Intake', 'Type', 'Date Started', 'Date Finished', 'Status', 'NNA'].map(h => (
+                      {['#', 'CRN', 'External Client', 'Internal Client', 'Dept', 'Intake', 'Type', 'Date Started', 'Date Finished', 'Status', 'NNA'].map(h => (
                         <th key={h} className="text-left font-medium text-muted uppercase tracking-wider px-3 py-2.5">{h}</th>
                       ))}
                     </tr>
@@ -332,6 +333,7 @@ const BulkUploadModal: React.FC<BulkUploadModalProps> = ({ isOpen, onClose, onIm
                     {uploadState.preview.map((row, i) => (
                       <tr key={i} className={`border-t border-zinc-800/50 ${i % 2 !== 0 ? 'bg-zinc-800/20' : ''}`}>
                         <td className="px-3 py-2 text-muted font-mono">{row.rowNumber}</td>
+                        <td className="px-3 py-2 text-cyan-400 font-mono">{row.crn ?? <span className="text-muted">—</span>}</td>
                         <td className="px-3 py-2 text-muted">{row.externalClient ?? <span className="text-muted">—</span>}</td>
                         <td className="px-3 py-2 text-muted">{row.internalClientName}</td>
                         <td className="px-3 py-2 text-muted">{row.internalClientDept}</td>

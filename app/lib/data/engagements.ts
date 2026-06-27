@@ -2,7 +2,7 @@
 // Used for mock data (when SQLITE_DIR is not set) and by scripts/seed-db.ts
 
 
-import type { Engagement, DayData, GCGAdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';
+import type { Engagement, Client, DayData, GCGAdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';
 
 // Sample tickers for portfolio generation
 const sampleTickers = [
@@ -143,6 +143,13 @@ const externalClients = [
   'CIBC Private', 'Raymond James Tax Credit', 'Sanctuary Wealth', 'Hightower Advisors',
   'Focus Financial', 'Creative Planning', 'Mariner Wealth', 'Captrust Financial',
 ];
+
+// Pick a mock external client (name + a deterministic synthetic CRN). Same name
+// always maps to the same CRN, mirroring the real registry where one client = one CRN.
+function mockClient(seed: number): { name: string; crn: string } {
+  const idx = Math.floor(seededRandom(seed) * externalClients.length);
+  return { name: externalClients[idx], crn: `MOCK-${String(idx + 1).padStart(6, '0')}` };
+}
 
 // Team members with office assignments (5 Charlotte, 7 Austin)
 export const teamMemberOffices: Record<string, 'Charlotte' | 'Austin'> = {
@@ -288,11 +295,6 @@ function generateEngagements(): Engagement[] {
       // Randomly select project type for GCG Ad-Hoc
       const adHocType = adHocProjectTypes[Math.floor(seededRandom(seed + 7) * adHocProjectTypes.length)];
 
-      // PCR/Other usually doesn't have an external client (only 15% do), Data Request usually does (70%)
-      const hasExternalClient = (adHocType === 'PCR' || adHocType === 'Other')
-        ? seededRandom(seed + 1) > 0.85
-        : seededRandom(seed + 1) > 0.3;
-
       // Randomly assign a channel for the ad-hoc interaction
       const adHocChannel = adHocChannels[Math.floor(seededRandom(seed + 11) * adHocChannels.length)];
 
@@ -304,9 +306,11 @@ function generateEngagements(): Engagement[] {
       const hasTickersMentioned = seededRandom(seed + 15) < 0.45;
       const tickersMentioned = hasTickersMentioned ? generateTickersMentioned(seed + 16) : undefined;
 
+      const adHocClient = mockClient(seed + 4);
       engagements.push({
         id: id++,
-        externalClient: hasExternalClient ? externalClients[Math.floor(seededRandom(seed + 4) * externalClients.length)] : null,
+        clientCrn: adHocClient.crn,
+        externalClient: adHocClient.name,
         internalClient,
         intakeType: 'GCG Ad-Hoc',
         adHocChannel,
@@ -354,9 +358,11 @@ function generateEngagements(): Engagement[] {
       const hasPortfolio = isAfterCutoff || projectType === 'PCR' ? false : seededRandom(seed + 7) > 0.15;
       const portfolio = hasPortfolio ? generatePortfolio(seed + 20) : undefined;
 
+      const projectClient = mockClient(seed + 6);
       engagements.push({
         id: id++,
-        externalClient: externalClients[Math.floor(seededRandom(seed + 6) * externalClients.length)],
+        clientCrn: projectClient.crn,
+        externalClient: projectClient.name,
         internalClient,
         intakeType,
         type: projectType,
@@ -394,9 +400,11 @@ function generateEngagements(): Engagement[] {
     const startDate = new Date(recentDate);
     startDate.setDate(startDate.getDate() - startOffset);
 
+    const recentClient = mockClient(seed + 6);
     engagements.push({
       id: id++,
-      externalClient: externalClients[Math.floor(seededRandom(seed + 6) * externalClients.length)],
+      clientCrn: recentClient.crn,
+      externalClient: recentClient.name,
       internalClient,
       intakeType,
       type: projectTypes[Math.floor(seededRandom(seed + 3) * projectTypes.length)],
@@ -415,6 +423,18 @@ function generateEngagements(): Engagement[] {
 }
 
 export const engagements: Engagement[] = generateEngagements();
+
+// Derived client registry for the dev-without-db (mock) fallback: one entry per
+// distinct CRN that appears on the mock engagements.
+export const clients: Client[] = (() => {
+  const byCrn = new Map<string, Client>();
+  for (const e of engagements) {
+    if (e.clientCrn && !byCrn.has(e.clientCrn)) {
+      byCrn.set(e.clientCrn, { crn: e.clientCrn, name: e.externalClient });
+    }
+  }
+  return Array.from(byCrn.values()).sort((a, b) => a.name.localeCompare(b.name));
+})();
 
 // Parse date string like "Jan 20, 2025" to Date object
 function parseDateString(dateStr: string): Date | null {

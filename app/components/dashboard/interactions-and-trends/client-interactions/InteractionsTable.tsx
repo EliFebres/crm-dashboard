@@ -260,9 +260,12 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
       onClick={isGhost || !canEdit ? undefined : () => onRowClick(engagement)}
     >
       <td className="px-4 py-3">
-        <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
-          {engagement.externalClient ?? '—'}
-        </span>
+        <div>
+          <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
+            {engagement.externalClient || '—'}
+          </span>
+          {engagement.clientCrn && <p className="text-xs text-muted">{engagement.clientCrn}</p>}
+        </div>
       </td>
       <td className="px-4 py-3">
         <div>

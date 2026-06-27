@@ -86,6 +86,15 @@ BACKUP_DIR=/path/to/backups
 
 When `SQLITE_DIR` is set, the app reads from and writes to real SQLite databases. If it is unset, the app falls back to in-memory mock data (read-only).
 
+### App settings (`app.config.ts`)
+
+Non-secret, app-level settings live in **`app.config.ts`** at the repo root (committed — not in `.env`). Edit that file and restart the server to apply changes.
+
+Every external client is identified by a unique **CRN**. Under `appConfig.crn`:
+
+- `autoGenerate: false` (default) — users enter an existing CRN from your source system when registering a client.
+- `autoGenerate: true` — the app assigns CRNs automatically, formatted as `prefix` + a zero-padded counter (`pad` width), e.g. `CRN-000001`.
+
 ## Getting Started
 
 ```bash

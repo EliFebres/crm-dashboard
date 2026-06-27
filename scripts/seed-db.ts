@@ -20,7 +20,7 @@ import { config } from 'dotenv';
 config({ path: '.env' });
 
 import { query, executeTransaction } from '../app/lib/db';
-import { engagements } from '../app/lib/data/engagements';
+import { engagements, clients } from '../app/lib/data/engagements';
 
 async function main() {
   const dbDir = process.env.SQLITE_DIR || process.env.DUCKDB_DIR;
@@ -49,24 +49,32 @@ async function main() {
     return;
   }
 
-  console.log(`Seeding ${engagements.length} mock engagements...`);
+  console.log(`Seeding ${clients.length} clients and ${engagements.length} mock engagements...`);
 
   let inserted = 0;
   await executeTransaction((tx) => {
+    // Clients must exist before engagements (client_crn foreign key).
+    for (const c of clients) {
+      tx.run(
+        `INSERT INTO clients (crn, name, created_by_name) VALUES (?, ?, ?)`,
+        [c.crn, c.name, 'Seed']
+      );
+    }
+
     for (const e of engagements) {
       const dateStarted = parseDisplayDate(e.dateStarted);
       const dateFinished = e.dateFinished === '—' ? null : parseDisplayDate(e.dateFinished);
 
       tx.run(
         `INSERT INTO engagements (
-          id, external_client, internal_client_name, internal_client_dept,
+          id, client_crn, internal_client_name, internal_client_dept,
           intake_type, ad_hoc_channel, type, team_members, department,
           date_started, date_finished, status, portfolio_logged, portfolio,
           nna, notes, tickers_mentioned, team
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           e.id,
-          e.externalClient ?? null,
+          e.clientCrn,
           e.internalClient.name,
           e.internalClient.gcgDepartment,
           e.intakeType,

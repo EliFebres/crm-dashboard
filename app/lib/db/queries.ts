@@ -36,12 +36,18 @@ export async function resolveOfficeMembers(
   return { ...filters, _officeMembers: rows.map(r => r.display_name) };
 }
 
+// Shared JOIN that resolves an engagement's external client from the registry.
+// Callers that reference client name/crn (search, sort, list, export) alias the
+// engagements table as `e` and append this so `c.name` / `c.crn` are available.
+export const CLIENT_JOIN = 'LEFT JOIN clients c ON c.crn = e.client_crn';
+
 // Allowlist for ORDER BY columns to prevent SQL injection.
 // `teamMembers` sorts by the first member's name since the column is a JSON array.
 export const SORT_COLUMN_MAP: Record<string, string> = {
   dateStarted: 'date_started',
   dateFinished: 'date_finished',
-  externalClient: 'external_client',
+  externalClient: 'c.name',
+  clientCrn: 'e.client_crn',
   internalClient: 'internal_client_name',
   status: 'status',
   department: 'department',
@@ -139,17 +145,20 @@ export function buildFilterClause(
     }
   }
 
-  // Full-text search across key string columns
+  // Full-text search across key string columns. The external client is resolved
+  // from the registry, so callers must include CLIENT_JOIN (alias `c`) and alias
+  // engagements as `e` — searchable by canonical name AND CRN.
   if (filters.search && filters.search.trim()) {
     const s = `%${filters.search.toLowerCase()}%`;
     conditions.push(`(
-      lower(${col('external_client')}) LIKE ?
+      lower(c.name) LIKE ?
+      OR lower(${col('client_crn')}) LIKE ?
       OR lower(${col('internal_client_name')}) LIKE ?
       OR lower(${col('intake_type')}) LIKE ?
       OR lower(${col('type')}) LIKE ?
       OR lower(${col('department')}) LIKE ?
     )`);
-    params.push(s, s, s, s, s);
+    params.push(s, s, s, s, s, s);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -163,7 +172,10 @@ export function buildFilterClause(
 export function rowToEngagement(row: Record<string, unknown>): Engagement {
   return {
     id: Number(row.id),
-    externalClient: (row.external_client as string | null) ?? null,
+    clientCrn: (row.client_crn as string | null) ?? '',
+    // Canonical name resolved via CLIENT_JOIN (aliased client_name); never the
+    // retired free-text external_client column.
+    externalClient: (row.client_name as string | null) ?? '',
     internalClient: {
       name: row.internal_client_name as string,
       gcgDepartment: row.internal_client_dept as 'IAG' | 'Broker-Dealer' | 'Institutional',

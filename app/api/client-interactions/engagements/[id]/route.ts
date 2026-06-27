@@ -2,8 +2,9 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, executeTransaction, hasDb } from '@/app/lib/db';
-import { rowToEngagement } from '@/app/lib/db/queries';
+import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
+import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
@@ -19,10 +20,10 @@ export async function GET(
 
   try {
     const { id } = await params;
-    const teamClause = sc.team ? 'AND team = ?' : '';
+    const teamClause = sc.team ? 'AND e.team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ? ${teamClause}`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
       [Number(id), ...teamParams]
     );
     if (rows.length === 0) {
@@ -70,9 +71,17 @@ export async function PATCH(
     const setClauses: string[] = [];
     const values: unknown[] = [];
 
-    if (body.externalClient !== undefined) {
-      setClauses.push('external_client = ?');
-      values.push(body.externalClient ?? null);
+    if (body.clientCrn !== undefined) {
+      const crn = body.clientCrn ? normalizeCrn(String(body.clientCrn)) : '';
+      if (!crn) {
+        return NextResponse.json({ error: 'Client CRN is required' }, { status: 400 });
+      }
+      const exists = await query<{ crn: string }>(`SELECT crn FROM clients WHERE crn = ?`, [crn]);
+      if (exists.length === 0) {
+        return NextResponse.json({ error: 'Unknown client CRN' }, { status: 400 });
+      }
+      setClauses.push('client_crn = ?');
+      values.push(crn);
     }
     if (body.internalClient !== undefined) {
       setClauses.push('internal_client_name = ?', 'internal_client_dept = ?');
@@ -189,7 +198,7 @@ export async function PATCH(
     }
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ?`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [engagementId]
     );
     emitEngagementChange('updated');

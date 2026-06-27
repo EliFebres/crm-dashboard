@@ -391,7 +391,7 @@ Create a new engagement.
 
 ```json
 {
-  "external_client": "Vanguard Advisors",
+  "client_crn": "CRN-000123",
   "internal_client": {
     "name": "Jennifer Martinez",
     "gcg_department": "IAG"
@@ -413,7 +413,7 @@ Create a new engagement.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `external_client` | string \| null | No | External client company name |
+| `client_crn` | string | **Yes** | CRN of a registered external client (see the Clients registry endpoints). The canonical client name is resolved from the registry; `external_client` is returned (read-only) on responses. |
 | `internal_client` | object | **Yes** | `{ name: string, gcg_department: string }` |
 | `intake_type` | string | **Yes** | `IRQ`, `SERF`, or `GCG Ad-Hoc` |
 | `ad_hoc_channel` | string \| null | Conditional | Required if `intake_type` is `GCG Ad-Hoc`: `In-Person`, `Email`, `Teams` |

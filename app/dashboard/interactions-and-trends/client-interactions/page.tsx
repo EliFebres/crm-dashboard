@@ -334,7 +334,8 @@ export default function EngagementsDashboard() {
   const handleNewInteraction = async (data: InteractionFormData) => {
     try {
       const newEngagement = await createEngagement({
-        externalClient: data.externalClient ?? null,
+        clientCrn: data.clientCrn,
+        externalClient: data.externalClient,
         internalClient: { name: data.internalClient, gcgDepartment: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional' },
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'GCG Ad-Hoc',
         adHocChannel: data.adHocChannel,
@@ -409,6 +410,7 @@ export default function EngagementsDashboard() {
     setEditingEngagement({
       id: engagement.id,
       data: {
+        clientCrn: engagement.clientCrn,
         externalClient: engagement.externalClient,
         internalClient: engagement.internalClient.name,
         internalClientDept: engagement.internalClient.gcgDepartment,
@@ -448,7 +450,7 @@ export default function EngagementsDashboard() {
     setEditingEngagement(null);
     try {
       await updateEngagement(engagementId, {
-        externalClient: data.externalClient ?? null,
+        clientCrn: data.clientCrn,
         internalClient: { name: data.internalClient, gcgDepartment: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional' },
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'GCG Ad-Hoc',
         adHocChannel: data.adHocChannel,

@@ -61,6 +61,15 @@ export interface InternalClient {
   gcgDepartment: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group';
 }
 
+// A registered external client. The CRN is the canonical, unique identifier; the
+// name is the single canonical display name (lives only in the clients registry).
+export interface Client {
+  crn: string;
+  name: string;
+  createdByName?: string;
+  createdAt?: string;
+}
+
 export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds';
 export type ConstituentType = 'Portfolio' | 'Morningstar-Fund' | 'Security' | 'Index';
 
@@ -82,7 +91,8 @@ export interface NoteEntry {
 
 export interface Engagement {
   id: number;
-  externalClient: string | null; // Optional - GCG Ad-Hoc may not have an external client
+  clientCrn: string; // CRN of the registered external client (required)
+  externalClient: string; // Canonical external-client name, resolved from the registry via JOIN
   internalClient: InternalClient; // Contact/relationship owner/salesperson
   intakeType: 'IRQ' | 'SERF' | 'GCG Ad-Hoc';
   adHocChannel?: GCGAdHocChannel; // Only applicable when intakeType is 'GCG Ad-Hoc'
@@ -113,7 +123,8 @@ export interface EngagementLinkSummary {
   intakeType: string;
   internalClientName: string;
   internalClientDept: string;
-  externalClient: string | null;
+  clientCrn: string;
+  externalClient: string; // Canonical external-client name, resolved from the registry
 }
 
 export interface ContributionData {

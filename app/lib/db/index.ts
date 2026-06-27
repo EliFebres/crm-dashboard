@@ -46,6 +46,34 @@ function bootstrap(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_date_fin_started ON engagements (date_finished, date_started);
   `);
 
+  // Canonical client registry. The external client is identified by a unique CRN
+  // (Client Reference Number); the canonical name lives ONLY here and is resolved
+  // by JOIN on read, so names can never drift across interactions. CRNs are stored
+  // trimmed + uppercased, so the case-sensitive PK behaves case-insensitively.
+  // Global (not team-scoped): an external company is one identity and its CRN must
+  // be unique system-wide. Engagement-level `team` isolation still scopes lists/KPIs.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS clients (
+      crn             TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_by_id   TEXT,
+      created_by_name TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_name_nocase ON clients (name COLLATE NOCASE);
+  `);
+
+  // Monotonic counter backing CRN auto-generation (appConfig.crn.autoGenerate). The
+  // single-row CHECK keeps it a singleton; INSERT OR IGNORE seeds it once.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS crn_sequence (
+      id         INTEGER PRIMARY KEY CHECK (id = 1),
+      next_value INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO crn_sequence (id, next_value) VALUES (1, 1);
+  `);
+
   // Optimistic locking: version counter incremented on every update so concurrent
   // edits detect conflicts instead of silently overwriting each other.
   if (!columnExists(db, 'engagements', 'version')) {
@@ -103,6 +131,15 @@ function bootstrap(db: DB): void {
   if (!columnExists(db, 'engagements', 'filepath')) {
     db.exec(`ALTER TABLE engagements ADD COLUMN filepath TEXT`);
   }
+
+  // Client registry link: every engagement references its external client by CRN.
+  // foreign_keys = ON (see connection.ts) rejects inserts without a valid CRN.
+  // The legacy free-text `external_client` column is retired — kept physically to
+  // avoid a risky DROP COLUMN, but no longer read or written.
+  if (!columnExists(db, 'engagements', 'client_crn')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN client_crn TEXT REFERENCES clients(crn)`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_client_crn ON engagements (client_crn)`);
 }
 
 function getDb(): DB {

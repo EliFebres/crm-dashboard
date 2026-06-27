@@ -125,6 +125,7 @@ export function applyMockFilters(engagements: Engagement[], filters: EngagementF
     const s = filters.search.toLowerCase();
     filtered = filtered.filter(e =>
       (e.externalClient?.toLowerCase().includes(s) ?? false) ||
+      (e.clientCrn?.toLowerCase().includes(s) ?? false) ||
       e.internalClient.name.toLowerCase().includes(s) ||
       e.intakeType.toLowerCase().includes(s) ||
       e.type.toLowerCase().includes(s) ||

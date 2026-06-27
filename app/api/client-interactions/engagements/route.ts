@@ -2,9 +2,10 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, hasDb } from '@/app/lib/db';
-import { rowToEngagement } from '@/app/lib/db/queries';
+import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
 import { computeEngagementsList } from '@/app/lib/db/aggregations';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
 import type { EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import { emitEngagementChange } from '@/app/lib/events';
@@ -67,6 +68,19 @@ export async function POST(req: NextRequest) {
 
     const department = body.internalClient?.gcgDepartment ?? body.department ?? '';
 
+    // Client (external) is required and must reference a registered CRN.
+    const clientCrn = body.clientCrn ? normalizeCrn(String(body.clientCrn)) : '';
+    if (!clientCrn) {
+      return NextResponse.json({ error: 'Client CRN is required' }, { status: 400 });
+    }
+    const clientRows = await query<{ crn: string }>(
+      `SELECT crn FROM clients WHERE crn = ?`,
+      [clientCrn]
+    );
+    if (clientRows.length === 0) {
+      return NextResponse.json({ error: 'Unknown client CRN' }, { status: 400 });
+    }
+
     // Validate linkedFromId (if provided): must be a number and point to an engagement in the same team
     let linkedFromId: number | null = null;
     if (body.linkedFromId != null) {
@@ -86,7 +100,7 @@ export async function POST(req: NextRequest) {
 
     const insertRows = await queryWrite<{ id: number }>(
       `INSERT INTO engagements (
-        external_client, internal_client_name, internal_client_dept,
+        client_crn, internal_client_name, internal_client_dept,
         intake_type, ad_hoc_channel, type, team_members, department,
         date_started, date_finished, status, portfolio_logged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
@@ -94,7 +108,7 @@ export async function POST(req: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`,
       [
-        body.externalClient ?? null,
+        clientCrn,
         body.internalClient?.name ?? null,
         body.internalClient?.gcgDepartment ?? null,
         body.intakeType,
@@ -119,7 +133,7 @@ export async function POST(req: NextRequest) {
     const id = Number(insertRows[0].id);
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ?`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [id]
     );
 

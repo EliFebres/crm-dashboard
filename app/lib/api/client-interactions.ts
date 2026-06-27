@@ -14,6 +14,7 @@
 import type {
   Engagement,
   EngagementLinkSummary,
+  Client,
   NoteEntry,
   DayData,
   DepartmentData,
@@ -435,6 +436,92 @@ export async function getGcgClients(): Promise<GcgClient[]> {
   if (!response.ok) throw new Error('Failed to fetch GCG clients');
   const data = await response.json();
   return data.clients as GcgClient[];
+}
+
+// =============================================================================
+// CLIENT REGISTRY (external clients, keyed by CRN)
+// =============================================================================
+
+/** How CRNs are sourced — drives whether the form shows a CRN input. */
+export interface CrnConfigResponse {
+  autoGenerate: boolean;
+  prefix: string;
+}
+
+/** Thrown when registering/renaming a client hits a duplicate CRN or name. */
+export class ClientConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClientConflictError';
+  }
+}
+
+/**
+ * Searches the client registry by canonical name OR CRN.
+ * Endpoint: GET /api/client-interactions/clients
+ */
+export async function getClients(q?: string, limit = 50): Promise<Client[]> {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  params.set('limit', String(limit));
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch clients');
+  const data = await response.json();
+  return data.clients as Client[];
+}
+
+/**
+ * Registers a new client. In manual mode `crn` is required; in auto mode it is ignored.
+ * Endpoint: POST /api/client-interactions/clients
+ */
+export async function registerClient(name: string, crn?: string): Promise<Client> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, crn }),
+  });
+  if (response.status === 409) {
+    const data = await response.json().catch(() => ({}));
+    throw new ClientConflictError(data.error ?? 'A client with that CRN or name already exists.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to register client');
+  }
+  return response.json();
+}
+
+/**
+ * Updates a client's canonical name and/or its CRN (admin only). Changing the CRN
+ * cascades to every engagement referencing it. Pass the client's CURRENT crn in the
+ * path; supply a new `crn` in updates to change it.
+ * Endpoint: PATCH /api/client-interactions/clients/:crn
+ */
+export async function updateClient(crn: string, updates: { name?: string; crn?: string }): Promise<Client> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/${encodeURIComponent(crn)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (response.status === 409) {
+    const data = await response.json().catch(() => ({}));
+    throw new ClientConflictError(data.error ?? 'Another client already uses that name or CRN.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update client');
+  }
+  return response.json();
+}
+
+/**
+ * Returns the CRN sourcing mode so the UI knows whether to collect a CRN.
+ * Endpoint: GET /api/client-interactions/clients/config
+ */
+export async function getCrnConfig(): Promise<CrnConfigResponse> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/config`);
+  if (!response.ok) throw new Error('Failed to fetch CRN config');
+  return response.json();
 }
 
 /**

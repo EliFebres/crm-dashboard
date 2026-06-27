@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { query } from '@/app/lib/db';
-import { buildFilterClause, resolveOfficeMembers } from '@/app/lib/db/queries';
+import { buildFilterClause, resolveOfficeMembers, CLIENT_JOIN } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
 import type { EngagementFilters } from '@/app/lib/api/client-interactions';
 import { logActivity } from '@/app/lib/activity/log';
@@ -34,11 +34,11 @@ export async function GET(req: NextRequest) {
     const { whereClause, params } = buildFilterClause(resolved, 'e', sc);
     const EXPORT_ROW_LIMIT = 10_000;
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*,
+      `SELECT e.*, c.crn AS client_crn, c.name AS client_name,
          (SELECT string_agg(n.note_text, ' | ' ORDER BY n.created_at ASC)
           FROM engagement_notes n
           WHERE n.engagement_id = e.id) AS notes_agg
-       FROM engagements e ${whereClause} ORDER BY e.date_started DESC LIMIT ${EXPORT_ROW_LIMIT}`,
+       FROM engagements e ${CLIENT_JOIN} ${whereClause} ORDER BY e.date_started DESC LIMIT ${EXPORT_ROW_LIMIT}`,
       params
     );
 
@@ -90,10 +90,11 @@ async function buildXlsx(rows: Record<string, unknown>[], notesMap: Map<number, 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Engagements');
 
-  // 16 columns — same order and keys as the bulk upload template
+  // 17 columns — same order and keys as the bulk upload template
   // No `header` property here: header row is added manually below to prevent
   // ExcelJS from bleeding row-level styling beyond the last column.
   sheet.columns = [
+    { key: 'crn',                width: 16 },
     { key: 'externalClient',     width: 24 },
     { key: 'internalClientName', width: 24 },
     { key: 'internalClientDept', width: 22 },
@@ -115,7 +116,7 @@ async function buildXlsx(rows: Record<string, unknown>[], notesMap: Map<number, 
   // Add header row manually and style only the populated cells.
   // eachCell({ includeEmpty: false }) ensures nothing beyond the last column is touched.
   const headerRow = sheet.addRow([
-    'External Client', 'Internal Client Name', 'Internal Client Dept',
+    'CRN', 'External Client', 'Internal Client Name', 'Internal Client Dept',
     'Intake Type', 'Ad-Hoc Channel', 'Project Type', 'Team Members',
     'Date Started', 'Date Finished', 'Status', 'NNA ($M)', 'Notes', 'Tickers Mentioned',
     'Portfolio Logged', 'Portfolio', 'Notes (JSON)',
@@ -139,7 +140,8 @@ async function buildXlsx(rows: Record<string, unknown>[], notesMap: Map<number, 
     const structuredNotes = notesMap.get(engagementId);
 
     sheet.addRow({
-      externalClient:     (row.external_client as string) || '',
+      crn:                (row.client_crn as string) || '',
+      externalClient:     (row.client_name as string) || '',
       internalClientName: row.internal_client_name as string,
       internalClientDept: row.internal_client_dept as string,
       intakeType:         row.intake_type as string,
@@ -162,6 +164,7 @@ async function buildXlsx(rows: Record<string, unknown>[], notesMap: Map<number, 
   const fmt = workbook.addWorksheet('Engagements (Formatted)');
 
   fmt.columns = [
+    { key: 'crn',                width: 16 },
     { key: 'externalClient',     width: 24 },
     { key: 'internalClientName', width: 24 },
     { key: 'internalClientDept', width: 22 },
@@ -180,7 +183,7 @@ async function buildXlsx(rows: Record<string, unknown>[], notesMap: Map<number, 
   ];
 
   const fmtHeader = fmt.addRow([
-    'External Client', 'Internal Client Name', 'Department',
+    'CRN', 'External Client', 'Internal Client Name', 'Department',
     'Intake Type', 'Ad-Hoc Channel', 'Project Type', 'Team Members',
     'Date Started', 'Date Finished', 'Status', 'NNA ($M)',
     'Portfolio Logged', 'Portfolio Holdings', 'Notes', 'Tickers Mentioned',
@@ -212,7 +215,8 @@ async function buildXlsx(rows: Record<string, unknown>[], notesMap: Map<number, 
     const notesText = (row.notes_agg as string) || (row.notes as string) || '';
 
     fmt.addRow({
-      externalClient:     (row.external_client as string) || '',
+      crn:                (row.client_crn as string) || '',
+      externalClient:     (row.client_name as string) || '',
       internalClientName: row.internal_client_name as string,
       internalClientDept: row.internal_client_dept as string,
       intakeType:         row.intake_type as string,

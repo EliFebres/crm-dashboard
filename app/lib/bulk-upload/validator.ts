@@ -1,5 +1,6 @@
 import type { ParsedRow } from './parser';
 import { VALID_STATUSES as STATUS_ENUM } from '../statusHelpers';
+import { normalizeCrn, isValidCrn } from '../config/crn';
 
 export interface ValidationError {
   rowNumber: number;
@@ -148,6 +149,21 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
   for (const row of rows) {
     const rowErrors: ValidationError[] = [];
     const rowWarnings: ValidationWarning[] = [];
+
+    // Client identity: a row must carry a CRN or an External Client name (the
+    // server resolves the name to an existing CRN, or registers a new client).
+    // Uniqueness/existence is enforced server-side in the bulk route.
+    const crnRaw = row.crn ? row.crn.trim() : '';
+    if (crnRaw) {
+      const norm = normalizeCrn(crnRaw);
+      if (!isValidCrn(norm)) {
+        rowErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: `"${crnRaw}" is not a valid CRN.` });
+      } else {
+        row.crn = norm;
+      }
+    } else if (!row.externalClient) {
+      rowErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: 'Provide a CRN or an External Client name.' });
+    }
 
     // Required: internalClientName
     if (!row.internalClientName) {
