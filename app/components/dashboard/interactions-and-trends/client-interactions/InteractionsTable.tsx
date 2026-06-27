@@ -202,6 +202,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
   const getTypeStyle = (type: string): string => {
     switch (type) {
       case 'Data Request': return BADGE_COLORS.cyan;
+      case 'Data Update': return BADGE_COLORS.orange;
       case 'Meeting': return BADGE_COLORS.violet;
       case 'Discovery Meeting': return BADGE_COLORS.blue;
       case 'PCR': return BADGE_COLORS.rose;

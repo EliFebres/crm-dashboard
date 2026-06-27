@@ -22,7 +22,7 @@ export interface ValidationResult {
 
 const VALID_INTAKE_TYPES = ['IRQ', 'SERF', 'GCG Ad-Hoc'];
 const VALID_AD_HOC_CHANNELS = ['In-Person', 'Email', 'Teams'];
-const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
+const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
 const VALID_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
 const VALID_STATUSES: string[] = [...STATUS_ENUM];
 const VALID_INTERNAL_CLIENT_DEPTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
@@ -127,6 +127,7 @@ function normalizeProjectType(value: string): string | null {
     'discovery': 'Discovery Meeting',
     'datarequest': 'Data Request',
     'data': 'Data Request',
+    'dataupdate': 'Data Update',
     'pcr': 'PCR',
     'other': 'Other',
     'followupmaterial': 'Follow-up Material',

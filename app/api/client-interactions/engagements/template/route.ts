@@ -83,7 +83,7 @@ export async function GET() {
   addValidation('D', '"IAG,Broker-Dealer,Institutional"');
   addValidation('E', '"IRQ,SERF,GCG Ad-Hoc"');
   addValidation('F', '"In-Person,Email,Teams"');
-  addValidation('G', '"Meeting,Discovery Meeting,Data Request,PCR,Other"');
+  addValidation('G', '"Meeting,Discovery Meeting,Data Request,Data Update,PCR,Other"');
   addValidation('K', '"In Progress,Awaiting Meeting,Follow Up,Completed"');
   addValidation('O', '"Yes,No"');
 
@@ -181,7 +181,7 @@ export async function GET() {
     ['Internal Client Dept', 'Required. IAG | Broker-Dealer | Institutional'],
     ['Intake Type', 'Required. IRQ | SERF | GCG Ad-Hoc'],
     ['Ad-Hoc Channel', 'Required only for GCG Ad-Hoc rows. In-Person | Email | Teams'],
-    ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | PCR | Other'],
+    ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | Data Update | PCR | Other'],
     ['Team Members', 'Optional. Comma-separated names, e.g. "Eli F., Sarah K."'],
     ['Date Started', 'Required. Format: YYYY-MM-DD or M/D/YYYY'],
     ['Date Finished', 'Leave blank for In Progress / Awaiting rows.'],

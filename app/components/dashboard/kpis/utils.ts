@@ -25,6 +25,7 @@ export const PROJECT_TYPE_COLOR: Record<string, string> = {
   'Follow-up Meeting': KPI_COLORS.emerald,
   'Follow-up Material': KPI_COLORS.amber,
   'Data Request': KPI_COLORS.cyanLight,
+  'Data Update': KPI_COLORS.orange,
   'PCR': KPI_COLORS.rose,
   'Other': KPI_COLORS.zinc,
 };

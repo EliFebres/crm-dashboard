@@ -28,7 +28,7 @@ export const STATIC_FILTER_OPTIONS: FilterOptions = {
   ],
   departments: ['Broker-Dealer', 'IAG', 'Institutional', 'Retirement Group'],
   intakeTypes: ['IRQ', 'SERF', 'GCG Ad-Hoc'],
-  projectTypes: ['Data Request', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
+  projectTypes: ['Data Request', 'Data Update', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
   statuses: [...VALID_STATUSES],
 };
 

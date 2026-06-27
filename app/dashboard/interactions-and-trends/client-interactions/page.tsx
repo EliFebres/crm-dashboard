@@ -123,6 +123,7 @@ export default function EngagementsDashboard() {
     'Meeting',
     'Discovery Meeting',
     'Data Request',
+    'Data Update',
     'Other',
     'Follow-up Material',
     'Follow-up Meeting',

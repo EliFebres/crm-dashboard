@@ -63,9 +63,9 @@ const GCG_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Gr
 
 // Project types by intake
 const projectTypesByIntake = {
-  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'GCG Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Other'],
+  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
+  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
+  'GCG Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
 };
 
 // Format NNA for display
