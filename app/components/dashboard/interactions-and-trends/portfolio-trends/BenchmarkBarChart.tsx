@@ -86,6 +86,7 @@ export default function BenchmarkBarChart({ data, displayedPortfolios, palette, 
     const currentNames = new Set(displayedPortfolios.map(p => p.name));
     const stale = [...shrunkBars].filter(n => !currentNames.has(n));
     if (stale.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShrunkBars(prev => {
       const next = new Set(prev);
       stale.forEach(n => next.delete(n));

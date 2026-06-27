@@ -47,7 +47,7 @@ async function main() {
   const resolvedBackupDir = path.resolve(backupDir);
   const force = process.argv.includes('--force');
 
-  console.log(`\nPCG Dashboard — Database Backup`);
+  console.log(`\nCRM Dashboard — Database Backup`);
   console.log(`  Source : ${resolvedDbDir}`);
   console.log(`  Dest   : ${resolvedBackupDir}`);
   if (force) console.log('  Force  : on (empty-DB guard bypassed)');

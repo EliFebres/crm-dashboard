@@ -180,7 +180,6 @@ export default function EngagementsDashboard() {
   // Switch the default once the user identity resolves.
   useEffect(() => {
     if (isGuest && teamMemberFilter === 'All Team Members') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTeamMemberFilter('All Teams');
     }
   }, [isGuest, teamMemberFilter]);

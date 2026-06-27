@@ -45,7 +45,7 @@ export async function getUsersConnection(): Promise<DuckDBConnection> {
           first_name     VARCHAR     NOT NULL,
           last_name      VARCHAR     NOT NULL,
           title          VARCHAR     NOT NULL,
-          department     VARCHAR     NOT NULL DEFAULT 'ISG',
+          department     VARCHAR     NOT NULL DEFAULT 'Default',
           team           VARCHAR     NOT NULL,
           office         VARCHAR     NOT NULL,
           role           VARCHAR     NOT NULL DEFAULT 'user',
@@ -58,6 +58,9 @@ export async function getUsersConnection(): Promise<DuckDBConnection> {
       `);
       await conn.run(`CREATE INDEX IF NOT EXISTS idx_users_email  ON users (email)`);
       await conn.run(`CREATE INDEX IF NOT EXISTS idx_users_status ON users (status)`);
+
+      // One-time migration: generalize legacy department value 'ISG' → 'Default'
+      await conn.run(`UPDATE users SET department = 'Default' WHERE department = 'ISG'`);
 
       await conn.run(`
         CREATE TABLE IF NOT EXISTS team_members (

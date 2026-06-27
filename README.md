@@ -1,6 +1,6 @@
-# PCG Insights Dashboard
+# CRM Dashboard
 
-A Next.js dashboard application for the firm's Portfolio Construction Group. The **Client Interactions** dashboard is fully live, backed by DuckDB with real-time cross-user updates. The Portfolio Trends, Ticker Trends, and Competitive Landscape sections are scaffolded and disabled in the sidebar pending a future re-enable.
+A Next.js CRM and insights dashboard application. The **Client Interactions** dashboard is fully live, backed by DuckDB with real-time cross-user updates. The Portfolio Trends, Ticker Trends, and Competitive Landscape sections are scaffolded and disabled in the sidebar pending a future re-enable.
 
 ## Features
 
@@ -134,7 +134,7 @@ npm run db:restore -- --yes                          # skip confirmation prompt
 2. Trigger: **Weekly**, Sunday at **2:00 AM**
 3. Action: Start a program
    - Program: `cmd.exe`
-   - Arguments: `/c "cd /d D:\path\to\pcg-dashboard && npm run db:backup >> D:\path\to\backups\backup.log 2>&1"`
+   - Arguments: `/c "cd /d D:\path\to\crm-dashboard && npm run db:backup >> D:\path\to\backups\backup.log 2>&1"`
 
 The 8 most recent backups are kept automatically (~2 months of history).
 

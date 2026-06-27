@@ -7,7 +7,7 @@ export interface User {
   firstName: string;
   lastName: string;
   title: string;
-  department: 'ISG';
+  department: 'Default';
   team:
     | 'Portfolio Consulting Group'
     | 'Equity Specialist'
@@ -79,7 +79,7 @@ export function rowToUser(row: Record<string, unknown>): User {
     firstName: row.first_name as string,
     lastName: row.last_name as string,
     title: row.title as string,
-    department: (row.department as string ?? 'ISG') as 'ISG',
+    department: (row.department as string ?? 'Default') as 'Default',
     team: row.team as User['team'],
     office: row.office as User['office'],
     role: row.role as User['role'],

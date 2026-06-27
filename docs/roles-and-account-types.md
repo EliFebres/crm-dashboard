@@ -1,6 +1,6 @@
 # Roles & Account Types
 
-This document describes every level of access in the PCG dashboard: what each user can *do* (actions) and what each user can *see* (data and UI). It reflects the system as actually enforced in code, not aspirational behavior.
+This document describes every level of access in the CRM dashboard: what each user can *do* (actions) and what each user can *see* (data and UI). It reflects the system as actually enforced in code, not aspirational behavior.
 
 Access is determined by **two independent dimensions**:
 

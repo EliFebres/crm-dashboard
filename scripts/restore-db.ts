@@ -128,7 +128,7 @@ async function main() {
   const chosenDir = path.join(resolvedBackupDir, chosen);
   const force = hasFlag('--force');
 
-  console.log(`\nPCG Dashboard — Database Restore`);
+  console.log(`\nCRM Dashboard — Database Restore`);
   console.log(`  Backup : ${chosen}`);
   console.log(`  Target : ${resolvedDbDir}`);
   console.log(`  Files  : ${filesToRestore.join(', ')}`);

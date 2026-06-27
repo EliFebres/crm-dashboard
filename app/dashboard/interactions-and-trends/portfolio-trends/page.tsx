@@ -77,6 +77,7 @@ function useSectionVisibility(active: boolean): SectionVisibility {
   const [state, setState] = useState<SectionVisibility>(active ? 'visible' : 'hidden');
   useEffect(() => {
     if (active) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState('visible');
     } else {
       setState(prev => (prev === 'visible' ? 'exiting' : prev));
@@ -141,6 +142,7 @@ function useDeltaColumns(
   const [isCompact, setIsCompact] = useState(false);
   useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${viewportThreshold - 1}px)`);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsCompact(mql.matches);
     const handler = (e: MediaQueryListEvent) => setIsCompact(e.matches);
     mql.addEventListener('change', handler);
@@ -151,6 +153,7 @@ function useDeltaColumns(
   const [deltaState, setDeltaState] = useState<DeltaState>(wantHidden ? 'hidden' : 'visible');
   useEffect(() => {
     if (wantHidden) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeltaState(prev => (prev === 'visible' ? 'exiting' : prev));
     } else {
       // Wait until the dying portfolio column has fully unmounted before showing deltas back,
@@ -314,8 +317,7 @@ export default function PortfolioTrendsDashboard() {
 
   // Style x Profitability — four sub-buckets per portfolio, summing to 100%. Growth and Value
   // totals shown in the right-hand table are derived as HighProf + LowProf.
-  const STYLE_PROF_CATEGORIES = ['Growth High-Prof', 'Growth Low-Prof', 'Value High-Prof', 'Value Low-Prof'] as const;
-  type StyleProfCategory = typeof STYLE_PROF_CATEGORIES[number];
+  type StyleProfCategory = 'Growth High-Prof' | 'Growth Low-Prof' | 'Value High-Prof' | 'Value Low-Prof';
   const styleProfitability: {
     index: Record<StyleProfCategory, number>;
     portfolios: Record<PortfolioName, Record<StyleProfCategory, number>>;
@@ -565,7 +567,6 @@ export default function PortfolioTrendsDashboard() {
     format: (v: number) => string;
     formatDelta: (v: number) => string;
   };
-  const fmtPct        = (v: number) => `${v.toFixed(0)}%`;
   const fmtPct2       = (v: number) => `${v.toFixed(2)}%`;
   const fmtPctDelta   = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
   const fmtPct2Delta  = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
@@ -1850,9 +1851,8 @@ export default function PortfolioTrendsDashboard() {
                         : 'justify-center pt-0'
                     }`}
                   >
-                    {displayedPortfolios.map(({ name, idx, exiting, entering, settled }, rowIdx) => {
+                    {displayedPortfolios.map(({ name, exiting, entering, settled }, rowIdx) => {
                       const dist = FI_PORTFOLIO_DATA[name].creditBreakdown;
-                      const color = PORTFOLIO_PALETTE[idx] ?? PORTFOLIO_PALETTE[0];
                       return (
                         <div
                           key={name}
@@ -1993,7 +1993,7 @@ export default function PortfolioTrendsDashboard() {
                         <div className="text-xs text-muted leading-snug">
                           The bar shows where the current <span className="text-zinc-200">Bloomberg US Credit</span> − <span className="text-zinc-200">US Treasury</span> spread sits across its 10-year range.
                           Left (<span className="text-zinc-200">Narrow</span>) = lower risk premium; right (<span className="text-zinc-200">Wide</span>) = higher.
-                          The dial tracks today's index reading. Portfolio dots are anchored at the dial and offset by each portfolio's credit overweight vs the index —
+                          The dial tracks today&apos;s index reading. Portfolio dots are anchored at the dial and offset by each portfolio&apos;s credit overweight vs the index —
                           right of the dial = overweight credit, left = overweight government.
                         </div>
                       </div>
@@ -2306,9 +2306,8 @@ export default function PortfolioTrendsDashboard() {
                         : 'justify-center pt-0'
                     }`}
                   >
-                    {displayedPortfolios.map(({ name, idx, exiting, entering, settled }, rowIdx) => {
+                    {displayedPortfolios.map(({ name, exiting, entering, settled }, rowIdx) => {
                       const dist = FI_PORTFOLIO_DATA[name].securityType;
-                      const color = PORTFOLIO_PALETTE[idx] ?? PORTFOLIO_PALETTE[0];
                       return (
                         <div
                           key={name}
@@ -2436,9 +2435,8 @@ export default function PortfolioTrendsDashboard() {
                         : 'justify-center pt-0'
                     }`}
                   >
-                    {displayedPortfolios.map(({ name, idx, exiting, entering, settled }, rowIdx) => {
+                    {displayedPortfolios.map(({ name, exiting, entering, settled }, rowIdx) => {
                       const dist = FI_PORTFOLIO_DATA[name].maturityBreakdown;
-                      const color = PORTFOLIO_PALETTE[idx] ?? PORTFOLIO_PALETTE[0];
                       return (
                         <div
                           key={name}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const SESSION_COOKIE = 'pcg_session';
+const SESSION_COOKIE = 'crm_session';
 
 function getSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
