@@ -350,11 +350,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         // Update existing interaction
         onUpdate(editingEngagement.id, submissionData);
       } else {
-        // Create new interaction
-        onSubmit({
-          ...submissionData,
-          nna: null, // NNA is added later, not at interaction creation
-        });
+        // Create new interaction — keep any NNA the user entered on the form
+        onSubmit(submissionData);
       }
       onClose();
     }
