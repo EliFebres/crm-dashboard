@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
-import { Clock } from 'lucide-react';
-import type { StaleEngagement } from '@/app/lib/api/kpi';
+import React, { useState, useEffect, useRef } from 'react';
+import { Clock, Settings, Check } from 'lucide-react';
+import { STALE_THRESHOLDS, type StaleEngagement } from '@/app/lib/api/kpi';
 
 function daysBadgeClass(days: number): string {
   if (days >= 180) return 'bg-rose-500/15 text-rose-400 border border-rose-500/30';
@@ -10,14 +10,72 @@ function daysBadgeClass(days: number): string {
   return 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
 }
 
-export default function StaleEngagementsTable({ data }: { data: StaleEngagement[] }) {
+// Threshold options (key + label), ordered, from the shared source of truth.
+const STALE_OPTIONS = Object.entries(STALE_THRESHOLDS).map(([key, { label }]) => ({ key, label }));
+
+interface Props {
+  data: StaleEngagement[];
+  staleThreshold: string;
+  onStaleThresholdChange: (key: string) => void;
+}
+
+export default function StaleEngagementsTable({ data, staleThreshold, onStaleThresholdChange }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const currentLabel = STALE_THRESHOLDS[staleThreshold]?.label ?? '3 weeks';
+
   return (
     <div className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-5 rounded-xl h-full flex flex-col">
-      <div className="mb-3 flex items-center gap-2">
-        <Clock className="w-4 h-4 text-amber-400" />
-        <div>
-          <h3 className="text-white text-base font-semibold">Stale Open Work</h3>
-          <p className="text-xs text-muted">Oldest open engagements — worth a check-in</p>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-amber-400" />
+          <div>
+            <h3 className="text-white text-base font-semibold">Stale Open Work</h3>
+            <p className="text-xs text-muted">Open longer than {currentLabel} — worth a check-in</p>
+          </div>
+        </div>
+        {/* Gear (top-right): choose how long work must be ongoing to count as stale */}
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(o => !o)}
+            title="Stale threshold"
+            aria-label="Stale threshold settings"
+            className={`p-1 rounded-md transition-colors ${menuOpen ? 'text-amber-400 bg-white/[0.05]' : 'text-muted hover:text-amber-400 hover:bg-white/[0.05]'}`}
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-44 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1">
+              <p className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted">Stale after</p>
+              {STALE_OPTIONS.map(o => (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() => { onStaleThresholdChange(o.key); setMenuOpen(false); }}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm transition-colors ${
+                    staleThreshold === o.key
+                      ? 'text-amber-400 bg-amber-500/10'
+                      : 'text-zinc-200 hover:bg-zinc-700/50'
+                  }`}
+                >
+                  {o.label}
+                  {staleThreshold === o.key && <Check className="w-3.5 h-3.5" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

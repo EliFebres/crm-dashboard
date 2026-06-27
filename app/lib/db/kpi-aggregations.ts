@@ -14,6 +14,7 @@ import { hasDb } from './connection';
 import type { ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
+import { STALE_THRESHOLDS, resolveStaleThreshold } from '../api/kpi';
 import type {
   KpiFilters,
   HeroKpis,
@@ -455,8 +456,14 @@ export async function computeStaleEngagements(
   constraints: ServerConstraints
 ): Promise<StaleEngagement[]> {
   if (!hasDb()) return [];
-  // Period-independent: stale is defined by absolute age, not selected window
+  // Period-independent: stale is defined by absolute age, not selected window.
   const { whereClause, params } = buildKpiWhere(filters, constraints, { includePeriod: false });
+
+  // "Stale" = still open AND started at least the chosen threshold ago. The
+  // modifier comes from a fixed allowlist (STALE_THRESHOLDS), so interpolation
+  // here is injection-safe.
+  const threshold = resolveStaleThreshold(filters.staleThreshold);
+  const staleClause = `date_started <= date('now', '${STALE_THRESHOLDS[threshold].modifier}')`;
 
   const rows = await query<Record<string, unknown>>(
     `
@@ -470,8 +477,8 @@ export async function computeStaleEngagements(
         CAST(date_started AS TEXT) AS date_started
       FROM engagements
       ${whereClause
-        ? `${whereClause} AND ${SQL_OPEN}`
-        : `WHERE ${SQL_OPEN}`}
+        ? `${whereClause} AND ${SQL_OPEN} AND ${staleClause}`
+        : `WHERE ${SQL_OPEN} AND ${staleClause}`}
       ORDER BY date_started ASC
       LIMIT 10
     `,

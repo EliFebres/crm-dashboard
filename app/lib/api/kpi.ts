@@ -20,6 +20,32 @@ export interface KpiFilters {
   period: string;
   gcgDepts?: string[];
   intakeTypes?: string[];
+  /** Stale threshold key (see STALE_THRESHOLDS). Defaults server-side to '3m'. */
+  staleThreshold?: string;
+}
+
+/**
+ * How long open work must be ongoing to count as "stale". Single source of truth
+ * shared by the UI (labels) and the server query (SQLite date modifier). NOTE:
+ * SQLite has no "weeks" modifier, so weeks are expressed in days. Insertion order
+ * is the menu order.
+ */
+export const STALE_THRESHOLDS: Record<string, { label: string; modifier: string }> = {
+  '1w': { label: '1 week', modifier: '-7 days' },
+  '2w': { label: '2 weeks', modifier: '-14 days' },
+  '3w': { label: '3 weeks', modifier: '-21 days' },
+  '1m': { label: '1 month', modifier: '-1 months' },
+  '2m': { label: '2 months', modifier: '-2 months' },
+  '3m': { label: '3 months', modifier: '-3 months' },
+  '6m': { label: '6 months', modifier: '-6 months' },
+  '1y': { label: '1 year', modifier: '-12 months' },
+};
+
+export const DEFAULT_STALE_THRESHOLD = '3w';
+
+/** Coerce an arbitrary value to a valid threshold key, falling back to the default. */
+export function resolveStaleThreshold(value: unknown): string {
+  return typeof value === 'string' && STALE_THRESHOLDS[value] ? value : DEFAULT_STALE_THRESHOLD;
 }
 
 export interface KpiDelta {
@@ -119,6 +145,7 @@ export async function getKpiDashboardData(
       period: filters.period,
       gcgDepts: filters.gcgDepts ?? [],
       intakeTypes: filters.intakeTypes ?? [],
+      staleThreshold: filters.staleThreshold,
     }),
     signal,
   });

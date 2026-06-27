@@ -17,7 +17,7 @@ import {
   computeStaleEngagements,
   computeDormantClients,
 } from '@/app/lib/db/kpi-aggregations';
-import type { KpiFilters } from '@/app/lib/api/kpi';
+import { resolveStaleThreshold, type KpiFilters } from '@/app/lib/api/kpi';
 
 // POST /api/kpi/dashboard
 // Body: { scope, period, gcgDepts, intakeTypes }
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     period: body.period || '1Y',
     gcgDepts: Array.isArray(body.gcgDepts) ? body.gcgDepts : [],
     intakeTypes: Array.isArray(body.intakeTypes) ? body.intakeTypes : [],
+    staleThreshold: resolveStaleThreshold(body.staleThreshold),
   };
 
   const constraints = kpiConstraint(filters.scope);

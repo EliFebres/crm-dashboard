@@ -23,6 +23,7 @@ export default function KpiDashboard() {
   const [period, setPeriod] = useState('1Y');
   const [gcgDepts, setGcgDepts] = useState<string[]>([]);
   const [intakeTypes, setIntakeTypes] = useState<string[]>([]);
+  const [staleThreshold, setStaleThreshold] = useState('3w');
 
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +50,7 @@ export default function KpiDashboard() {
       setIsLoading(true);
       try {
         const result = await getKpiDashboardData(
-          { scope, period, gcgDepts, intakeTypes },
+          { scope, period, gcgDepts, intakeTypes, staleThreshold },
           controller.signal
         );
         setData(result);
@@ -65,7 +66,7 @@ export default function KpiDashboard() {
       clearTimeout(id);
       controller.abort();
     };
-  }, [scope, period, gcgDepts, intakeTypes, authLoading]);
+  }, [scope, period, gcgDepts, intakeTypes, staleThreshold, authLoading]);
 
   const subtitle = data?.scope.kind === 'team'
     ? `Team · ${data.scope.team}`
@@ -130,7 +131,11 @@ export default function KpiDashboard() {
             <JourneyExplorer sankey={data.journeySankey} templates={data.journeyTemplates} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <StaleEngagementsTable data={data.staleEngagements} />
+              <StaleEngagementsTable
+                data={data.staleEngagements}
+                staleThreshold={staleThreshold}
+                onStaleThresholdChange={setStaleThreshold}
+              />
               <DormantClientsTable data={data.dormantClients} />
             </div>
           </>
