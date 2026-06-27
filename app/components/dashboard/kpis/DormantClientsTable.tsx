@@ -32,9 +32,9 @@ export default function DormantClientsTable({ data }: { data: DormantClient[] })
             <thead className="sticky top-0 bg-zinc-900/95 backdrop-blur">
               <tr className="text-left text-[10px] uppercase tracking-wider text-muted border-b border-zinc-800">
                 <th className="py-2 pr-2">Client · Dept</th>
-                <th className="py-2 pr-2 text-right">History</th>
-                <th className="py-2 pr-2">Last Seen</th>
-                <th className="py-2 text-right">Days Silent</th>
+                <th className="py-2 pr-2 text-center">History</th>
+                <th className="py-2 pr-2 text-center">Last Seen</th>
+                <th className="py-2 text-center">Days Silent</th>
               </tr>
             </thead>
             <tbody>
@@ -44,9 +44,9 @@ export default function DormantClientsTable({ data }: { data: DormantClient[] })
                     <div className="text-zinc-200 truncate max-w-[200px]">{r.clientName}</div>
                     <div className="text-[10px] text-muted">{r.gcgDept}</div>
                   </td>
-                  <td className="py-2 pr-2 text-right text-muted font-mono">{r.historicalCount}×</td>
-                  <td className="py-2 pr-2 text-xs text-muted">{formatDate(r.lastEngagedDate)}</td>
-                  <td className="py-2 text-right">
+                  <td className="py-2 pr-2 text-center text-muted font-mono">{r.historicalCount}×</td>
+                  <td className="py-2 pr-2 text-center text-xs text-muted">{formatDate(r.lastEngagedDate)}</td>
+                  <td className="py-2 text-center">
                     <span className="text-xs font-mono text-violet-400">{r.daysSinceLast}d</span>
                   </td>
                 </tr>
