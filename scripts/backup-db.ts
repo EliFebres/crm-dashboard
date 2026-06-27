@@ -14,7 +14,7 @@
  *   npm run db:backup
  *   npm run db:backup -- --force    # bypass the empty-DB guard
  *
- * Requires in .env.local:
+ * Requires in .env:
  *   DUCKDB_DIR  — path to directory containing the .duckdb files
  *   BACKUP_DIR  — path to directory where backups will be stored
  *
@@ -25,7 +25,7 @@
  */
 
 import { config } from 'dotenv';
-config({ path: '.env.local' });
+config({ path: '.env' });
 
 import path from 'path';
 import { runBackup } from '../app/lib/db/backupCore';
@@ -35,11 +35,11 @@ async function main() {
   const backupDir = process.env.BACKUP_DIR;
 
   if (!dbDir) {
-    console.error('ERROR: DUCKDB_DIR is not set. Add it to .env.local');
+    console.error('ERROR: DUCKDB_DIR is not set. Add it to .env');
     process.exit(1);
   }
   if (!backupDir) {
-    console.error('ERROR: BACKUP_DIR is not set. Add it to .env.local');
+    console.error('ERROR: BACKUP_DIR is not set. Add it to .env');
     process.exit(1);
   }
 

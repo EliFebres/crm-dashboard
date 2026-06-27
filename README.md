@@ -69,7 +69,7 @@ All three nav items are currently greyed out. UI components (`CompetitorTable`, 
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in all values:
+Copy `.env.example` to `.env` and fill in all values:
 
 ```bash
 # Absolute path to the folder where DuckDB database files will be stored
@@ -92,7 +92,7 @@ When `DUCKDB_DIR` is set, the app reads from and writes to real DuckDB databases
 npm install
 
 # Set up environment variables
-cp .env.example .env.local  # then edit .env.local with your values
+cp .env.example .env  # then edit .env with your values
 
 # Initialize the database and populate with mock data
 npm run seed:mock

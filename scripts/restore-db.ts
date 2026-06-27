@@ -27,7 +27,7 @@
  */
 
 import { config } from 'dotenv';
-config({ path: '.env.local' });
+config({ path: '.env' });
 
 import fs from 'fs';
 import path from 'path';
@@ -69,11 +69,11 @@ async function main() {
   const backupDir = process.env.BACKUP_DIR;
 
   if (!dbDir) {
-    console.error('ERROR: DUCKDB_DIR is not set. Add it to .env.local');
+    console.error('ERROR: DUCKDB_DIR is not set. Add it to .env');
     process.exit(1);
   }
   if (!backupDir) {
-    console.error('ERROR: BACKUP_DIR is not set. Add it to .env.local');
+    console.error('ERROR: BACKUP_DIR is not set. Add it to .env');
     process.exit(1);
   }
 

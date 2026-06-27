@@ -10,14 +10,14 @@
  *   npx tsx scripts/seed-db.ts              # Create schema only
  *   npx tsx scripts/seed-db.ts --with-mock  # Schema + seed with mock data
  *
- * Requires DUCKDB_DIR to be set (via .env.local or environment):
+ * Requires DUCKDB_DIR to be set (via .env or environment):
  *   DUCKDB_DIR=./data npx tsx scripts/seed-db.ts --with-mock
  * =============================================================================
  */
 
-// Load .env.local before anything else
+// Load .env before anything else
 import { config } from 'dotenv';
-config({ path: '.env.local' });
+config({ path: '.env' });
 
 import { DuckDBInstance } from '@duckdb/node-api';
 import path from 'path';
@@ -28,7 +28,7 @@ async function main() {
   const dbDir = process.env.DUCKDB_DIR;
   if (!dbDir) {
     console.error('ERROR: DUCKDB_DIR environment variable is not set.');
-    console.error('Create a .env.local file with: DUCKDB_DIR=./data');
+    console.error('Create a .env file with: DUCKDB_DIR=./data');
     process.exit(1);
   }
 
