@@ -47,7 +47,7 @@ export interface SortSpec {
 /** Filters for fetching engagements */
 export interface EngagementFilters {
   search?: string;                 // Text search across multiple fields
-  teamMember?: string;             // 'All Team Members', 'Austin Office', 'Charlotte Office', or member name
+  teamMember?: string;             // 'All Team Members', 'Office B', 'Office A', or member name
   departments?: string[];          // Multi-select: ['Advisory', 'Brokerage', 'Institutional']
   intakeTypes?: string[];          // Multi-select: ['IRQ', 'SERF', 'Ad-Hoc']
   projectTypes?: string[];         // Multi-select: ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other']

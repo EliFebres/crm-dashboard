@@ -12,7 +12,7 @@ const TEAMS = [
   'Guest',
 ] as const;
 
-const OFFICES = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'] as const;
+const OFFICES = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'] as const;
 
 interface SignupModalProps {
   isOpen: boolean;

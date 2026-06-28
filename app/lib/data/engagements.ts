@@ -114,20 +114,20 @@ const sampleNotes = [
 // Internal client (relationship owner/salesperson) roster mapped to client departments
 const internalClients = {
   // Advisory Team
-  'Jennifer Martinez': { name: 'Jennifer Martinez', clientDept: 'Advisory' as const },
-  'Robert Chen': { name: 'Robert Chen', clientDept: 'Advisory' as const },
-  'Amanda Foster': { name: 'Amanda Foster', clientDept: 'Advisory' as const },
+  'Avery Bennett': { name: 'Avery Bennett', clientDept: 'Advisory' as const },
+  'Cameron Brooks': { name: 'Cameron Brooks', clientDept: 'Advisory' as const },
+  'Dakota Carter': { name: 'Dakota Carter', clientDept: 'Advisory' as const },
   // Brokerage Team
-  'Michael Thompson': { name: 'Michael Thompson', clientDept: 'Brokerage' as const },
-  'Jessica Williams': { name: 'Jessica Williams', clientDept: 'Brokerage' as const },
-  'Daniel Park': { name: 'Daniel Park', clientDept: 'Brokerage' as const },
+  'Emerson Diaz': { name: 'Emerson Diaz', clientDept: 'Brokerage' as const },
+  'Sawyer Grant': { name: 'Sawyer Grant', clientDept: 'Brokerage' as const },
+  'Hayden Cole': { name: 'Hayden Cole', clientDept: 'Brokerage' as const },
   // Institutional Team
-  'Christopher Lee': { name: 'Christopher Lee', clientDept: 'Institutional' as const },
-  'Rachel Goldman': { name: 'Rachel Goldman', clientDept: 'Institutional' as const },
-  'Andrew Mitchell': { name: 'Andrew Mitchell', clientDept: 'Institutional' as const },
+  'Jordan Ellis': { name: 'Jordan Ellis', clientDept: 'Institutional' as const },
+  'Kendall Frost': { name: 'Kendall Frost', clientDept: 'Institutional' as const },
+  'Logan Hale': { name: 'Logan Hale', clientDept: 'Institutional' as const },
   // Retirement Team
-  'Patricia Evans': { name: 'Patricia Evans', clientDept: 'Retirement' as const },
-  'Steven Nguyen': { name: 'Steven Nguyen', clientDept: 'Retirement' as const },
+  'Marlowe Reed': { name: 'Marlowe Reed', clientDept: 'Retirement' as const },
+  'Nico Sutton': { name: 'Nico Sutton', clientDept: 'Retirement' as const },
 };
 
 // External client companies for dummy data
@@ -151,20 +151,20 @@ function mockClient(seed: number): { name: string; crn: string } {
   return { name: externalClients[idx], crn: `MOCK-${String(idx + 1).padStart(6, '0')}` };
 }
 
-// Team members with office assignments (5 Charlotte, 7 Austin)
-export const teamMemberOffices: Record<string, 'Charlotte' | 'Austin'> = {
-  'Eli F.': 'Charlotte',
-  'Sarah K.': 'Charlotte',
-  'Mike R.': 'Charlotte',
-  'Lisa M.': 'Charlotte',
-  'James T.': 'Charlotte',
-  'David L.': 'Austin',
-  'Rachel W.': 'Austin',
-  'Chris B.': 'Austin',
-  'Amanda P.': 'Austin',
-  'Kevin H.': 'Austin',
-  'Nicole S.': 'Austin',
-  'Brandon T.': 'Austin',
+// Team members with office assignments (5 Office A, 7 Office B)
+export const teamMemberOffices: Record<string, 'Office A' | 'Office B'> = {
+  'Alex M.': 'Office A',
+  'Blake N.': 'Office A',
+  'Casey P.': 'Office A',
+  'Dana R.': 'Office A',
+  'Evan S.': 'Office A',
+  'Finley T.': 'Office B',
+  'Gray W.': 'Office B',
+  'Harper B.': 'Office B',
+  'Indi C.': 'Office B',
+  'Jules D.': 'Office B',
+  'Kai E.': 'Office B',
+  'Lane F.': 'Office B',
 };
 
 const teamMembers = Object.keys(teamMemberOffices);

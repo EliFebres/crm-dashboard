@@ -16,7 +16,7 @@ const VALID_TEAMS = [
   'Leadership',
   'Guest',
 ];
-const VALID_OFFICES = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'];
+const VALID_OFFICES = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
 
 export async function POST(req: NextRequest) {
   try {

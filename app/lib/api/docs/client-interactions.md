@@ -67,7 +67,7 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
 ```json
 {
   "period": "1Y",
-  "team_member": "Eli F.",
+  "team_member": "Alex M.",
   "departments": ["Advisory", "Brokerage"],
   "intake_types": ["IRQ", "SERF"],
   "project_types": ["Meeting", "Data Request"],
@@ -83,7 +83,7 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `period` | string | No | Time period: `1W`, `1M`, `3M`, `6M`, `YTD`, `1Y`, `ALL`. Default: `1Y` |
-| `team_member` | string | No | Filter by team member name or office (`Austin Office`, `Charlotte Office`) |
+| `team_member` | string | No | Filter by team member name or office (`Office B`, `Office A`) |
 | `departments` | string[] | No | Multi-select: `Advisory`, `Brokerage`, `Institutional` |
 | `intake_types` | string[] | No | Multi-select: `IRQ`, `SERF`, `Ad-Hoc` |
 | `project_types` | string[] | No | Multi-select: `Meeting`, `Discovery Meeting`, `Data Request`, `Data Update`, `PCR`, `Other` |
@@ -167,13 +167,13 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
         "id": 1234,
         "external_client": "Vanguard Advisors",
         "internal_client": {
-          "name": "Jennifer Martinez",
+          "name": "Avery Bennett",
           "client_department": "Advisory"
         },
         "intake_type": "Ad-Hoc",
         "ad_hoc_channel": "In-Person",
         "type": "Meeting",
-        "team_members": ["Eli F.", "Sarah K."],
+        "team_members": ["Alex M.", "Blake N."],
         "department": "Advisory",
         "date_started": "Jan 15, 2025",
         "date_finished": "Jan 20, 2025",
@@ -190,9 +190,9 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
     "has_more": true
   },
   "filter_options": {
-    "team_members": ["All Team Members", "Austin Office", "Charlotte Office"],
+    "team_members": ["All Team Members", "Office B", "Office A"],
     "team_member_groups": [
-      { "label": "Office", "options": ["Austin Office", "Charlotte Office"] }
+      { "label": "Office", "options": ["Office B", "Office A"] }
     ],
     "departments": ["Brokerage", "Advisory", "Institutional"],
     "intake_types": ["Ad-Hoc", "SERF", "IRQ"],
@@ -238,13 +238,13 @@ GET /engagements?page=1&page_size=50&period=1Y&departments=Advisory&departments=
       "id": 1234,
       "external_client": "Vanguard Advisors",
       "internal_client": {
-        "name": "Jennifer Martinez",
+        "name": "Avery Bennett",
         "client_department": "Advisory"
       },
       "intake_type": "Ad-Hoc",
       "ad_hoc_channel": "In-Person",
       "type": "Meeting",
-      "team_members": ["Eli F.", "Sarah K."],
+      "team_members": ["Alex M.", "Blake N."],
       "department": "Advisory",
       "date_started": "Jan 15, 2025",
       "date_finished": "Jan 20, 2025",
@@ -393,13 +393,13 @@ Create a new engagement.
 {
   "client_crn": "CRN-000123",
   "internal_client": {
-    "name": "Jennifer Martinez",
+    "name": "Avery Bennett",
     "client_department": "Advisory"
   },
   "intake_type": "Ad-Hoc",
   "ad_hoc_channel": "In-Person",
   "type": "Meeting",
-  "team_members": ["Eli F.", "Sarah K."],
+  "team_members": ["Alex M.", "Blake N."],
   "date_started": "Jan 28, 2025",
   "date_finished": "—",
   "status": "In Progress",
@@ -435,13 +435,13 @@ Create a new engagement.
   "id": 1234,
   "external_client": "Vanguard Advisors",
   "internal_client": {
-    "name": "Jennifer Martinez",
+    "name": "Avery Bennett",
     "client_department": "Advisory"
   },
   "intake_type": "Ad-Hoc",
   "ad_hoc_channel": "In-Person",
   "type": "Meeting",
-  "team_members": ["Eli F.", "Sarah K."],
+  "team_members": ["Alex M.", "Blake N."],
   "department": "Advisory",
   "date_started": "Jan 28, 2025",
   "date_finished": "—",
@@ -482,13 +482,13 @@ Update an existing engagement with partial data.
   "id": 1234,
   "external_client": "Vanguard Advisors",
   "internal_client": {
-    "name": "Jennifer Martinez",
+    "name": "Avery Bennett",
     "client_department": "Advisory"
   },
   "intake_type": "IRQ",
   "ad_hoc_channel": null,
   "type": "Meeting",
-  "team_members": ["Eli F.", "Sarah K."],
+  "team_members": ["Alex M.", "Blake N."],
   "department": "Advisory",
   "date_started": "Jan 28, 2025",
   "date_finished": "Jan 31, 2025",
@@ -631,7 +631,7 @@ Content-Disposition: attachment; filename="client-interactions-export.csv"
 **Response Body (CSV):**
 ```csv
 ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Team Members,Date Started,Date Finished,Status,Portfolio Logged,NNA,Notes,Tickers Mentioned
-1234,"Vanguard Advisors","Jennifer Martinez","Advisory","Ad-Hoc","In-Person","Meeting","Eli F., Sarah K.","Jan 15, 2025","Jan 20, 2025","Completed",true,25000000,"Client notes here","AAPL, MSFT, GOOGL"
+1234,"Vanguard Advisors","Avery Bennett","Advisory","Ad-Hoc","In-Person","Meeting","Alex M., Blake N.","Jan 15, 2025","Jan 20, 2025","Completed",true,25000000,"Client notes here","AAPL, MSFT, GOOGL"
 ```
 
 ---
@@ -762,9 +762,9 @@ The team member filter supports these values:
 | Value | Description |
 |-------|-------------|
 | `"All Team Members"` | No team member filter |
-| `"Austin Office"` | Filter to Austin office members |
-| `"Charlotte Office"` | Filter to Charlotte office members |
-| `"Eli F."` | Filter to specific team member |
+| `"Office B"` | Filter to Office B office members |
+| `"Office A"` | Filter to Office A office members |
+| `"Alex M."` | Filter to specific team member |
 
 **Privacy Note**: The frontend only shows "All Team Members" and the current user. Users cannot filter by other team members' individual activity.
 

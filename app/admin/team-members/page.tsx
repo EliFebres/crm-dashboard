@@ -12,7 +12,7 @@ const TEAMS: User['team'][] = [
   'Leadership',
   'Guest',
 ];
-const OFFICES: User['office'][] = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'];
+const OFFICES: User['office'][] = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
 
 interface TeamMemberWithLinked extends TeamMember {
   linkedEmail: string | null;
@@ -75,7 +75,7 @@ function AddModal({ onClose, onAdded }: AddModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [team, setTeam] = useState<User['team']>('Default Team');
-  const [office, setOffice] = useState<User['office']>('Austin');
+  const [office, setOffice] = useState<User['office']>('Office B');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 

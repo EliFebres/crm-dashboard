@@ -6,7 +6,7 @@ import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToTeamMember } from '@/app/lib/auth/types';
 import { logActivity } from '@/app/lib/activity/log';
 
-const VALID_OFFICES = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'];
+const VALID_OFFICES = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;

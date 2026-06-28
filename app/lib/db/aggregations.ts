@@ -22,9 +22,9 @@ import { VALID_STATUSES } from '../statusHelpers';
 
 // Static filter options — these don't change dynamically in this application
 export const STATIC_FILTER_OPTIONS: FilterOptions = {
-  teamMembers: ['All Team Members', 'Austin Office', 'Charlotte Office'],
+  teamMembers: ['All Team Members', 'Office B', 'Office A'],
   teamMemberGroups: [
-    { label: 'Office', options: ['Austin Office', 'Charlotte Office'] },
+    { label: 'Office', options: ['Office B', 'Office A'] },
   ],
   departments: ['Brokerage', 'Advisory', 'Institutional', 'Retirement'],
   intakeTypes: ['IRQ', 'SERF', 'Ad-Hoc'],

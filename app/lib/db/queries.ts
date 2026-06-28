@@ -13,7 +13,7 @@ export interface InternalEngagementFilters extends EngagementFilters {
 }
 
 /**
- * Resolves an "Austin Office" / "Charlotte Office" filter to the live list of
+ * Resolves an "Office B" / "Office A" filter to the live list of
  * member display names. team_members lives in users.sqlite, so we can't JOIN to
  * it from the engagements connection — caller must pre-resolve and pass the
  * results to buildFilterClause via _officeMembers.
@@ -25,10 +25,10 @@ export interface InternalEngagementFilters extends EngagementFilters {
 export async function resolveOfficeMembers(
   filters: EngagementFilters
 ): Promise<InternalEngagementFilters> {
-  if (filters.teamMember !== 'Austin Office' && filters.teamMember !== 'Charlotte Office') {
+  if (filters.teamMember !== 'Office B' && filters.teamMember !== 'Office A') {
     return filters;
   }
-  const office = filters.teamMember === 'Austin Office' ? 'Austin' : 'Charlotte';
+  const office = filters.teamMember === 'Office B' ? 'Office B' : 'Office A';
   const rows = await queryUsers<{ display_name: string }>(
     `SELECT display_name FROM team_members WHERE office = ? AND status = 'active'`,
     [office]
@@ -123,13 +123,13 @@ export function buildFilterClause(
   // EXISTS can test for an exact element match.
   // - 'All Teams' is the cross-team aggregate scope (admin/Leadership/Guest only)
   //   and 'All Team Members' is the no-filter default — both pass through.
-  // - 'Austin Office' / 'Charlotte Office' are pseudo-values: the caller resolves
+  // - 'Office B' / 'Office A' are pseudo-values: the caller resolves
   //   them to a live member-name list via resolveOfficeMembers() and passes it as
   //   _officeMembers. An engagement matches an office's filter as long as ANY
   //   assigned team member belongs to that office, so a project staffed across
   //   offices shows up in BOTH offices' results.
   if (filters.teamMember && filters.teamMember !== 'All Team Members' && filters.teamMember !== 'All Teams') {
-    const isOffice = filters.teamMember === 'Charlotte Office' || filters.teamMember === 'Austin Office';
+    const isOffice = filters.teamMember === 'Office A' || filters.teamMember === 'Office B';
     const members = isOffice ? (filters._officeMembers ?? []) : [filters.teamMember];
 
     if (members.length === 0) {

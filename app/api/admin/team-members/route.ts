@@ -15,7 +15,7 @@ const VALID_TEAMS: User['team'][] = [
   'Leadership',
   'Guest',
 ];
-const VALID_OFFICES: User['office'][] = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'];
+const VALID_OFFICES: User['office'][] = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;

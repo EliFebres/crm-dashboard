@@ -96,10 +96,10 @@ export function applyMockFilters(engagements: Engagement[], filters: EngagementF
   }
 
   if (filters.teamMember && filters.teamMember !== 'All Team Members') {
-    if (filters.teamMember === 'Charlotte Office') {
-      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Charlotte'));
-    } else if (filters.teamMember === 'Austin Office') {
-      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Austin'));
+    if (filters.teamMember === 'Office A') {
+      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Office A'));
+    } else if (filters.teamMember === 'Office B') {
+      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Office B'));
     } else {
       filtered = filtered.filter(e => e.teamMembers.includes(filters.teamMember!));
     }
@@ -352,8 +352,8 @@ export function getMockFilterOptions(): FilterOptions {
   });
 
   return {
-    teamMembers: ['All Team Members', 'Austin Office', 'Charlotte Office'],
-    teamMemberGroups: [{ label: 'Office', options: ['Austin Office', 'Charlotte Office'] }],
+    teamMembers: ['All Team Members', 'Office B', 'Office A'],
+    teamMemberGroups: [{ label: 'Office', options: ['Office B', 'Office A'] }],
     departments: Array.from(departments).sort(),
     intakeTypes: ['IRQ', 'SERF', 'Ad-Hoc'].filter(t => intakeTypes.has(t)),
     projectTypes: Array.from(projectTypes).sort(),

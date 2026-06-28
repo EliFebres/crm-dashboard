@@ -14,7 +14,7 @@ export interface User {
     | 'Fixed Income Specialist'
     | 'Leadership'
     | 'Guest';
-  office: 'Charlotte' | 'Austin' | 'Santa Monica' | 'UK' | 'Sydney';
+  office: 'Office A' | 'Office B' | 'Office C' | 'Office D' | 'Office E';
   role: 'user' | 'admin';
   status: 'pending' | 'active' | 'inactive';
   createdAt: string;
@@ -38,7 +38,7 @@ export function canUserEditEngagement(
 
 /**
  * Converts a first/last name pair to the display format used in the team_members
- * table and in engagement team_members JSON arrays. e.g. "Eli" + "Febres" → "Eli F."
+ * table and in engagement team_members JSON arrays. e.g. "Alex" + "Morgan" → "Alex M."
  */
 export function toDisplayName(firstName: string, lastName: string): string {
   if (!lastName || lastName.length === 0) return firstName;

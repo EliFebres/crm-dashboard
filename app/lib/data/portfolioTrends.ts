@@ -13,8 +13,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 1,
     externalClient: 'Vanguard Advisors',
-    internalClient: { name: 'Jennifer Martinez', clientDept: 'Advisory' },
-    loggedBy: 'Eli F.',
+    internalClient: { name: 'Avery Bennett', clientDept: 'Advisory' },
+    loggedBy: 'Alex M.',
     loggedAt: 'Jan 15, 2026',
     dataAsOf: 'Dec 31, 2025',
     positions: [
@@ -51,8 +51,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 2,
     externalClient: 'Fidelity Wealth Management',
-    internalClient: { name: 'Michael Thompson', clientDept: 'Brokerage' },
-    loggedBy: 'Sarah K.',
+    internalClient: { name: 'Emerson Diaz', clientDept: 'Brokerage' },
+    loggedBy: 'Blake N.',
     loggedAt: 'Jan 12, 2026',
     dataAsOf: 'Dec 31, 2025',
     positions: [
@@ -87,8 +87,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 3,
     externalClient: 'Northern Trust Wealth',
-    internalClient: { name: 'Christopher Lee', clientDept: 'Institutional' },
-    loggedBy: 'Mike R.',
+    internalClient: { name: 'Jordan Ellis', clientDept: 'Institutional' },
+    loggedBy: 'Casey P.',
     loggedAt: 'Jan 10, 2026',
     dataAsOf: 'Dec 31, 2025',
     positions: [
@@ -124,8 +124,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 4,
     externalClient: 'Raymond James Financial',
-    internalClient: { name: 'Amanda Foster', clientDept: 'Advisory' },
-    loggedBy: 'Lisa M.',
+    internalClient: { name: 'Dakota Carter', clientDept: 'Advisory' },
+    loggedBy: 'Dana R.',
     loggedAt: 'Jan 8, 2026',
     dataAsOf: 'Dec 31, 2025',
     positions: [
@@ -160,8 +160,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 5,
     externalClient: 'Morgan Stanley Private',
-    internalClient: { name: 'Jessica Williams', clientDept: 'Brokerage' },
-    loggedBy: 'James T.',
+    internalClient: { name: 'Sawyer Grant', clientDept: 'Brokerage' },
+    loggedBy: 'Evan S.',
     loggedAt: 'Jan 5, 2026',
     dataAsOf: 'Dec 31, 2025',
     positions: [
@@ -197,8 +197,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 6,
     externalClient: 'Goldman Sachs PWM',
-    internalClient: { name: 'Rachel Goldman', clientDept: 'Institutional' },
-    loggedBy: 'David L.',
+    internalClient: { name: 'Kendall Frost', clientDept: 'Institutional' },
+    loggedBy: 'Finley T.',
     loggedAt: 'Jan 3, 2026',
     dataAsOf: 'Dec 31, 2025',
     positions: [
@@ -234,8 +234,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 7,
     externalClient: 'Wells Fargo Advisors',
-    internalClient: { name: 'Robert Chen', clientDept: 'Advisory' },
-    loggedBy: 'Eli F.',
+    internalClient: { name: 'Cameron Brooks', clientDept: 'Advisory' },
+    loggedBy: 'Alex M.',
     loggedAt: 'Dec 28, 2025',
     dataAsOf: 'Nov 30, 2025',
     positions: [
@@ -269,8 +269,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 8,
     externalClient: 'Ameriprise Financial',
-    internalClient: { name: 'Daniel Park', clientDept: 'Brokerage' },
-    loggedBy: 'Sarah K.',
+    internalClient: { name: 'Hayden Cole', clientDept: 'Brokerage' },
+    loggedBy: 'Blake N.',
     loggedAt: 'Dec 20, 2025',
     dataAsOf: 'Nov 30, 2025',
     positions: [
@@ -307,8 +307,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 9,
     externalClient: 'LPL Financial',
-    internalClient: { name: 'Andrew Mitchell', clientDept: 'Institutional' },
-    loggedBy: 'Mike R.',
+    internalClient: { name: 'Logan Hale', clientDept: 'Institutional' },
+    loggedBy: 'Casey P.',
     loggedAt: 'Dec 15, 2025',
     dataAsOf: 'Nov 30, 2025',
     positions: [
@@ -343,8 +343,8 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 10,
     externalClient: 'Schwab Private Client',
-    internalClient: { name: 'Jennifer Martinez', clientDept: 'Advisory' },
-    loggedBy: 'Lisa M.',
+    internalClient: { name: 'Avery Bennett', clientDept: 'Advisory' },
+    loggedBy: 'Dana R.',
     loggedAt: 'Dec 10, 2025',
     dataAsOf: 'Nov 30, 2025',
     positions: [
@@ -413,7 +413,7 @@ function getPeriodStartDate(period: string): Date | null {
 
 // ==================== FILTER FUNCTIONS ====================
 
-export function extractFilterOptions(portfolios: LoggedPortfolio[], currentUser: string = 'Eli F.'): FilterOptions {
+export function extractFilterOptions(portfolios: LoggedPortfolio[], currentUser: string = 'Alex M.'): FilterOptions {
   const departmentsSet = new Set<string>();
 
   portfolios.forEach(portfolio => {
