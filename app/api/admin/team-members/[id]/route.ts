@@ -5,8 +5,7 @@ import { queryUsers, executeUsers } from '@/app/lib/db/users';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToTeamMember } from '@/app/lib/auth/types';
 import { logActivity } from '@/app/lib/activity/log';
-
-const VALID_OFFICES = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
+import { orgNameExists } from '@/app/lib/db/org';
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -76,7 +75,7 @@ export async function PATCH(
     }
 
     if (office !== undefined) {
-      if (!VALID_OFFICES.includes(office)) {
+      if (!(await orgNameExists('office', office))) {
         return NextResponse.json({ error: 'Invalid office.' }, { status: 400 });
       }
       sets.push('office = ?');

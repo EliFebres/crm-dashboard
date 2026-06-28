@@ -8,13 +8,10 @@ export interface User {
   lastName: string;
   title: string;
   department: 'Default';
-  team:
-    | 'Default Team'
-    | 'Equity Specialist'
-    | 'Fixed Income Specialist'
-    | 'Leadership'
-    | 'Guest';
-  office: 'Office A' | 'Office B' | 'Office C' | 'Office D' | 'Office E';
+  // Teams and offices are admin-managed lists stored in the DB, so these are
+  // free-form strings rather than fixed unions. See app/lib/db/org.ts.
+  team: string;
+  office: string;
   role: 'user' | 'admin';
   status: 'pending' | 'active' | 'inactive';
   createdAt: string;

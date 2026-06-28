@@ -8,15 +8,7 @@ import { signJWT, SESSION_COOKIE, COOKIE_OPTIONS } from '@/app/lib/auth/jwt';
 import { rowToUser } from '@/app/lib/auth/types';
 import { emitUserChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
-
-const VALID_TEAMS = [
-  'Default Team',
-  'Equity Specialist',
-  'Fixed Income Specialist',
-  'Leadership',
-  'Guest',
-];
-const VALID_OFFICES = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
+import { orgNameExists } from '@/app/lib/db/org';
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,11 +38,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Passwords do not match.' }, { status: 400 });
     }
 
-    // Validate enum fields
-    if (!VALID_TEAMS.includes(team)) {
+    // Validate team/office against the admin-managed lists in the DB
+    if (!(await orgNameExists('team', team))) {
       return NextResponse.json({ error: 'Invalid team selection.' }, { status: 400 });
     }
-    if (!VALID_OFFICES.includes(office)) {
+    if (!(await orgNameExists('office', office))) {
       return NextResponse.json({ error: 'Invalid office selection.' }, { status: 400 });
     }
 

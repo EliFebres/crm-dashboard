@@ -4,15 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, LinkIcon, X, AlertCircle } from 'lucide-react';
 import type { TeamMember, User } from '@/app/lib/auth/types';
 import { Select } from '@/app/components/ui/Select';
-
-const TEAMS: User['team'][] = [
-  'Default Team',
-  'Equity Specialist',
-  'Fixed Income Specialist',
-  'Leadership',
-  'Guest',
-];
-const OFFICES: User['office'][] = ['Office B', 'Office A', 'Office C', 'Office D', 'Office E'];
+import { getTeams, getOffices } from '@/app/lib/api/org';
 
 interface TeamMemberWithLinked extends TeamMember {
   linkedEmail: string | null;
@@ -67,15 +59,17 @@ function ActionButton({
 }
 
 interface AddModalProps {
+  teams: string[];
+  offices: string[];
   onClose: () => void;
   onAdded: () => void;
 }
 
-function AddModal({ onClose, onAdded }: AddModalProps) {
+function AddModal({ teams, offices, onClose, onAdded }: AddModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [team, setTeam] = useState<User['team']>('Default Team');
-  const [office, setOffice] = useState<User['office']>('Office B');
+  const [team, setTeam] = useState<string>(teams[0] ?? '');
+  const [office, setOffice] = useState<string>(offices[0] ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -137,16 +131,16 @@ function AddModal({ onClose, onAdded }: AddModalProps) {
             <label className="block text-xs font-medium text-muted mb-1">Team</label>
             <Select
               value={team}
-              onValueChange={v => setTeam(v as User['team'])}
-              options={TEAMS}
+              onValueChange={setTeam}
+              options={teams}
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-muted mb-1">Office</label>
             <Select
               value={office}
-              onValueChange={v => setOffice(v as User['office'])}
-              options={OFFICES}
+              onValueChange={setOffice}
+              options={offices}
             />
           </div>
           {firstName && lastName && (
@@ -270,6 +264,13 @@ export default function AdminTeamMembersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [linkingMember, setLinkingMember] = useState<TeamMemberWithLinked | null>(null);
   const [editingOfficeId, setEditingOfficeId] = useState<string | null>(null);
+  const [teams, setTeams] = useState<string[]>([]);
+  const [offices, setOffices] = useState<string[]>([]);
+
+  useEffect(() => {
+    getTeams().then(items => setTeams(items.map(t => t.name))).catch(() => setTeams([]));
+    getOffices().then(items => setOffices(items.map(o => o.name))).catch(() => setOffices([]));
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -377,7 +378,7 @@ export default function AdminTeamMembersPage() {
                                     patch(m.id, { office: v });
                                     setEditingOfficeId(null);
                                   }}
-                                  options={OFFICES}
+                                  options={offices}
                                 />
                               </div>
                             ) : (
@@ -463,7 +464,7 @@ export default function AdminTeamMembersPage() {
       )}
 
       {showAddModal && (
-        <AddModal onClose={() => setShowAddModal(false)} onAdded={fetchAll} />
+        <AddModal teams={teams} offices={offices} onClose={() => setShowAddModal(false)} onAdded={fetchAll} />
       )}
       {linkingMember && (
         <LinkModal
