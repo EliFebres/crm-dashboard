@@ -134,7 +134,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ fontFamily: 'var(--font-geist-sans)' }}
-        onClick={onClose}
       >
         <div className="absolute inset-0 bg-[#08070b]/80 backdrop-blur-md" />
         <div
@@ -184,7 +183,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ fontFamily: 'var(--font-geist-sans)' }}
-      onClick={onClose}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-[#08070b]/80 backdrop-blur-md" />

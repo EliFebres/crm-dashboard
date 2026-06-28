@@ -1,11 +1,12 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { executeTransaction } from '@/app/lib/db';
+import { query, executeTransaction, hasDb } from '@/app/lib/db';
 import { requireAuth, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
 import { parseUploadedFile } from '@/app/lib/bulk-upload/parser';
 import { validateRows } from '@/app/lib/bulk-upload/validator';
 import type { ParsedRow } from '@/app/lib/bulk-upload/parser';
+import { crnConfig, normalizeCrn, generateNextCrn } from '@/app/lib/config/crn';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 
@@ -13,9 +14,9 @@ import { logActivity } from '@/app/lib/activity/log';
 // Query: ?commit=true to actually insert (otherwise returns preview/errors only)
 // Body: multipart/form-data with a "file" field (.xlsx or .csv)
 export async function POST(req: NextRequest) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json(
-      { error: 'Database not configured. Set DUCKDB_DIR to enable write operations.' },
+      { error: 'Database not configured. Set SQLITE_DIR to enable write operations.' },
       { status: 503 }
     );
   }
@@ -78,6 +79,57 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Resolve every row to a client CRN before previewing/committing. A row either
+  // names an existing CRN/client, or (auto mode) registers a new one. Surface any
+  // unresolvable rows as errors so the user can fix and re-upload.
+  const { autoGenerate } = crnConfig();
+  const existingClients = await query<{ crn: string; name: string }>(`SELECT crn, name FROM clients`);
+  const crnSet = new Set(existingClients.map(c => c.crn));
+  const nameLowerToCrn = new Map(existingClients.map(c => [c.name.toLowerCase(), c.crn]));
+  const crnErrors: { rowNumber: number; field: string; message: string }[] = [];
+
+  for (const row of validRows) {
+    const crn = row.crn ? normalizeCrn(row.crn) : '';
+    const name = (row.externalClient ?? '').trim();
+    const nameLower = name.toLowerCase();
+    if (crn) {
+      if (crnSet.has(crn)) continue;
+      if (!name) {
+        crnErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: 'A new CRN requires an External Client name.' });
+        continue;
+      }
+      const nameOwner = nameLowerToCrn.get(nameLower);
+      if (nameOwner && nameOwner !== crn) {
+        crnErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: `"${name}" is already registered under a different CRN.` });
+        continue;
+      }
+      crnSet.add(crn);
+      nameLowerToCrn.set(nameLower, crn);
+    } else {
+      if (nameLowerToCrn.has(nameLower)) continue;
+      if (!autoGenerate) {
+        crnErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: `No CRN provided and "${name}" is not a registered client.` });
+        continue;
+      }
+      // Auto mode: a CRN will be generated at commit; reserve the name for the batch.
+      nameLowerToCrn.set(nameLower, '<<auto>>');
+    }
+  }
+
+  if (crnErrors.length > 0) {
+    return NextResponse.json(
+      {
+        parseErrors: parseResult.parseErrors,
+        errors: crnErrors,
+        warnings,
+        preview: buildPreview(validRows),
+        invalidCount: crnErrors.length,
+        validCount: validRows.length - crnErrors.length,
+      },
+      { status: 422 }
+    );
+  }
+
   if (!commit) {
     // Preview mode — return parsed data without inserting
     return NextResponse.json({
@@ -91,23 +143,52 @@ export async function POST(req: NextRequest) {
 
   // Commit — insert all valid rows atomically
   try {
-    await executeTransaction(async (conn) => {
-      for (const row of validRows) {
-        const seqResult = await conn.runAndReadAll(
-          `SELECT nextval('engagements_id_seq') AS nextval`
-        );
-        const id = Number(seqResult.getRowObjects()[0].nextval);
+    await executeTransaction((tx) => {
+      const creatorId = auth.payload.sub;
+      const creatorName = `${auth.payload.firstName} ${auth.payload.lastName}`;
+      const batchNameToCrn = new Map<string, string>();
 
-        await conn.run(
+      // Resolve a row to a client CRN, registering a new client when needed.
+      const resolveCrn = (row: ParsedRow): string => {
+        const name = (row.externalClient ?? '').trim();
+        const nameLower = name.toLowerCase();
+        let crn = row.crn ? normalizeCrn(row.crn) : '';
+        if (crn) {
+          const exists = tx.get(`SELECT 1 FROM clients WHERE crn = ?`, [crn]);
+          if (!exists) {
+            tx.run(
+              `INSERT INTO clients (crn, name, created_by_id, created_by_name) VALUES (?, ?, ?, ?)`,
+              [crn, name, creatorId, creatorName]
+            );
+          }
+          return crn;
+        }
+        if (batchNameToCrn.has(nameLower)) return batchNameToCrn.get(nameLower)!;
+        const byName = tx.get<{ crn: string }>(`SELECT crn FROM clients WHERE name = ? COLLATE NOCASE`, [name]);
+        if (byName) {
+          batchNameToCrn.set(nameLower, byName.crn);
+          return byName.crn;
+        }
+        crn = generateNextCrn(tx);
+        tx.run(
+          `INSERT INTO clients (crn, name, created_by_id, created_by_name) VALUES (?, ?, ?, ?)`,
+          [crn, name, creatorId, creatorName]
+        );
+        batchNameToCrn.set(nameLower, crn);
+        return crn;
+      };
+
+      for (const row of validRows) {
+        const clientCrn = resolveCrn(row);
+        const result = tx.run(
           `INSERT INTO engagements (
-            id, external_client, internal_client_name, internal_client_dept,
+            client_crn, internal_client_name, internal_client_dept,
             intake_type, ad_hoc_channel, type, team_members, department,
             date_started, date_finished, status, portfolio_logged, portfolio,
             nna, notes, tickers_mentioned, team
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            id,
-            row.externalClient ?? null,
+            clientCrn,
             row.internalClientName,
             row.internalClientDept,
             row.intakeType,
@@ -126,20 +207,16 @@ export async function POST(req: NextRequest) {
             auth.payload.team,
           ]
         );
+        const id = Number(result.lastInsertRowid);
 
         // Insert structured notes into engagement_notes table if present
         if (row.structuredNotes) {
           const notes = JSON.parse(row.structuredNotes) as { text: string; author: string; authorId?: string; date?: string }[];
           for (const note of notes) {
-            const noteSeq = await conn.runAndReadAll(
-              `SELECT nextval('engagement_notes_id_seq') AS nextval`
-            );
-            const noteId = Number(noteSeq.getRowObjects()[0].nextval);
-            await conn.run(
-              `INSERT INTO engagement_notes (id, engagement_id, note_text, author_name, author_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)`,
+            tx.run(
+              `INSERT INTO engagement_notes (engagement_id, note_text, author_name, author_id, created_at)
+               VALUES (?, ?, ?, ?, ?)`,
               [
-                noteId,
                 id,
                 note.text,
                 note.author,
@@ -168,6 +245,7 @@ export async function POST(req: NextRequest) {
 function buildPreview(rows: ParsedRow[]) {
   return rows.map(row => ({
     rowNumber: row.rowNumber,
+    crn: row.crn,
     externalClient: row.externalClient,
     internalClientName: row.internalClientName,
     internalClientDept: row.internalClientDept,

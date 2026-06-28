@@ -1,11 +1,12 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, query } from '@/app/lib/db';
-import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { execute, query, hasDb } from '@/app/lib/db';
+import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { toDisplayDate } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
+import { VALID_STATUSES } from '@/app/lib/statusHelpers';
 
 // PATCH /api/client-interactions/engagements/:id/status
 // Body: { status: string }
@@ -14,7 +15,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!process.env.DUCKDB_DIR) {
+  if (!hasDb()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
@@ -27,10 +28,19 @@ export async function PATCH(
     const engagementId = Number(id);
     const { status } = await req.json();
 
-    const VALID_STATUSES = ['In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'];
-    if (!status || !VALID_STATUSES.includes(status)) {
+    if (!status || !(VALID_STATUSES as readonly string[]).includes(status)) {
       return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
     }
+
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
+    }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
 
     const teamClause = sc.team ? 'AND team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];

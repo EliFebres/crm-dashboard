@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DashboardData } from '@/app/lib/api/client-interactions';
 import type { Engagement } from '@/app/lib/types/engagements';
+import { isCompletedStatus } from '@/app/lib/statusHelpers';
 
 export type FlashKind = 'neutral' | 'blue' | 'green' | 'red' | 'amber';
 
@@ -52,7 +53,7 @@ function diffEngagementField(
   switch (field) {
     case 'status': {
       if (prev.status === next.status) return null;
-      if (next.status === 'Completed') return { kind: 'green', nonce: mkNonce() };
+      if (isCompletedStatus(next.status)) return { kind: 'green', nonce: mkNonce() };
       return { kind: 'amber', nonce: mkNonce() };
     }
     case 'noteCount': {

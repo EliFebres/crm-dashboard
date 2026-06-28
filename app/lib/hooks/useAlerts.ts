@@ -28,7 +28,7 @@ function emptyState(): AlertState {
 }
 
 function storageKey(userId: string) {
-  return `isg-alerts-state-${userId}`;
+  return `crm-alerts-state-${userId}`;
 }
 
 function loadState(userId: string): AlertState {

@@ -1,25 +1,14 @@
 import fs from 'fs';
 import path from 'path';
-import type { DuckDBConnection } from '@duckdb/node-api';
+import Database from 'better-sqlite3';
 
-export const DB_FILES = ['engagements.duckdb', 'users.duckdb', 'activity.duckdb'] as const;
-
-// Map keyed by DB filename (e.g. 'engagements.duckdb') → its live connection.
-// When a connection is supplied, runBackup copies via DuckDB's own ATTACH/COPY
-// mechanism instead of fs.copyFileSync — necessary on Windows where the open
-// DB file is exclusively locked by the running server.
-export type LiveSources = Partial<Record<(typeof DB_FILES)[number], DuckDBConnection>>;
+export const DB_FILES = ['engagements.sqlite', 'users.sqlite', 'activity.sqlite'] as const;
 
 // Folder-name pattern for auto-backups. pre-restore-* snapshots and any other
 // human-named folders intentionally don't match this and are never auto-pruned.
 export const AUTO_BACKUP_PATTERN = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/;
 
 export const DEFAULT_RETENTION_DAYS = 14;
-
-// Schema-only DuckDB files (no rows) are ~12KB. Any DB with real data is
-// comfortably above this threshold. Used to detect "empty-DB" snapshots so we
-// don't overwrite the backup history with them.
-export const EMPTY_DB_THRESHOLD_BYTES = 30 * 1024;
 
 type Logger = (msg: string) => void;
 
@@ -40,38 +29,38 @@ export function fileSize(p: string): number {
   try { return fs.statSync(p).size; } catch { return 0; }
 }
 
-export function copyIfExists(src: string, dest: string): boolean {
-  if (fs.existsSync(src)) {
-    fs.copyFileSync(src, dest);
-    return true;
+/**
+ * Snapshot a SQLite file using the online backup API. This produces a single
+ * consistent .sqlite file (WAL folded in) and is safe to run while the app
+ * holds another connection to the source — no EBUSY, no separate WAL/SHM files
+ * to copy. Returns false if the source doesn't exist.
+ */
+export async function backupSqliteFile(srcPath: string, destPath: string): Promise<boolean> {
+  if (!fs.existsSync(srcPath)) return false;
+  if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+  const src = new Database(srcPath, { readonly: true });
+  try {
+    await src.backup(destPath);
+  } finally {
+    src.close();
   }
-  return false;
+  return true;
 }
 
-// Copy a DuckDB file that's currently open by the app. Uses the live connection
-// to CHECKPOINT (flush WAL into main), then ATTACH the destination path and
-// COPY FROM DATABASE into it. This is the only reliable way to snapshot an open
-// DB on Windows, where the main file is held with an exclusive lock.
-export async function copyLiveDuckDb(
-  conn: DuckDBConnection,
-  destPath: string,
-): Promise<void> {
-  await conn.run(`CHECKPOINT`);
-  // ATTACH refuses to overwrite an existing file — clear any stale target first.
-  if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
-
-  const srcReader = await conn.runAndReadAll(`SELECT current_database() AS db`);
-  const srcAlias = String((srcReader.getRowObjects()[0] as { db: string }).db);
-
-  const bakAlias = `bak_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-  // ATTACH doesn't support bound parameters for the path — interpolate, with
-  // forward slashes (Windows-safe) and single-quote escaping.
-  const sqlPath = destPath.replace(/\\/g, '/').replace(/'/g, "''");
-  await conn.run(`ATTACH '${sqlPath}' AS ${bakAlias}`);
+// Number of rows in the engagements table, or -1 if the file/table can't be read.
+// Used to detect "empty-DB" snapshots so we don't overwrite a non-empty backup
+// history with one.
+function engagementRowCount(dbPath: string): number {
+  if (!fs.existsSync(dbPath)) return -1;
+  let db: Database.Database | null = null;
   try {
-    await conn.run(`COPY FROM DATABASE "${srcAlias}" TO ${bakAlias}`);
+    db = new Database(dbPath, { readonly: true });
+    const row = db.prepare(`SELECT COUNT(*) AS c FROM engagements`).get() as { c: number };
+    return Number(row?.c ?? 0);
+  } catch {
+    return -1;
   } finally {
-    try { await conn.run(`DETACH ${bakAlias}`); } catch { /* best-effort */ }
+    db?.close();
   }
 }
 
@@ -101,30 +90,27 @@ export interface BackupResult {
 
 // Take a pre-restore safety snapshot. Folder name starts with 'pre-restore-'
 // so it never matches AUTO_BACKUP_PATTERN and is never auto-pruned.
-export function takePreRestoreSnapshot(
+export async function takePreRestoreSnapshot(
   dbDir: string,
   backupDir: string,
-): string {
+): Promise<string> {
   const target = path.join(backupDir, `pre-restore-${backupTimestamp()}`);
   fs.mkdirSync(target, { recursive: true });
   for (const f of DB_FILES) {
-    const src = path.join(dbDir, f);
-    copyIfExists(src, path.join(target, f));
-    copyIfExists(`${src}.wal`, path.join(target, `${f}.wal`));
+    await backupSqliteFile(path.join(dbDir, f), path.join(target, f));
   }
   return target;
 }
 
-// Copy the DB files (main + WAL) into a new timestamped folder under backupDir,
-// then prune old folders older than retentionDays. Refuses to snapshot an
-// apparently-empty DB over a non-empty history unless `force` is true.
+// Snapshot each DB file into a new timestamped folder under backupDir, then
+// prune folders older than retentionDays. Refuses to snapshot an empty
+// engagements DB over a non-empty history unless `force` is true.
 export async function runBackup(opts: {
   dbDir: string;
   backupDir: string;
   retentionDays?: number;
   force?: boolean;
   log?: Logger;
-  liveSources?: LiveSources;
 }): Promise<BackupResult> {
   const {
     dbDir,
@@ -132,21 +118,19 @@ export async function runBackup(opts: {
     retentionDays = DEFAULT_RETENTION_DAYS,
     force = false,
     log = () => {},
-    liveSources = {},
   } = opts;
 
   fs.mkdirSync(backupDir, { recursive: true });
 
   if (!force) {
-    const currentEngagements = path.join(dbDir, 'engagements.duckdb');
-    const currentSize = fileSize(currentEngagements);
+    const currentCount = engagementRowCount(path.join(dbDir, 'engagements.sqlite'));
     const lastDir = mostRecentAutoBackup(backupDir);
     if (lastDir) {
-      const lastSize = fileSize(path.join(lastDir, 'engagements.duckdb'));
-      if (currentSize < EMPTY_DB_THRESHOLD_BYTES && lastSize >= EMPTY_DB_THRESHOLD_BYTES) {
+      const lastCount = engagementRowCount(path.join(lastDir, 'engagements.sqlite'));
+      if (currentCount <= 0 && lastCount > 0) {
         const reason =
-          `engagements.duckdb is ${currentSize} bytes (appears empty) but the most recent backup ` +
-          `is ${lastSize} bytes. Refusing to overwrite the backup history with an empty snapshot. ` +
+          `engagements.sqlite has ${currentCount < 0 ? 'unreadable' : '0'} rows but the most recent ` +
+          `backup has ${lastCount}. Refusing to overwrite the backup history with an empty snapshot. ` +
           `Pass { force: true } or use '--force' on the CLI to override.`;
         log(`SKIP: ${reason}`);
         return { backupPath: null, skipped: true, skipReason: reason, prunedCount: 0 };
@@ -161,33 +145,18 @@ export async function runBackup(opts: {
   let any = false;
   for (const f of DB_FILES) {
     const src = path.join(dbDir, f);
-    const destMain = path.join(target, f);
-    const liveConn = liveSources[f];
-
-    if (liveConn) {
-      // Live DB: use DuckDB's own copy mechanism; the source file is locked by
-      // the running server, so fs.copyFileSync would fail with EBUSY on Windows.
-      // After CHECKPOINT inside copyLiveDuckDb, the WAL is empty, so there's
-      // nothing to copy separately.
-      try {
-        await copyLiveDuckDb(liveConn, destMain);
-        const sz = (fs.statSync(destMain).size / 1024).toFixed(1);
-        log(`  ✓ ${f} (${sz} KB, live copy)`);
+    const dest = path.join(target, f);
+    try {
+      const copied = await backupSqliteFile(src, dest);
+      if (copied) {
+        const sz = (fs.statSync(dest).size / 1024).toFixed(1);
+        log(`  ✓ ${f} (${sz} KB)`);
         any = true;
-      } catch (err) {
-        log(`  ! ${f} live copy failed: ${(err as Error).message}`);
+      } else {
+        log(`  - ${f} not found, skipped`);
       }
-      continue;
-    }
-
-    const copiedMain = copyIfExists(src, destMain);
-    const copiedWal  = copyIfExists(`${src}.wal`, path.join(target, `${f}.wal`));
-    if (copiedMain) {
-      const sz = (fs.statSync(src).size / 1024).toFixed(1);
-      log(`  ✓ ${f} (${sz} KB)${copiedWal ? ' + .wal' : ''}`);
-      any = true;
-    } else {
-      log(`  - ${f} not found, skipped`);
+    } catch (err) {
+      log(`  ! ${f} backup failed: ${(err as Error).message}`);
     }
   }
 

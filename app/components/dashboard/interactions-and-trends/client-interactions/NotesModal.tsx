@@ -1,8 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef, ReactNode } from 'react';
-import { X, Plus, Loader2, Pencil, Trash2, Check, XCircle } from 'lucide-react';
-import { getEngagementNotes, addEngagementNote, updateEngagementNote, deleteEngagementNote } from '@/app/lib/api/client-interactions';
+import { X, Plus, Loader2, Pencil, Trash2, Check, XCircle, Folder } from 'lucide-react';
+import {
+  getEngagementNotes,
+  addEngagementNote,
+  updateEngagementNote,
+  deleteEngagementNote,
+  updateEngagementFilepath,
+} from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import type { NoteEntry } from '@/app/lib/types/engagements';
 import RichTextEditor from '@/app/components/dashboard/shared/RichTextEditor';
@@ -15,6 +21,9 @@ interface NotesModalProps {
   subtitle: ReactNode;
   engagementId: number;
   readOnly?: boolean;
+  filepath?: string | null;
+  canEditFilepath?: boolean;
+  onFilepathSaved?: (next: string | null) => void;
   onNoteAdded?: () => void;
   onNoteDeleted?: () => void;
 }
@@ -32,6 +41,9 @@ const NotesModal: React.FC<NotesModalProps> = ({
   subtitle,
   engagementId,
   readOnly = false,
+  filepath = null,
+  canEditFilepath = false,
+  onFilepathSaved,
   onNoteAdded,
   onNoteDeleted,
 }) => {
@@ -46,17 +58,38 @@ const NotesModal: React.FC<NotesModalProps> = ({
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null);
 
+  // Filepath state
+  const [editingFilepath, setEditingFilepath] = useState(false);
+  const [filepathDraft, setFilepathDraft] = useState('');
+  const [savingFilepath, setSavingFilepath] = useState(false);
+  const [filepathError, setFilepathError] = useState<string | null>(null);
+  const [filepathFlash, setFilepathFlash] = useState<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Fetch notes when modal opens
   useEffect(() => {
     if (!isOpen || !engagementId) return;
     setLoading(true);
     setNewText('');
     setEditingNoteId(null);
+    setEditingFilepath(false);
+    setFilepathError(null);
+    setFilepathFlash(null);
     getEngagementNotes(engagementId)
       .then(setNotes)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [isOpen, engagementId]);
+
+  // Clear the "Copied" / error flash after a short delay
+  const showFlash = (msg: string) => {
+    setFilepathFlash(msg);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFilepathFlash(null), 1500);
+  };
+  useEffect(() => () => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+  }, []);
 
   // Escape key to close
   useEffect(() => {
@@ -110,6 +143,46 @@ const NotesModal: React.FC<NotesModalProps> = ({
     }
   };
 
+  const startEditFilepath = () => {
+    setFilepathDraft(filepath ?? '');
+    setFilepathError(null);
+    setEditingFilepath(true);
+  };
+
+  const cancelEditFilepath = () => {
+    setEditingFilepath(false);
+    setFilepathDraft('');
+    setFilepathError(null);
+  };
+
+  const handleSaveFilepath = async () => {
+    if (savingFilepath) return;
+    const trimmed = filepathDraft.trim();
+    const next = trimmed.length === 0 ? null : trimmed;
+    setSavingFilepath(true);
+    setFilepathError(null);
+    try {
+      await updateEngagementFilepath(engagementId, next);
+      onFilepathSaved?.(next);
+      setEditingFilepath(false);
+      setFilepathDraft('');
+    } catch (err) {
+      setFilepathError(err instanceof Error ? err.message : 'Failed to save filepath');
+    } finally {
+      setSavingFilepath(false);
+    }
+  };
+
+  const copyFilepathToClipboard = async () => {
+    if (!filepath) return;
+    try {
+      await navigator.clipboard.writeText(filepath);
+      showFlash('Copied');
+    } catch {
+      showFlash('Copy failed');
+    }
+  };
+
   const handleDeleteNote = async (noteId: number) => {
     setDeletingNoteId(noteId);
     try {
@@ -137,14 +210,91 @@ const NotesModal: React.FC<NotesModalProps> = ({
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
 
         {/* Header */}
-        <div className="relative z-10 px-5 py-4 border-b border-zinc-800/50 flex items-center justify-between flex-shrink-0">
-          <div>
+        <div className="relative z-10 px-5 py-4 border-b border-zinc-800/50 flex items-start justify-between flex-shrink-0 gap-3">
+          <div className="min-w-0 flex-1">
             <h2 className="text-base font-medium text-white">{title}</h2>
             <p className="text-xs text-muted mt-0.5">{subtitle}</p>
+
+            {/* Filepath row */}
+            {editingFilepath ? (
+              <div className="mt-2 flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                <input
+                  type="text"
+                  value={filepathDraft}
+                  onChange={(e) => setFilepathDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveFilepath();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      cancelEditFilepath();
+                    }
+                  }}
+                  placeholder="C:\path\to\project\folder"
+                  autoFocus
+                  disabled={savingFilepath}
+                  className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 px-2 py-1 text-xs font-mono text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/60 disabled:opacity-50"
+                />
+                <button
+                  onClick={handleSaveFilepath}
+                  disabled={savingFilepath}
+                  className="p-1 text-cyan-400 hover:text-cyan-300 disabled:opacity-50"
+                  title="Save"
+                >
+                  {savingFilepath ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={cancelEditFilepath}
+                  disabled={savingFilepath}
+                  className="p-1 text-muted hover:text-white disabled:opacity-50"
+                  title="Cancel"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : filepath ? (
+              <div className="mt-2 flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                <button
+                  onClick={copyFilepathToClipboard}
+                  title={`${filepath}\n\nClick to copy`}
+                  className="min-w-0 truncate text-left text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline transition-colors"
+                >
+                  {filepath}
+                </button>
+                {canEditFilepath && (
+                  <button
+                    onClick={startEditFilepath}
+                    className="p-1 text-muted hover:text-white transition-colors flex-shrink-0"
+                    title="Edit filepath"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                )}
+                {filepathFlash && (
+                  <span className="text-[10px] text-cyan-400 flex-shrink-0">{filepathFlash}</span>
+                )}
+              </div>
+            ) : canEditFilepath ? (
+              <button
+                onClick={startEditFilepath}
+                className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] text-muted hover:text-cyan-400 border border-dashed border-zinc-700 hover:border-cyan-500/40 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add Filepath
+              </button>
+            ) : null}
+
+            {filepathError && (
+              <p className="mt-1 text-[11px] text-red-400">{filepathError}</p>
+            )}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-muted hover:text-white hover:bg-zinc-800 transition-colors"
+            className="p-1.5 text-muted hover:text-white hover:bg-zinc-800 transition-colors flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -206,6 +356,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
                         onChange={setEditText}
                         onCtrlEnter={() => handleSaveEdit(entry.id)}
                         minHeight="4.5rem"
+                        maxHeight="30vh"
                         autoFocus
                       />
                       <div className="flex items-center gap-2 justify-end">
@@ -253,6 +404,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
               onCtrlEnter={handleAddNote}
               placeholder="Add a new note... (Ctrl+Enter to save)"
               minHeight="6rem"
+              maxHeight="35vh"
               autoFocus={!loading}
             />
             <div className="flex items-center justify-end gap-3">

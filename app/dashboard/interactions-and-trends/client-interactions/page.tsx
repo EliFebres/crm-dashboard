@@ -19,11 +19,11 @@ import {
   exportEngagements,
   ConflictError,
 } from '@/app/lib/api/client-interactions';
-import type { DashboardData, DashboardMetrics, EngagementFilters } from '@/app/lib/api/client-interactions';
+import type { DashboardData, DashboardMetrics, EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import type { EngagementMetric, Engagement } from '@/app/lib/types/engagements';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import { toDisplayName, isReadOnlyUser } from '@/app/lib/auth/types';
+import { toDisplayName, isReadOnlyUser, canUserEditEngagement } from '@/app/lib/auth/types';
 import { useDashboardChanges } from '@/app/lib/hooks/useDashboardChanges';
 
 // =============================================================================
@@ -106,6 +106,9 @@ export default function EngagementsDashboard() {
   const { user } = useCurrentUser();
   const readOnly = isReadOnlyUser(user);
   const isGuest = user?.team === 'Guest';
+  // Cross-team aggregate ("All Teams") is only visible to users whose server-side
+  // constraint allows it — admins, Leadership, and Guests are not pinned to a single team.
+  const canSeeAllTeams = user?.role === 'admin' || user?.team === 'Leadership' || isGuest;
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,14 +123,20 @@ export default function EngagementsDashboard() {
     'Meeting',
     'Discovery Meeting',
     'Data Request',
+    'Data Update',
     'Other',
     'Follow-up Material',
     'Follow-up Meeting',
   ]);
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [period, setPeriod] = useState('1Y');
-  const [sortColumn, setSortColumn] = useState<string | null>('dateStarted');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>('desc');
+  // Multi-column sort. Order is ORDER BY priority (first entry = primary).
+  // Default surfaces unfinished projects first (date_finished DESC NULLS FIRST),
+  // ordered within each bucket by most-recently-created (date_started DESC).
+  const [sortBy, setSortBy] = useState<SortSpec[]>([
+    { column: 'dateFinished', direction: 'desc' },
+    { column: 'dateStarted', direction: 'desc' },
+  ]);
 
   const [isExporting, setIsExporting] = useState(false);
 
@@ -168,6 +177,14 @@ export default function EngagementsDashboard() {
     }, remaining);
   }, []);
 
+  // Guests don't have "Team Members" — their only scope is the cross-team aggregate.
+  // Switch the default once the user identity resolves.
+  useEffect(() => {
+    if (isGuest && teamMemberFilter === 'All Team Members') {
+      setTeamMemberFilter('All Teams');
+    }
+  }, [isGuest, teamMemberFilter]);
+
   // -------------------------------------------------------------------------
   // Data loading — fires on mount and whenever any filter/search changes
   // -------------------------------------------------------------------------
@@ -177,15 +194,14 @@ export default function EngagementsDashboard() {
     const controller = new AbortController();
     const filters: EngagementFilters = {
       period,
-      teamMember: teamMemberFilter !== 'All Team Members' ? teamMemberFilter : undefined,
+      teamMember: (teamMemberFilter === 'All Team Members' || teamMemberFilter === 'All Teams') ? undefined : teamMemberFilter,
       departments: departmentFilter.length > 0 ? departmentFilter : undefined,
       intakeTypes: intakeTypeFilter.length > 0 ? intakeTypeFilter : undefined,
       projectTypes: projectTypeFilter.length > 0 ? projectTypeFilter : undefined,
       status: statusFilter !== 'All Statuses' ? statusFilter : undefined,
       search: searchQuery || undefined,
       pageSize: 200,
-      sortColumn: sortColumn || undefined,
-      sortDirection: sortDirection || 'desc',
+      sortBy,
     };
 
     const delay = searchQuery ? 300 : 0;
@@ -203,28 +219,27 @@ export default function EngagementsDashboard() {
     }, delay);
 
     return () => { clearTimeout(id); controller.abort(); };
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortColumn, sortDirection]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy]);
 
   // Re-fetch with current filters (used after mutations)
   const reloadData = useCallback(async () => {
     const filters: EngagementFilters = {
       period,
-      teamMember: teamMemberFilter !== 'All Team Members' ? teamMemberFilter : undefined,
+      teamMember: (teamMemberFilter === 'All Team Members' || teamMemberFilter === 'All Teams') ? undefined : teamMemberFilter,
       departments: departmentFilter.length > 0 ? departmentFilter : undefined,
       intakeTypes: intakeTypeFilter.length > 0 ? intakeTypeFilter : undefined,
       projectTypes: projectTypeFilter.length > 0 ? projectTypeFilter : undefined,
       status: statusFilter !== 'All Statuses' ? statusFilter : undefined,
       search: searchQuery || undefined,
       pageSize: 200,
-      sortColumn: sortColumn || undefined,
-      sortDirection: sortDirection || 'desc',
+      sortBy,
     };
     try {
       setDashboardData(await getDashboardData(filters));
     } catch (err) {
       console.error('Failed to reload dashboard data:', err);
     }
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortColumn, sortDirection]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy]);
 
   // SSE connection — reloads dashboard whenever any user mutates an engagement
   useEffect(() => {
@@ -236,9 +251,31 @@ export default function EngagementsDashboard() {
     return () => es.close();
   }, [reloadData]);
 
-  const handleSort = useCallback((column: string | null, direction: 'asc' | 'desc' | null) => {
-    setSortColumn(column);
-    setSortDirection(direction);
+  // Click without shift: replace the entire sort with this column (cycle asc → desc → cleared).
+  // Shift+click: extend the sort. If the column is already in the sort, cycle its direction
+  //              (asc → desc → removed); otherwise append it as a new ascending tier.
+  const handleSort = useCallback((column: string, shift: boolean) => {
+    setSortBy(prev => {
+      const idx = prev.findIndex(s => s.column === column);
+      if (!shift) {
+        // Reset to a single-column sort. If clicking the only currently-active
+        // sort column, cycle its direction; otherwise start fresh on asc.
+        if (prev.length === 1 && idx === 0) {
+          if (prev[0].direction === 'asc') return [{ column, direction: 'desc' }];
+          return [];
+        }
+        return [{ column, direction: 'asc' }];
+      }
+      // Shift: append or cycle on the existing entry, leaving the others alone.
+      if (idx === -1) return [...prev, { column, direction: 'asc' }];
+      const next = [...prev];
+      if (next[idx].direction === 'asc') {
+        next[idx] = { column, direction: 'desc' };
+        return next;
+      }
+      next.splice(idx, 1);
+      return next;
+    });
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -246,14 +283,12 @@ export default function EngagementsDashboard() {
     try {
       const filters: EngagementFilters = {
         period,
-        teamMember: teamMemberFilter !== 'All Team Members' ? teamMemberFilter : undefined,
+        teamMember: (teamMemberFilter === 'All Team Members' || teamMemberFilter === 'All Teams') ? undefined : teamMemberFilter,
         departments: departmentFilter.length > 0 ? departmentFilter : undefined,
         intakeTypes: intakeTypeFilter.length > 0 ? intakeTypeFilter : undefined,
         projectTypes: projectTypeFilter.length > 0 ? projectTypeFilter : undefined,
         status: statusFilter !== 'All Statuses' ? statusFilter : undefined,
         search: searchQuery || undefined,
-        sortColumn: sortColumn || undefined,
-        sortDirection: sortDirection || 'desc',
       };
       const blob = await exportEngagements(filters);
       const url = URL.createObjectURL(blob);
@@ -269,7 +304,7 @@ export default function EngagementsDashboard() {
     } finally {
       setIsExporting(false);
     }
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortColumn, sortDirection]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery]);
 
   // -------------------------------------------------------------------------
   // Derived display data
@@ -288,9 +323,9 @@ export default function EngagementsDashboard() {
   const filtersKey = useMemo(
     () => JSON.stringify([
       period, teamMemberFilter, departmentFilter, intakeTypeFilter,
-      projectTypeFilter, statusFilter, searchQuery, sortColumn, sortDirection,
+      projectTypeFilter, statusFilter, searchQuery, sortBy,
     ]),
-    [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortColumn, sortDirection],
+    [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy],
   );
   const dashboardChanges = useDashboardChanges(dashboardData, filtersKey);
 
@@ -300,7 +335,8 @@ export default function EngagementsDashboard() {
   const handleNewInteraction = async (data: InteractionFormData) => {
     try {
       const newEngagement = await createEngagement({
-        externalClient: data.externalClient ?? null,
+        clientCrn: data.clientCrn,
+        externalClient: data.externalClient,
         internalClient: { name: data.internalClient, gcgDepartment: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional' },
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'GCG Ad-Hoc',
         adHocChannel: data.adHocChannel,
@@ -341,6 +377,8 @@ export default function EngagementsDashboard() {
   };
 
   const handleStatusChange = (engagementId: number, newStatus: string) => {
+    const target = engagements.find(e => e.id === engagementId);
+    if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
     patchEngagements(e => ({
       ...e,
       status: newStatus,
@@ -357,15 +395,23 @@ export default function EngagementsDashboard() {
     patchEngagements(e => ({ ...e, noteCount: Math.max(0, (e.noteCount ?? 0) - 1) }), engagementId);
   };
 
+  const handleFilepathSaved = (engagementId: number, filepath: string | null) => {
+    patchEngagements(e => ({ ...e, filepath }), engagementId);
+  };
+
   const handleNNAChange = (engagementId: number, nna: number | undefined) => {
+    const target = engagements.find(e => e.id === engagementId);
+    if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
     patchEngagements(e => ({ ...e, nna }), engagementId);
     updateEngagementNNA(engagementId, nna).catch(console.error);
   };
 
   const handleRowClick = (engagement: Engagement) => {
+    if (!canUserEditEngagement(user, engagement.teamMembers)) return;
     setEditingEngagement({
       id: engagement.id,
       data: {
+        clientCrn: engagement.clientCrn,
         externalClient: engagement.externalClient,
         internalClient: engagement.internalClient.name,
         internalClientDept: engagement.internalClient.gcgDepartment,
@@ -405,7 +451,7 @@ export default function EngagementsDashboard() {
     setEditingEngagement(null);
     try {
       await updateEngagement(engagementId, {
-        externalClient: data.externalClient ?? null,
+        clientCrn: data.clientCrn,
         internalClient: { name: data.internalClient, gcgDepartment: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional' },
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'GCG Ad-Hoc',
         adHocChannel: data.adHocChannel,
@@ -479,19 +525,31 @@ export default function EngagementsDashboard() {
         onSearchChange={setSearchQuery}
         className="sticky top-0 z-10"
         filters={[
-          ...(!isGuest ? [{
-            id: 'teamMember',
-            icon: User,
-            label: 'Team Member',
-            options: filterOptions
-              ? [...filterOptions.teamMembers, currentUser]
-              : ['All Team Members', currentUser],
-            optionGroups: filterOptions
-              ? [...filterOptions.teamMemberGroups, { label: 'Members', options: [currentUser] }]
-              : [{ label: 'Members', options: [currentUser] }],
-            value: teamMemberFilter,
-            onChange: (v: string | string[]) => handleFilterChange(setTeamMemberFilter, v as string),
-          }] : []),
+          ...(isGuest
+            ? [{
+                id: 'teamMember',
+                icon: User,
+                label: 'Team Member',
+                options: ['All Teams'],
+                value: teamMemberFilter,
+                onChange: (v: string | string[]) => handleFilterChange(setTeamMemberFilter, v as string),
+              }]
+            : [{
+                id: 'teamMember',
+                icon: User,
+                label: 'Team Member',
+                options: filterOptions
+                  ? [...filterOptions.teamMembers, currentUser, ...(canSeeAllTeams ? ['All Teams'] : [])]
+                  : ['All Team Members', currentUser, ...(canSeeAllTeams ? ['All Teams'] : [])],
+                optionGroups: [
+                  ...(canSeeAllTeams ? [{ label: 'Scope', options: ['All Teams'] }] : []),
+                  ...(filterOptions
+                    ? [...filterOptions.teamMemberGroups, { label: 'Members', options: [currentUser] }]
+                    : [{ label: 'Members', options: [currentUser] }]),
+                ],
+                value: teamMemberFilter,
+                onChange: (v: string | string[]) => handleFilterChange(setTeamMemberFilter, v as string),
+              }]),
           {
             id: 'department',
             icon: Building2,
@@ -599,12 +657,12 @@ export default function EngagementsDashboard() {
 
             <InteractionsTable
               engagements={engagements}
-              sortColumn={sortColumn}
-              sortDirection={sortDirection}
+              sortBy={sortBy}
               onSort={handleSort}
               onStatusChange={handleStatusChange}
               onNoteAdded={handleNoteAdded}
               onNoteDeleted={handleNoteDeleted}
+              onFilepathSaved={handleFilepathSaved}
               onNNAChange={handleNNAChange}
               onRowClick={handleRowClick}
               onExport={handleExport}
@@ -613,6 +671,7 @@ export default function EngagementsDashboard() {
               removedRowIds={dashboardChanges.removedRowIds}
               rowFieldChanges={dashboardChanges.rowFieldChanges}
               readOnly={readOnly}
+              currentUser={user}
             />
           </>
         )}

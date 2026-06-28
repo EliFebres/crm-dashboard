@@ -20,6 +20,27 @@ export interface FilterDropdown {
   value: string | string[];
   onChange: (value: string | string[]) => void;
   multiSelect?: boolean; // Enable multi-select mode
+  // When true, the multi-select has no "All X" sentinel: every option is a normal toggle.
+  // The trigger label falls back to `label` while nothing is selected. Pair with caller-side
+  // logic if you want to enforce a minimum selection.
+  noAllOption?: boolean;
+}
+
+// Escape hatch for one-off filter buttons that don't fit the standard FilterDropdown
+// shape (e.g. hybrid radio + checkbox controls). The caller renders its own trigger via
+// `render()`; pass `isActive` to feed the collapsed-pill cyan ring + signature so the
+// collapse timer resets when the custom value changes.
+export interface CustomFilterEntry {
+  id: string;
+  render: () => React.ReactNode;
+  isActive?: boolean;
+  signature?: string;
+}
+
+export type FilterEntry = FilterDropdown | CustomFilterEntry;
+
+function isCustomFilterEntry(entry: FilterEntry): entry is CustomFilterEntry {
+  return 'render' in entry;
 }
 
 export interface PeriodOption {
@@ -49,7 +70,7 @@ interface DashboardHeaderProps {
   searchPlaceholder: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
-  filters: FilterDropdown[];
+  filters: FilterEntry[];
   tabs?: HeaderTab[];
   period?: string;
   onPeriodChange?: (value: string) => void;
@@ -59,6 +80,8 @@ interface DashboardHeaderProps {
   onActionButtonClick?: () => void;
   secondaryActionButtonLabel?: string;
   onSecondaryActionButtonClick?: () => void;
+  rightContent?: React.ReactNode;
+  alwaysShowFilters?: boolean;
 }
 
 // Dropdown component for filters — Popover-based so portal, click-outside,
@@ -69,10 +92,11 @@ function FilterDropdownButton({ filter }: { filter: FilterDropdown }) {
   const IconComponent = filter.icon;
 
   const isMultiSelect = filter.multiSelect ?? false;
+  const noAllOption = isMultiSelect && (filter.noAllOption ?? false);
   const selectedValues = isMultiSelect
     ? (Array.isArray(filter.value) ? filter.value : [])
     : [];
-  const allOption = filter.options[0]; // First option is "All"
+  const allOption = filter.options[0]; // First option is "All" (unless noAllOption)
 
   const isFiltered = isMultiSelect
     ? selectedValues.length > 0
@@ -80,7 +104,7 @@ function FilterDropdownButton({ filter }: { filter: FilterDropdown }) {
 
   const getDisplayText = () => {
     if (isMultiSelect) {
-      if (selectedValues.length === 0) return allOption;
+      if (selectedValues.length === 0) return noAllOption ? filter.label : allOption;
       if (selectedValues.length === 1) return selectedValues[0];
       return `${selectedValues.length} selected`;
     }
@@ -88,7 +112,7 @@ function FilterDropdownButton({ filter }: { filter: FilterDropdown }) {
   };
 
   const handleMultiSelectClick = (option: string) => {
-    if (option === allOption) {
+    if (!noAllOption && option === allOption) {
       filter.onChange([]);
       return;
     }
@@ -99,7 +123,7 @@ function FilterDropdownButton({ filter }: { filter: FilterDropdown }) {
   };
 
   const isOptionSelected = (option: string) => {
-    if (option === allOption) return selectedValues.length === 0;
+    if (!noAllOption && option === allOption) return selectedValues.length === 0;
     return selectedValues.includes(option);
   };
 
@@ -241,46 +265,46 @@ export default function DashboardHeader({
   onActionButtonClick,
   secondaryActionButtonLabel,
   onSecondaryActionButtonClick,
+  rightContent,
+  alwaysShowFilters = false,
 }: DashboardHeaderProps) {
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(alwaysShowFilters);
   const collapseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const prevFiltersRef = useRef<string>(JSON.stringify(filters.map(f => f.value)));
+  const prevFiltersRef = useRef<string>(
+    JSON.stringify(filters.map(f => isCustomFilterEntry(f) ? f.signature ?? '' : f.value))
+  );
   const isHoveringRef = useRef(false);
 
   // Check if any filter is active (not on default "All" option)
   const hasActiveFilters = filters.some(filter => {
+    if (isCustomFilterEntry(filter)) return filter.isActive ?? false;
     if (filter.multiSelect) {
       return Array.isArray(filter.value) && filter.value.length > 0;
     }
     return filter.value !== filter.options[0];
   });
 
-  // Start or restart the collapse timeout (only if no active filters).
+  // Start or restart the collapse timeout.
   // Wrapped in useCallback so the useEffects below can list it as a dep
-  // without firing on every render.
+  // without firing on every render. Applying or changing a filter counts
+  // as activity (resets the timer); only `alwaysShowFilters` suppresses it.
   const startCollapseTimeout = useCallback(() => {
     if (collapseTimeoutRef.current) {
       clearTimeout(collapseTimeoutRef.current);
     }
-    // Don't start timeout if there are active filters
-    if (hasActiveFilters) return;
+    if (alwaysShowFilters) return;
 
     collapseTimeoutRef.current = setTimeout(() => {
-      if (!isHoveringRef.current && !hasActiveFilters) {
+      if (!isHoveringRef.current && !alwaysShowFilters) {
         setFiltersExpanded(false);
       }
-    }, 30000);
-  }, [hasActiveFilters]);
+    }, 10000);
+  }, [alwaysShowFilters]);
 
-  // Auto-collapse filters after 30 seconds of inactivity (only if no active filters)
+  // Auto-collapse filters after 10 seconds of inactivity
   useEffect(() => {
-    if (filtersExpanded && !hasActiveFilters) {
+    if (filtersExpanded) {
       startCollapseTimeout();
-    }
-
-    // Clear timeout if filters become active
-    if (hasActiveFilters && collapseTimeoutRef.current) {
-      clearTimeout(collapseTimeoutRef.current);
     }
 
     return () => {
@@ -288,18 +312,19 @@ export default function DashboardHeader({
         clearTimeout(collapseTimeoutRef.current);
       }
     };
-  }, [filtersExpanded, hasActiveFilters, startCollapseTimeout]);
+  }, [filtersExpanded, startCollapseTimeout]);
 
-  // Reset timeout when any filter value changes (only if no active filters)
+  // Reset timeout whenever a filter value changes — changing a filter
+  // counts as activity, so we restart the countdown rather than cancel it.
   useEffect(() => {
-    const currentFilters = JSON.stringify(filters.map(f => f.value));
+    const currentFilters = JSON.stringify(
+      filters.map(f => isCustomFilterEntry(f) ? f.signature ?? '' : f.value)
+    );
     if (prevFiltersRef.current !== currentFilters && filtersExpanded) {
       prevFiltersRef.current = currentFilters;
-      if (!hasActiveFilters) {
-        startCollapseTimeout();
-      }
+      startCollapseTimeout();
     }
-  }, [filters, filtersExpanded, hasActiveFilters, startCollapseTimeout]);
+  }, [filters, filtersExpanded, startCollapseTimeout]);
 
   // Hover handlers for the filters container
   const handleMouseEnter = () => {
@@ -344,7 +369,7 @@ export default function DashboardHeader({
 
           {/* Filter Toggle Button */}
           <button
-            onClick={() => setFiltersExpanded(!filtersExpanded)}
+            onClick={() => { if (!alwaysShowFilters) setFiltersExpanded(!filtersExpanded); }}
             className={`relative flex items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 text-white hover:from-blue-500 hover:to-cyan-400 transition-all duration-300 overflow-hidden group/filter ${
               hasActiveFilters ? 'ring-2 ring-cyan-400/50' : ''
             } ${filtersExpanded ? 'w-0 h-0 p-0 opacity-0 -ml-2' : 'w-9 h-9 opacity-100'}`}
@@ -366,7 +391,7 @@ export default function DashboardHeader({
 
           {/* Animated Filters Container */}
           <div
-            className={`flex items-center transition-all duration-1000 ease-out whitespace-nowrap ${
+            className={`flex items-center -ml-2 transition-all duration-1000 ease-out whitespace-nowrap ${
               filtersExpanded ? 'max-w-[1000px] opacity-100 gap-2 overflow-visible' : 'max-w-0 opacity-0 gap-0 overflow-hidden'
             }`}
             style={{
@@ -375,9 +400,13 @@ export default function DashboardHeader({
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
           >
-            {filters.map((filter) => (
-              <FilterDropdownButton key={filter.id} filter={filter} />
-            ))}
+            {filters.map((filter) =>
+              isCustomFilterEntry(filter) ? (
+                <React.Fragment key={filter.id}>{filter.render()}</React.Fragment>
+              ) : (
+                <FilterDropdownButton key={filter.id} filter={filter} />
+              )
+            )}
             {onPeriodChange ? (
               <PeriodDropdown value={period} onChange={onPeriodChange} customOptions={periodOptions} />
             ) : (
@@ -389,9 +418,10 @@ export default function DashboardHeader({
             )}
           </div>
 
-          {(actionButtonLabel || secondaryActionButtonLabel || (tabs && tabs.length > 0)) && (
+          {(actionButtonLabel || secondaryActionButtonLabel || rightContent || (tabs && tabs.length > 0)) && (
             <>
               <div className="flex-1" />
+              {rightContent}
               {tabs && tabs.length > 0 && (
                 <div className="flex items-center gap-1 bg-zinc-800/60 border border-zinc-700/50 p-1 rounded-lg">
                   {tabs.map((tab) => (

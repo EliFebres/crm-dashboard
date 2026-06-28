@@ -7,7 +7,7 @@ export interface User {
   firstName: string;
   lastName: string;
   title: string;
-  department: 'ISG';
+  department: 'Default';
   team:
     | 'Portfolio Consulting Group'
     | 'Equity Specialist'
@@ -27,9 +27,18 @@ export function isReadOnlyUser(user: Pick<User, 'team'> | null | undefined): boo
   return (READ_ONLY_TEAMS as readonly string[]).includes(user.team);
 }
 
+export function canUserEditEngagement(
+  user: Pick<User, 'firstName' | 'lastName' | 'role' | 'team'> | null | undefined,
+  teamMembers: string[]
+): boolean {
+  if (!user || isReadOnlyUser(user)) return false;
+  if (user.role === 'admin') return true;
+  return teamMembers.includes(toDisplayName(user.firstName, user.lastName));
+}
+
 /**
- * Converts a first/last name pair to the display format used in TEAM_MEMBER_OFFICES
- * and in engagement team_members arrays. e.g. "Eli" + "Febres" → "Eli F."
+ * Converts a first/last name pair to the display format used in the team_members
+ * table and in engagement team_members JSON arrays. e.g. "Eli" + "Febres" → "Eli F."
  */
 export function toDisplayName(firstName: string, lastName: string): string {
   if (!lastName || lastName.length === 0) return firstName;
@@ -70,7 +79,7 @@ export function rowToUser(row: Record<string, unknown>): User {
     firstName: row.first_name as string,
     lastName: row.last_name as string,
     title: row.title as string,
-    department: (row.department as string ?? 'ISG') as 'ISG',
+    department: (row.department as string ?? 'Default') as 'Default',
     team: row.team as User['team'],
     office: row.office as User['office'],
     role: row.role as User['role'],

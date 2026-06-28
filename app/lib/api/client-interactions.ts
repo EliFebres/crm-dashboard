@@ -4,7 +4,7 @@
  * =============================================================================
  *
  * API functions for the Client Interactions Dashboard.
- * All data is served from DuckDB via Next.js Route Handlers under /api/client-interactions/.
+ * All data is served from SQLite via Next.js Route Handlers under /api/client-interactions/.
  *
  * STRUCTURE:
  * 1. TypeScript Interfaces
@@ -14,6 +14,7 @@
 import type {
   Engagement,
   EngagementLinkSummary,
+  Client,
   NoteEntry,
   DayData,
   DepartmentData,
@@ -36,19 +37,32 @@ export class ConflictError extends Error {
 // TYPESCRIPT INTERFACES
 // =============================================================================
 
+/** A single column in a multi-column sort. Order in the sortBy array is the
+ *  ORDER BY priority (first entry is the primary sort). */
+export interface SortSpec {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
 /** Filters for fetching engagements */
 export interface EngagementFilters {
   search?: string;                 // Text search across multiple fields
   teamMember?: string;             // 'All Team Members', 'Austin Office', 'Charlotte Office', or member name
   departments?: string[];          // Multi-select: ['IAG', 'Broker-Dealer', 'Institutional']
   intakeTypes?: string[];          // Multi-select: ['IRQ', 'SERF', 'GCG Ad-Hoc']
-  projectTypes?: string[];         // Multi-select: ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Other']
+  projectTypes?: string[];         // Multi-select: ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other']
   period?: string;                 // '1W', '1M', '3M', '6M', 'YTD', '1Y', 'ALL'
   status?: string;                 // 'In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'
   page?: number;                   // Pagination: page number (1-indexed)
   pageSize?: number;               // Pagination: items per page (default 50)
-  sortColumn?: string;             // Column to sort by
-  sortDirection?: 'asc' | 'desc';  // Sort direction
+  sortBy?: SortSpec[];             // Multi-column sort, applied in order
+}
+
+/** Serializes a sortBy array into repeatable URL query params: `sort=col:dir`. */
+function appendSortParams(params: URLSearchParams, sortBy: SortSpec[] | undefined): void {
+  for (const s of sortBy ?? []) {
+    params.append('sort', `${s.column}:${s.direction}`);
+  }
 }
 
 /** A single GCG internal client with their department */
@@ -147,8 +161,7 @@ export async function getDashboardData(filters: EngagementFilters = {}, signal?:
       status: filters.status,
       page: filters.page || 1,
       pageSize: filters.pageSize || 50,
-      sortColumn: filters.sortColumn,
-      sortDirection: filters.sortDirection || 'desc',
+      sortBy: filters.sortBy ?? [],
     }),
     signal,
   });
@@ -168,8 +181,7 @@ export async function getEngagements(filters: EngagementFilters = {}): Promise<E
   if (filters.search) params.set('search', filters.search);
   if (filters.teamMember) params.set('team_member', filters.teamMember);
   if (filters.status) params.set('status', filters.status);
-  if (filters.sortColumn) params.set('sort_column', filters.sortColumn);
-  if (filters.sortDirection) params.set('sort_direction', filters.sortDirection);
+  appendSortParams(params, filters.sortBy);
   filters.departments?.forEach(d => params.append('departments', d));
   filters.intakeTypes?.forEach(t => params.append('intake_types', t));
   filters.projectTypes?.forEach(t => params.append('project_types', t));
@@ -388,6 +400,23 @@ export async function deleteEngagementNote(engagementId: number, noteId: number)
 }
 
 /**
+ * Updates the project filepath for an engagement. Pass null to clear it.
+ * Endpoint: PATCH /api/client-interactions/engagements/:id/filepath
+ */
+export async function updateEngagementFilepath(id: number, filepath: string | null): Promise<Engagement> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/${id}/filepath`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filepath }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update filepath');
+  }
+  return response.json();
+}
+
+/**
  * Deletes an engagement record permanently.
  * Endpoint: DELETE /api/client-interactions/engagements/:id
  */
@@ -407,6 +436,92 @@ export async function getGcgClients(): Promise<GcgClient[]> {
   if (!response.ok) throw new Error('Failed to fetch GCG clients');
   const data = await response.json();
   return data.clients as GcgClient[];
+}
+
+// =============================================================================
+// CLIENT REGISTRY (external clients, keyed by CRN)
+// =============================================================================
+
+/** How CRNs are sourced — drives whether the form shows a CRN input. */
+export interface CrnConfigResponse {
+  autoGenerate: boolean;
+  prefix: string;
+}
+
+/** Thrown when registering/renaming a client hits a duplicate CRN or name. */
+export class ClientConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClientConflictError';
+  }
+}
+
+/**
+ * Searches the client registry by canonical name OR CRN.
+ * Endpoint: GET /api/client-interactions/clients
+ */
+export async function getClients(q?: string, limit = 50): Promise<Client[]> {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  params.set('limit', String(limit));
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch clients');
+  const data = await response.json();
+  return data.clients as Client[];
+}
+
+/**
+ * Registers a new client. In manual mode `crn` is required; in auto mode it is ignored.
+ * Endpoint: POST /api/client-interactions/clients
+ */
+export async function registerClient(name: string, crn?: string): Promise<Client> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, crn }),
+  });
+  if (response.status === 409) {
+    const data = await response.json().catch(() => ({}));
+    throw new ClientConflictError(data.error ?? 'A client with that CRN or name already exists.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to register client');
+  }
+  return response.json();
+}
+
+/**
+ * Updates a client's canonical name and/or its CRN (admin only). Changing the CRN
+ * cascades to every engagement referencing it. Pass the client's CURRENT crn in the
+ * path; supply a new `crn` in updates to change it.
+ * Endpoint: PATCH /api/client-interactions/clients/:crn
+ */
+export async function updateClient(crn: string, updates: { name?: string; crn?: string }): Promise<Client> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/${encodeURIComponent(crn)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (response.status === 409) {
+    const data = await response.json().catch(() => ({}));
+    throw new ClientConflictError(data.error ?? 'Another client already uses that name or CRN.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update client');
+  }
+  return response.json();
+}
+
+/**
+ * Returns the CRN sourcing mode so the UI knows whether to collect a CRN.
+ * Endpoint: GET /api/client-interactions/clients/config
+ */
+export async function getCrnConfig(): Promise<CrnConfigResponse> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/config`);
+  if (!response.ok) throw new Error('Failed to fetch CRN config');
+  return response.json();
 }
 
 /**

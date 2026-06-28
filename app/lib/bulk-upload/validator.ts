@@ -1,4 +1,6 @@
 import type { ParsedRow } from './parser';
+import { VALID_STATUSES as STATUS_ENUM } from '../statusHelpers';
+import { normalizeCrn, isValidCrn } from '../config/crn';
 
 export interface ValidationError {
   rowNumber: number;
@@ -20,9 +22,9 @@ export interface ValidationResult {
 
 const VALID_INTAKE_TYPES = ['IRQ', 'SERF', 'GCG Ad-Hoc'];
 const VALID_AD_HOC_CHANNELS = ['In-Person', 'Email', 'Teams'];
-const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
+const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
 const VALID_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
-const VALID_STATUSES = ['In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'];
+const VALID_STATUSES: string[] = [...STATUS_ENUM];
 const VALID_INTERNAL_CLIENT_DEPTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
 const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
 const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds'];
@@ -125,6 +127,7 @@ function normalizeProjectType(value: string): string | null {
     'discovery': 'Discovery Meeting',
     'datarequest': 'Data Request',
     'data': 'Data Request',
+    'dataupdate': 'Data Update',
     'pcr': 'PCR',
     'other': 'Other',
     'followupmaterial': 'Follow-up Material',
@@ -147,6 +150,21 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
   for (const row of rows) {
     const rowErrors: ValidationError[] = [];
     const rowWarnings: ValidationWarning[] = [];
+
+    // Client identity: a row must carry a CRN or an External Client name (the
+    // server resolves the name to an existing CRN, or registers a new client).
+    // Uniqueness/existence is enforced server-side in the bulk route.
+    const crnRaw = row.crn ? row.crn.trim() : '';
+    if (crnRaw) {
+      const norm = normalizeCrn(crnRaw);
+      if (!isValidCrn(norm)) {
+        rowErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: `"${crnRaw}" is not a valid CRN.` });
+      } else {
+        row.crn = norm;
+      }
+    } else if (!row.externalClient) {
+      rowErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: 'Provide a CRN or an External Client name.' });
+    }
 
     // Required: internalClientName
     if (!row.internalClientName) {

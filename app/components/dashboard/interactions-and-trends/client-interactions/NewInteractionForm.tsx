@@ -7,13 +7,17 @@ import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/c
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import LinkInteractionModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/LinkInteractionModal';
 import { Select } from '@/app/components/ui/Select';
-import { PortfolioHolding, EngagementLinkSummary } from '@/app/lib/types/engagements';
-import { getGcgClients, GcgClient, searchEngagementsForLink } from '@/app/lib/api/client-interactions';
+import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
+import {
+  getGcgClients, GcgClient, searchEngagementsForLink,
+  getClients, registerClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+} from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import type { TeamMember } from '@/app/lib/auth/types';
 
 export interface InteractionFormData {
-  externalClient: string | null;
+  clientCrn: string;          // CRN of the selected registered external client (required)
+  externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
   internalClientDept: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group' | '';
   intakeType: 'IRQ' | 'SERF' | 'GCG Ad-Hoc' | '';
@@ -59,9 +63,9 @@ const GCG_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Gr
 
 // Project types by intake
 const projectTypesByIntake = {
-  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'GCG Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Other'],
+  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
+  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
+  'GCG Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
 };
 
 // Format NNA for display
@@ -82,6 +86,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const { user: currentUser } = useCurrentUser();
 
   const getDefaultFormData = (): InteractionFormData => ({
+    clientCrn: '',
     externalClient: '',
     internalClient: '',
     internalClientDept: '',
@@ -106,6 +111,17 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [gcgClientsLoading, setGcgClientsLoading] = useState(false);
   const [internalClientSearch, setInternalClientSearch] = useState('');
   const [showInternalClientDropdown, setShowInternalClientDropdown] = useState(false);
+  // External client registry (keyed by CRN)
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [crnConfig, setCrnConfig] = useState<CrnConfigResponse | null>(null);
+  const [registeringClient, setRegisteringClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientCrn, setNewClientCrn] = useState('');
+  const [registerError, setRegisterError] = useState('');
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
@@ -126,6 +142,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Close the external-client registry dropdown when clicking outside.
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (externalClientRef.current && !externalClientRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch the CRN sourcing mode once the form opens (drives the register UI).
+  useEffect(() => {
+    if (!isOpen) return;
+    getCrnConfig().then(setCrnConfig).catch(() => setCrnConfig({ autoGenerate: false, prefix: '' }));
+  }, [isOpen]);
+
+  // Search the client registry (by name OR CRN), debounced.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handle = setTimeout(() => {
+      getClients(clientSearch.trim()).then(setClients).catch(() => setClients([]));
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [isOpen, clientSearch]);
 
   // Fetch team members for current user's team
   useEffect(() => {
@@ -166,6 +208,12 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       setErrors({});
       setInternalClientSearch('');
       setShowInternalClientDropdown(false);
+      setClientSearch('');
+      setShowClientDropdown(false);
+      setRegisteringClient(false);
+      setNewClientName('');
+      setNewClientCrn('');
+      setRegisterError('');
       setTickerInput('');
       setLocalNoteCount(initialNoteCount ?? 0);
       setDeleteConfirm(false);
@@ -220,11 +268,51 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.intakeType]);
 
+  // Register a brand-new external client, then select it.
+  const handleRegisterClient = async () => {
+    const name = newClientName.trim();
+    if (!name) {
+      setRegisterError('Client name is required.');
+      return;
+    }
+    const manual = !crnConfig?.autoGenerate;
+    const crn = newClientCrn.trim();
+    if (manual && !crn) {
+      setRegisterError('CRN is required.');
+      return;
+    }
+    setRegisterBusy(true);
+    setRegisterError('');
+    try {
+      const client = await registerClient(name, manual ? crn : undefined);
+      setFormData(prev => ({ ...prev, clientCrn: client.crn, externalClient: client.name }));
+      setClients(prev => (prev.some(c => c.crn === client.crn) ? prev : [client, ...prev]));
+      setRegisteringClient(false);
+      setNewClientName('');
+      setNewClientCrn('');
+      setClientSearch('');
+      setShowClientDropdown(false);
+      setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
+    } catch (err) {
+      setRegisterError(
+        err instanceof ClientConflictError ? err.message
+          : err instanceof Error ? err.message
+          : 'Failed to register client.'
+      );
+    } finally {
+      setRegisterBusy(false);
+    }
+  };
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.intakeType) {
       newErrors.intakeType = 'Intake type is required';
+    }
+
+    if (!formData.clientCrn) {
+      newErrors.externalClient = 'Client (CRN) is required';
     }
 
     if (!formData.internalClient) {
@@ -256,20 +344,14 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      const submissionData = {
-        ...formData,
-        externalClient: formData.externalClient?.trim() || null,
-      };
+      const submissionData = { ...formData };
 
       if (isEditMode && editingEngagement && onUpdate) {
         // Update existing interaction
         onUpdate(editingEngagement.id, submissionData);
       } else {
-        // Create new interaction
-        onSubmit({
-          ...submissionData,
-          nna: null, // NNA is added later, not at interaction creation
-        });
+        // Create new interaction — keep any NNA the user entered on the form
+        onSubmit(submissionData);
       }
       onClose();
     }
@@ -520,17 +602,114 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
 
               {/* Row 2: External Client + Internal Client */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="relative" ref={externalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
-                    External Client <span className="text-muted font-normal text-xs">(Optional)</span>
+                    External Client <span className="text-red-400">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={formData.externalClient || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, externalClient: e.target.value }))}
-                    placeholder="e.g., Vanguard Advisors"
-                    className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-                  />
+                  {!registeringClient ? (
+                    <>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.externalClient || clientSearch}
+                          onChange={(e) => {
+                            setClientSearch(e.target.value);
+                            setFormData(prev => ({ ...prev, clientCrn: '', externalClient: '' }));
+                            setShowClientDropdown(true);
+                          }}
+                          onFocus={() => setShowClientDropdown(true)}
+                          placeholder="Search by name or CRN..."
+                          className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                        />
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                      </div>
+                      {formData.clientCrn && (
+                        <p className="mt-1 text-xs text-muted">CRN: <span className="text-cyan-400">{formData.clientCrn}</span></p>
+                      )}
+                      {showClientDropdown && (
+                        <div className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
+                          {clients.length > 0 ? (
+                            clients.map(c => (
+                              <button
+                                key={c.crn}
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, clientCrn: c.crn, externalClient: c.name }));
+                                  setClientSearch('');
+                                  setShowClientDropdown(false);
+                                  setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
+                                }}
+                                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                                  formData.clientCrn === c.crn
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-muted hover:bg-zinc-700/50'
+                                }`}
+                              >
+                                <span className="block text-white">{c.name}</span>
+                                <span className="block text-xs text-muted">{c.crn}</span>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-3 text-sm text-muted text-center">No matching clients</div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRegisteringClient(true);
+                              setNewClientName(clientSearch.trim());
+                              setNewClientCrn('');
+                              setRegisterError('');
+                              setShowClientDropdown(false);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm text-cyan-400 hover:bg-zinc-700/50 flex items-center gap-2 border-t border-zinc-700/50"
+                          >
+                            <span className="text-muted text-base leading-none">+</span>
+                            Register new client
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-2 p-3 bg-zinc-800/40 border border-zinc-700 rounded-lg">
+                      <input
+                        type="text"
+                        value={newClientName}
+                        onChange={(e) => setNewClientName(e.target.value)}
+                        placeholder="Client name"
+                        className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                      />
+                      {crnConfig?.autoGenerate ? (
+                        <p className="text-xs text-muted">A CRN will be generated automatically.</p>
+                      ) : (
+                        <input
+                          type="text"
+                          value={newClientCrn}
+                          onChange={(e) => setNewClientCrn(e.target.value)}
+                          placeholder={`CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
+                          className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                        />
+                      )}
+                      {registerError && <p className="text-xs text-red-400">{registerError}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleRegisterClient}
+                          disabled={registerBusy}
+                          className="px-3 py-1.5 text-sm rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 transition-colors"
+                        >
+                          {registerBusy ? 'Saving…' : 'Register'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setRegisteringClient(false); setRegisterError(''); }}
+                          className="px-3 py-1.5 text-sm rounded-lg bg-zinc-700/50 text-muted hover:bg-zinc-700 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {errors.externalClient && <p className="mt-1 text-xs text-red-400">{errors.externalClient}</p>}
                 </div>
                 <div className="relative" ref={internalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">

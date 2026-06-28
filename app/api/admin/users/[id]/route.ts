@@ -84,7 +84,7 @@ export async function PATCH(
       sets.push('status = ?');
       values.push(status);
       if (status === 'active') {
-        sets.push('approved_at = now()');
+        sets.push('approved_at = CURRENT_TIMESTAMP');
         sets.push('approved_by_id = ?');
         values.push(payload.sub);
       }

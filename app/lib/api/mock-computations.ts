@@ -1,6 +1,6 @@
 /**
  * Mock data computation functions for the Client Interactions dashboard.
- * Used as a fallback when DUCKDB_DIR is not set in the environment.
+ * Used as a fallback when SQLITE_DIR is not set in the environment.
  */
 
 import type { Engagement } from '../types/engagements';
@@ -125,6 +125,7 @@ export function applyMockFilters(engagements: Engagement[], filters: EngagementF
     const s = filters.search.toLowerCase();
     filtered = filtered.filter(e =>
       (e.externalClient?.toLowerCase().includes(s) ?? false) ||
+      (e.clientCrn?.toLowerCase().includes(s) ?? false) ||
       e.internalClient.name.toLowerCase().includes(s) ||
       e.intakeType.toLowerCase().includes(s) ||
       e.type.toLowerCase().includes(s) ||
@@ -289,14 +290,32 @@ export function getMockContributionData(filters: EngagementFilters): Contributio
 export function getMockEngagementsList(filters: EngagementFilters): EngagementsResponse {
   const filtered = applyMockFilters(mockEngagements, filters);
 
+  // Resolve a sort column name to the value on an engagement. Handles nested
+  // fields (internalClient name) and the JSON-array teamMembers (first member).
+  const valueFor = (e: Engagement, column: string): string | number | boolean | undefined => {
+    switch (column) {
+      case 'internalClient': return e.internalClient.name;
+      case 'teamMembers': return e.teamMembers[0];
+      case 'portfolioLogged': return e.portfolioLogged;
+      default: return e[column as keyof Engagement] as string | number | undefined;
+    }
+  };
+
   const sorted = [...filtered];
-  if (filters.sortColumn) {
-    const dir = filters.sortDirection === 'asc' ? 1 : -1;
+  const sortBy = filters.sortBy ?? [];
+  if (sortBy.length > 0) {
     sorted.sort((a, b) => {
-      const aVal = a[filters.sortColumn as keyof Engagement];
-      const bVal = b[filters.sortColumn as keyof Engagement];
-      if (typeof aVal === 'string' && typeof bVal === 'string') return aVal.localeCompare(bVal) * dir;
-      if (typeof aVal === 'number' && typeof bVal === 'number') return (aVal - bVal) * dir;
+      for (const { column, direction } of sortBy) {
+        const dir = direction === 'asc' ? 1 : -1;
+        const aVal = valueFor(a, column);
+        const bVal = valueFor(b, column);
+        if (aVal === bVal) continue;
+        if (aVal === undefined || aVal === null) return 1;
+        if (bVal === undefined || bVal === null) return -1;
+        if (typeof aVal === 'string' && typeof bVal === 'string') return aVal.localeCompare(bVal) * dir;
+        if (typeof aVal === 'number' && typeof bVal === 'number') return (aVal - bVal) * dir;
+        if (typeof aVal === 'boolean' && typeof bVal === 'boolean') return (Number(aVal) - Number(bVal)) * dir;
+      }
       return 0;
     });
   }

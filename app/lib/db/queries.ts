@@ -1,41 +1,61 @@
 import { toDisplayDate } from './dateUtils';
 import { getPeriodStartISO } from './dateUtils';
+import { queryUsers } from './users';
 import type { Engagement } from '../types/engagements';
 import type { EngagementFilters } from '../api/client-interactions';
 
-// Team member → office mapping (mirrors app/lib/data/engagements.ts teamMemberOffices)
-const TEAM_MEMBER_OFFICES: Record<string, 'Charlotte' | 'Austin'> = {
-  'Eli F.': 'Charlotte',
-  'Sarah K.': 'Charlotte',
-  'Mike R.': 'Charlotte',
-  'Lisa M.': 'Charlotte',
-  'James T.': 'Charlotte',
-  'David L.': 'Austin',
-  'Rachel W.': 'Austin',
-  'Chris B.': 'Austin',
-  'Amanda P.': 'Austin',
-  'Kevin H.': 'Austin',
-  'Nicole S.': 'Austin',
-  'Brandon T.': 'Austin',
-};
+// Internal-only extension of EngagementFilters: when teamMember is an Office
+// pseudo-value, callers must populate this field with the live member-name list
+// (queried from the team_members table) before calling buildFilterClause.
+// See resolveOfficeMembers() below.
+export interface InternalEngagementFilters extends EngagementFilters {
+  _officeMembers?: string[];
+}
 
-const CHARLOTTE_MEMBERS = Object.entries(TEAM_MEMBER_OFFICES)
-  .filter(([, o]) => o === 'Charlotte')
-  .map(([n]) => n);
+/**
+ * Resolves an "Austin Office" / "Charlotte Office" filter to the live list of
+ * member display names. team_members lives in users.sqlite, so we can't JOIN to
+ * it from the engagements connection — caller must pre-resolve and pass the
+ * results to buildFilterClause via _officeMembers.
+ *
+ * Cross-office surfacing falls out of the OR-based match in buildFilterClause:
+ * an engagement is shown in an office's filter as long as ANY assigned team
+ * member belongs to that office.
+ */
+export async function resolveOfficeMembers(
+  filters: EngagementFilters
+): Promise<InternalEngagementFilters> {
+  if (filters.teamMember !== 'Austin Office' && filters.teamMember !== 'Charlotte Office') {
+    return filters;
+  }
+  const office = filters.teamMember === 'Austin Office' ? 'Austin' : 'Charlotte';
+  const rows = await queryUsers<{ display_name: string }>(
+    `SELECT display_name FROM team_members WHERE office = ? AND status = 'active'`,
+    [office]
+  );
+  return { ...filters, _officeMembers: rows.map(r => r.display_name) };
+}
 
-const AUSTIN_MEMBERS = Object.entries(TEAM_MEMBER_OFFICES)
-  .filter(([, o]) => o === 'Austin')
-  .map(([n]) => n);
+// Shared JOIN that resolves an engagement's external client from the registry.
+// Callers that reference client name/crn (search, sort, list, export) alias the
+// engagements table as `e` and append this so `c.name` / `c.crn` are available.
+export const CLIENT_JOIN = 'LEFT JOIN clients c ON c.crn = e.client_crn';
 
-// Allowlist for ORDER BY columns to prevent SQL injection
+// Allowlist for ORDER BY columns to prevent SQL injection.
+// `teamMembers` sorts by the first member's name since the column is a JSON array.
 export const SORT_COLUMN_MAP: Record<string, string> = {
   dateStarted: 'date_started',
   dateFinished: 'date_finished',
-  externalClient: 'external_client',
+  externalClient: 'c.name',
+  clientCrn: 'e.client_crn',
+  internalClient: 'internal_client_name',
   status: 'status',
   department: 'department',
   type: 'type',
   intakeType: 'intake_type',
+  nna: 'nna',
+  portfolioLogged: 'portfolio_logged',
+  teamMembers: `json_extract(team_members, '$[0]')`,
 };
 
 export interface ServerConstraints {
@@ -48,7 +68,7 @@ export interface ServerConstraints {
  * serverConstraints are enforced server-side and cannot be overridden by clients.
  */
 export function buildFilterClause(
-  filters: EngagementFilters,
+  filters: InternalEngagementFilters,
   tableAlias = '',
   serverConstraints: ServerConstraints = {}
 ): { whereClause: string; params: unknown[] } {
@@ -98,35 +118,47 @@ export function buildFilterClause(
     params.push(filters.status);
   }
 
-  // Team member filter: check if JSON array contains the member name(s)
-  // json_contains(col, '"Name"') checks for exact JSON string match in a JSON array
-  if (filters.teamMember && filters.teamMember !== 'All Team Members') {
-    let members: string[];
-    if (filters.teamMember === 'Charlotte Office') {
-      members = CHARLOTTE_MEMBERS;
-    } else if (filters.teamMember === 'Austin Office') {
-      members = AUSTIN_MEMBERS;
-    } else {
-      members = [filters.teamMember];
-    }
+  // Team member filter: check if the engagement's JSON team_members array contains
+  // any of the requested names. json_each() expands the JSON array into rows so
+  // EXISTS can test for an exact element match.
+  // - 'All Teams' is the cross-team aggregate scope (admin/Leadership/Guest only)
+  //   and 'All Team Members' is the no-filter default — both pass through.
+  // - 'Austin Office' / 'Charlotte Office' are pseudo-values: the caller resolves
+  //   them to a live member-name list via resolveOfficeMembers() and passes it as
+  //   _officeMembers. An engagement matches an office's filter as long as ANY
+  //   assigned team member belongs to that office, so a project staffed across
+  //   offices shows up in BOTH offices' results.
+  if (filters.teamMember && filters.teamMember !== 'All Team Members' && filters.teamMember !== 'All Teams') {
+    const isOffice = filters.teamMember === 'Charlotte Office' || filters.teamMember === 'Austin Office';
+    const members = isOffice ? (filters._officeMembers ?? []) : [filters.teamMember];
 
-    const memberConditions = members.map(() => `json_contains(${col('team_members')}, ?)`);
-    // JSON-encode the member name so it matches the JSON string value in the array
-    members.forEach(m => params.push(JSON.stringify(m)));
-    conditions.push(`(${memberConditions.join(' OR ')})`);
+    if (members.length === 0) {
+      // Office had no active members — match nothing rather than fall back to
+      // an unfiltered query.
+      conditions.push('1=0');
+    } else {
+      const memberConditions = members.map(
+        () => `EXISTS (SELECT 1 FROM json_each(${col('team_members')}) WHERE value = ?)`,
+      );
+      members.forEach(m => params.push(m));
+      conditions.push(`(${memberConditions.join(' OR ')})`);
+    }
   }
 
-  // Full-text search across key string columns
+  // Full-text search across key string columns. The external client is resolved
+  // from the registry, so callers must include CLIENT_JOIN (alias `c`) and alias
+  // engagements as `e` — searchable by canonical name AND CRN.
   if (filters.search && filters.search.trim()) {
     const s = `%${filters.search.toLowerCase()}%`;
     conditions.push(`(
-      lower(${col('external_client')}) LIKE ?
+      lower(c.name) LIKE ?
+      OR lower(${col('client_crn')}) LIKE ?
       OR lower(${col('internal_client_name')}) LIKE ?
       OR lower(${col('intake_type')}) LIKE ?
       OR lower(${col('type')}) LIKE ?
       OR lower(${col('department')}) LIKE ?
     )`);
-    params.push(s, s, s, s, s);
+    params.push(s, s, s, s, s, s);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -134,13 +166,16 @@ export function buildFilterClause(
 }
 
 /**
- * Maps a raw DuckDB row object to the typed Engagement interface.
+ * Maps a raw SQLite row object to the typed Engagement interface.
  * Parses JSON array columns and converts dates to display format.
  */
 export function rowToEngagement(row: Record<string, unknown>): Engagement {
   return {
     id: Number(row.id),
-    externalClient: (row.external_client as string | null) ?? null,
+    clientCrn: (row.client_crn as string | null) ?? '',
+    // Canonical name resolved via CLIENT_JOIN (aliased client_name); never the
+    // retired free-text external_client column.
+    externalClient: (row.client_name as string | null) ?? '',
     internalClient: {
       name: row.internal_client_name as string,
       gcgDepartment: row.internal_client_dept as 'IAG' | 'Broker-Dealer' | 'Institutional',
@@ -167,5 +202,6 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
     createdById: (row.created_by_id as string | undefined) || undefined,
     createdByName: (row.created_by_name as string | undefined) || undefined,
     linkedFromId: row.linked_from_id != null ? Number(row.linked_from_id) : null,
+    filepath: (row.filepath as string | null) ?? null,
   };
 }
