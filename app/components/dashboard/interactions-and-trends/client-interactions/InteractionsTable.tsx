@@ -217,7 +217,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     switch (intakeType) {
       case 'IRQ': return BADGE_COLORS.blue;
       case 'SERF': return BADGE_COLORS.emerald;
-      case 'GCG Ad-Hoc': return BADGE_COLORS.pink;
+      case 'Ad-Hoc': return BADGE_COLORS.pink;
       default: return BADGE_COLORS.zinc;
     }
   };
@@ -271,7 +271,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
       <td className="px-4 py-3">
         <div>
           <span className="text-sm font-medium text-zinc-200">{engagement.internalClient.name}</span>
-          <p className="text-xs text-muted">{engagement.internalClient.gcgDepartment}</p>
+          <p className="text-xs text-muted">{engagement.internalClient.clientDept}</p>
         </div>
       </td>
       <td className="px-4 py-3">

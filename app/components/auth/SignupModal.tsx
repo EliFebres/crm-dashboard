@@ -5,7 +5,7 @@ import { Eye, EyeOff, ArrowRight, CheckCircle, X } from 'lucide-react';
 import { Select } from '@/app/components/ui/Select';
 
 const TEAMS = [
-  'Portfolio Consulting Group',
+  'Default Team',
   'Equity Specialist',
   'Fixed Income Specialist',
   'Leadership',

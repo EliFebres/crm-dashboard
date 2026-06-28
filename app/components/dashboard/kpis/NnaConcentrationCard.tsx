@@ -52,7 +52,7 @@ export default function NnaConcentrationCard({ data }: { data: NnaConcentration 
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-muted font-mono w-4">#{c.rank}</span>
                   <span className="text-zinc-200 truncate">{c.clientName}</span>
-                  <span className="text-[10px] text-muted px-1.5 py-0.5 bg-zinc-800/60 rounded">{c.gcgDept}</span>
+                  <span className="text-[10px] text-muted px-1.5 py-0.5 bg-zinc-800/60 rounded">{c.clientDept}</span>
                 </div>
                 <span className="text-cyan-400 font-mono flex-shrink-0 ml-2">{formatCurrency(c.nna)}</span>
               </div>

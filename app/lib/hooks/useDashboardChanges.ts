@@ -22,7 +22,7 @@ export type EngagementField =
   | 'dateFinished'
   | 'teamMembers';
 
-export type MetricKey = 'Client Projects' | 'GCG Ad-Hoc' | 'In Progress' | 'NNA';
+export type MetricKey = 'Client Projects' | 'Ad-Hoc' | 'In Progress' | 'NNA';
 
 export interface DashboardChanges {
   newRowIds: Map<number, ChangeFlash>;
@@ -140,7 +140,7 @@ function computeDiff(
   // Metrics
   const metricDiffs: [MetricKey, number, number][] = [
     ['Client Projects', prev.metrics.clientProjects.count, next.metrics.clientProjects.count],
-    ['GCG Ad-Hoc', prev.metrics.gcgAdHoc.count, next.metrics.gcgAdHoc.count],
+    ['Ad-Hoc', prev.metrics.adHoc.count, next.metrics.adHoc.count],
     ['In Progress', prev.metrics.inProgress.count, next.metrics.inProgress.count],
     ['NNA', prev.metrics.nna.total, next.metrics.nna.total],
   ];

@@ -6,7 +6,7 @@ import type { TeamMember, User } from '@/app/lib/auth/types';
 import { Select } from '@/app/components/ui/Select';
 
 const TEAMS: User['team'][] = [
-  'Portfolio Consulting Group',
+  'Default Team',
   'Equity Specialist',
   'Fixed Income Specialist',
   'Leadership',
@@ -74,7 +74,7 @@ interface AddModalProps {
 function AddModal({ onClose, onAdded }: AddModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [team, setTeam] = useState<User['team']>('Portfolio Consulting Group');
+  const [team, setTeam] = useState<User['team']>('Default Team');
   const [office, setOffice] = useState<User['office']>('Austin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

@@ -26,8 +26,8 @@ export const STATIC_FILTER_OPTIONS: FilterOptions = {
   teamMemberGroups: [
     { label: 'Office', options: ['Austin Office', 'Charlotte Office'] },
   ],
-  departments: ['Broker-Dealer', 'IAG', 'Institutional', 'Retirement Group'],
-  intakeTypes: ['IRQ', 'SERF', 'GCG Ad-Hoc'],
+  departments: ['Brokerage', 'Advisory', 'Institutional', 'Retirement'],
+  intakeTypes: ['IRQ', 'SERF', 'Ad-Hoc'],
   projectTypes: ['Data Request', 'Data Update', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
   statuses: [...VALID_STATUSES],
 };
@@ -63,7 +63,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
 
   // ---- Fire all 4 queries in parallel — none depends on another's result ----
   const [projectRows, prevRows, inProgressRows, sparklineRows] = await Promise.all([
-    // Current period: client projects (IRQ/SERF non-PCR) + GCG Ad-Hoc
+    // Current period: client projects (IRQ/SERF non-PCR) + Ad-Hoc
     query<Record<string, unknown>>(`
       SELECT
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS project_count,
@@ -72,10 +72,10 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS eligible_count,
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR'
                            AND portfolio_logged = TRUE)                            AS portfolios_logged,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')                        AS adhoc_count,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc' AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc' AND ad_hoc_channel = 'Email')     AS adhoc_email,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc' AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                        AS adhoc_count,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Email')     AS adhoc_email,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
         COALESCE(SUM(nna), 0)                                                     AS total_nna,
         COUNT(*) FILTER (WHERE nna > 0)                                           AS nna_project_count,
         COUNT(*) FILTER (WHERE nna > 0 AND nna < 50000000)                        AS nna_tier1,
@@ -87,7 +87,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
     query<Record<string, unknown>>(`
       SELECT
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR') AS prev_projects,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')                       AS prev_adhoc,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                       AS prev_adhoc,
         COALESCE(SUM(nna), 0)                                                    AS prev_nna
       FROM engagements e ${CLIENT_JOIN} ${prevAndClause}
     `, prevParams),
@@ -176,7 +176,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         portfoliosPercent: eligibleCount > 0 ? Math.round((portfoliosLogged / eligibleCount) * 100) : 0,
       },
     },
-    gcgAdHoc: {
+    adHoc: {
       count: adhocCount,
       changePercent: adhocChangePercent,
       periodLabel: prevDates.label,
@@ -221,17 +221,17 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
   `, params);
 
   const DEPT_COLORS: Record<string, string> = {
-    IAG: '#a5f3fc',
-    'Broker-Dealer': '#22d3ee',
+    Advisory: '#a5f3fc',
+    'Brokerage': '#22d3ee',
     Institutional: '#0e7490',
-    'Retirement Group': '#67e8f9',
+    'Retirement': '#67e8f9',
   };
 
   const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
   const safeTotal = total || 1;
 
   // Ensure all three departments appear even if count is 0
-  const deptMap: Record<string, number> = { IAG: 0, 'Broker-Dealer': 0, Institutional: 0, 'Retirement Group': 0 };
+  const deptMap: Record<string, number> = { Advisory: 0, 'Brokerage': 0, Institutional: 0, 'Retirement': 0 };
   rows.forEach(r => {
     const dept = r.dept as string;
     deptMap[dept] = Number(r.cnt);
@@ -271,8 +271,8 @@ export async function computeContributionData(filters: EngagementFilters, server
   const rows = await query<Record<string, unknown>>(`
     SELECT
       CAST(date_finished AS VARCHAR) AS finish_date,
-      COUNT(*) FILTER (WHERE intake_type != 'GCG Ad-Hoc') AS project_count,
-      COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')  AS ad_hoc_count
+      COUNT(*) FILTER (WHERE intake_type != 'Ad-Hoc') AS project_count,
+      COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')  AS ad_hoc_count
     FROM engagements e ${CLIENT_JOIN} ${dateFilter}
     GROUP BY CAST(date_finished AS VARCHAR)
     ORDER BY finish_date

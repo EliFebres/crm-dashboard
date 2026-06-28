@@ -7,21 +7,21 @@ import ScopeSelector, { KPI_DELIVERY_TEAMS } from '@/app/components/dashboard/kp
 import { useCurrentUser } from '@/app/lib/auth/context';
 import HeroKPICards from '@/app/components/dashboard/kpis/HeroKPICards';
 import JourneyExplorer from '@/app/components/dashboard/kpis/JourneyExplorer';
-import GcgDeptChart from '@/app/components/dashboard/kpis/GcgDeptChart';
+import ClientDeptChart from '@/app/components/dashboard/kpis/ClientDeptChart';
 import NnaConcentrationCard from '@/app/components/dashboard/kpis/NnaConcentrationCard';
 import StaleEngagementsTable from '@/app/components/dashboard/kpis/StaleEngagementsTable';
 import DormantClientsTable from '@/app/components/dashboard/kpis/DormantClientsTable';
 import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
 
-const GCG_DEPT_OPTIONS = ['All Departments', 'IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
-const INTAKE_OPTIONS = ['All Intake Types', 'IRQ', 'SERF', 'GCG Ad-Hoc'];
+const CLIENT_DEPT_OPTIONS = ['All Departments', 'Advisory', 'Brokerage', 'Institutional', 'Retirement'];
+const INTAKE_OPTIONS = ['All Intake Types', 'IRQ', 'SERF', 'Ad-Hoc'];
 
 export default function KpiDashboard() {
   const { user, isLoading: authLoading } = useCurrentUser();
 
   const [scope, setScope] = useState<KpiScope>('all');
   const [period, setPeriod] = useState('1Y');
-  const [gcgDepts, setGcgDepts] = useState<string[]>([]);
+  const [clientDepts, setClientDepts] = useState<string[]>([]);
   const [intakeTypes, setIntakeTypes] = useState<string[]>([]);
   const [staleThreshold, setStaleThreshold] = useState('3w');
 
@@ -50,7 +50,7 @@ export default function KpiDashboard() {
       setIsLoading(true);
       try {
         const result = await getKpiDashboardData(
-          { scope, period, gcgDepts, intakeTypes, staleThreshold },
+          { scope, period, clientDepts, intakeTypes, staleThreshold },
           controller.signal
         );
         setData(result);
@@ -66,7 +66,7 @@ export default function KpiDashboard() {
       clearTimeout(id);
       controller.abort();
     };
-  }, [scope, period, gcgDepts, intakeTypes, staleThreshold, authLoading]);
+  }, [scope, period, clientDepts, intakeTypes, staleThreshold, authLoading]);
 
   const subtitle = data?.scope.kind === 'team'
     ? `Team · ${data.scope.team}`
@@ -86,12 +86,12 @@ export default function KpiDashboard() {
         periodOptions={['1M', '3M', '6M', 'YTD', '1Y', 'ALL']}
         filters={[
           {
-            id: 'gcg-dept',
+            id: 'client-dept',
             icon: Building2,
-            label: 'GCG Department',
-            options: GCG_DEPT_OPTIONS,
-            value: gcgDepts,
-            onChange: (v) => setGcgDepts(Array.isArray(v) ? v : []),
+            label: 'Client Department',
+            options: CLIENT_DEPT_OPTIONS,
+            value: clientDepts,
+            onChange: (v) => setClientDepts(Array.isArray(v) ? v : []),
             multiSelect: true,
           },
           {
@@ -124,7 +124,7 @@ export default function KpiDashboard() {
             <HeroKPICards heroKpis={data.heroKpis} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <GcgDeptChart data={data.gcgDepts} />
+              <ClientDeptChart data={data.clientDepts} />
               <NnaConcentrationCard data={data.nnaConcentration} />
             </div>
 

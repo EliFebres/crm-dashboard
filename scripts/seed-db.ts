@@ -76,7 +76,7 @@ async function main() {
           e.id,
           e.clientCrn,
           e.internalClient.name,
-          e.internalClient.gcgDepartment,
+          e.internalClient.clientDept,
           e.intakeType,
           e.adHocChannel ?? null,
           e.type,
@@ -90,7 +90,7 @@ async function main() {
           e.nna ?? null,
           e.notes ?? null,
           e.tickersMentioned ? JSON.stringify(e.tickersMentioned) : null,
-          'Portfolio Consulting Group',
+          'Default Team',
         ]
       );
       inserted++;

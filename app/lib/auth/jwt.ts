@@ -8,7 +8,7 @@ export interface JWTPayload {
   role: 'user' | 'admin';
   status: 'pending' | 'active' | 'inactive';
   team:
-    | 'Portfolio Consulting Group'
+    | 'Default Team'
     | 'Equity Specialist'
     | 'Fixed Income Specialist'
     | 'Leadership'

@@ -80,8 +80,8 @@ export async function GET() {
     }
   };
 
-  addValidation('D', '"IAG,Broker-Dealer,Institutional"');
-  addValidation('E', '"IRQ,SERF,GCG Ad-Hoc"');
+  addValidation('D', '"Advisory,Brokerage,Institutional"');
+  addValidation('E', '"IRQ,SERF,Ad-Hoc"');
   addValidation('F', '"In-Person,Email,Teams"');
   addValidation('G', '"Meeting,Discovery Meeting,Data Request,Data Update,PCR,Other"');
   addValidation('K', '"In Progress,Awaiting Meeting,Follow Up,Completed"');
@@ -99,7 +99,7 @@ export async function GET() {
       crn: 'CRN-000001',
       externalClient: 'Acme Pension Fund',
       internalClientName: 'Sarah K.',
-      internalClientDept: 'IAG',
+      internalClientDept: 'Advisory',
       intakeType: 'IRQ',
       adHocChannel: '',
       type: 'Meeting',
@@ -118,7 +118,7 @@ export async function GET() {
       crn: 'CRN-000002',
       externalClient: 'BlueStar Wealth',
       internalClientName: 'David L.',
-      internalClientDept: 'Broker-Dealer',
+      internalClientDept: 'Brokerage',
       intakeType: 'SERF',
       adHocChannel: '',
       type: 'Data Request',
@@ -138,7 +138,7 @@ export async function GET() {
       externalClient: 'Summit Capital Group',
       internalClientName: 'Chris B.',
       internalClientDept: 'Institutional',
-      intakeType: 'GCG Ad-Hoc',
+      intakeType: 'Ad-Hoc',
       adHocChannel: 'Teams',
       type: 'Meeting',
       teamMembers: 'Chris B., Amanda P.',
@@ -178,9 +178,9 @@ export async function GET() {
     ['CRN', 'Client Reference Number — the unique ID of the external client. Provide an existing CRN, or leave blank to look up/register by External Client name (auto-generate mode assigns one).'],
     ['External Client', 'Required. Name of the external client/fund. Used to register a new client when no CRN is given.'],
     ['Internal Client Name', 'Required. Name of the internal contact (e.g. "Sarah K.")'],
-    ['Internal Client Dept', 'Required. IAG | Broker-Dealer | Institutional'],
-    ['Intake Type', 'Required. IRQ | SERF | GCG Ad-Hoc'],
-    ['Ad-Hoc Channel', 'Required only for GCG Ad-Hoc rows. In-Person | Email | Teams'],
+    ['Internal Client Dept', 'Required. Advisory | Brokerage | Institutional'],
+    ['Intake Type', 'Required. IRQ | SERF | Ad-Hoc'],
+    ['Ad-Hoc Channel', 'Required only for Ad-Hoc rows. In-Person | Email | Teams'],
     ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | Data Update | PCR | Other'],
     ['Team Members', 'Optional. Comma-separated names, e.g. "Eli F., Sarah K."'],
     ['Date Started', 'Required. Format: YYYY-MM-DD or M/D/YYYY'],
@@ -188,7 +188,7 @@ export async function GET() {
     ['Status', 'Required. In Progress | Awaiting Meeting | Follow Up | Completed'],
     ['NNA ($M)', 'Optional. Net New Assets in millions. "120" = $120M.'],
     ['Notes', 'Optional. Human-readable notes text.'],
-    ['Tickers Mentioned', 'Optional. Comma-separated tickers (GCG Ad-Hoc). E.g. "FMAC, VTI"'],
+    ['Tickers Mentioned', 'Optional. Comma-separated tickers (Ad-Hoc). E.g. "FMAC, VTI"'],
     ['Portfolio Logged', 'Yes or No. Whether a client portfolio was logged for this engagement.'],
     ['Portfolio', 'Optional. JSON array of holdings. Format: [{"identifier":"FMAC","constituentType":"Security","assetClass":"Equity","weight":0.35}]'],
     ['Notes (JSON)', 'Optional. JSON array of notes with metadata. Format: [{"text":"...","author":"Eli F.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]'],

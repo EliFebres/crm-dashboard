@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { logActivity } from '@/app/lib/activity/log';
 
 const VALID_TEAMS: User['team'][] = [
-  'Portfolio Consulting Group',
+  'Default Team',
   'Equity Specialist',
   'Fixed Income Specialist',
   'Leadership',

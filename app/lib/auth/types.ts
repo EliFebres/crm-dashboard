@@ -9,7 +9,7 @@ export interface User {
   title: string;
   department: 'Default';
   team:
-    | 'Portfolio Consulting Group'
+    | 'Default Team'
     | 'Equity Specialist'
     | 'Fixed Income Specialist'
     | 'Leadership'

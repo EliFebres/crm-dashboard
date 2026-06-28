@@ -97,7 +97,7 @@ export default function StaleEngagementsTable({ data, staleThreshold, onStaleThr
                 <tr key={r.id} className="border-b border-zinc-800/50 hover:bg-white/[0.02] transition-colors">
                   <td className="py-2 pr-2">
                     <div className="text-zinc-200 truncate max-w-[200px]">{r.clientName}</div>
-                    <div className="text-[10px] text-muted">{r.gcgDept}</div>
+                    <div className="text-[10px] text-muted">{r.clientDept}</div>
                   </td>
                   <td className="py-2 pr-2 text-muted text-xs">{r.type}</td>
                   <td className="py-2 pr-2 text-xs text-zinc-200">{r.status}</td>

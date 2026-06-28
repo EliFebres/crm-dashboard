@@ -18,7 +18,7 @@ export type KpiScope = 'all' | `team:${string}`;
 export interface KpiFilters {
   scope: KpiScope;
   period: string;
-  gcgDepts?: string[];
+  clientDepts?: string[];
   intakeTypes?: string[];
   /** Stale threshold key (see STALE_THRESHOLDS). Defaults server-side to '3m'. */
   staleThreshold?: string;
@@ -77,7 +77,7 @@ export interface JourneyTemplate {
   completionRate: number;
 }
 
-export interface GcgDeptRow {
+export interface ClientDeptRow {
   dept: string;
   interactions: number;
   nna: number;
@@ -87,7 +87,7 @@ export interface GcgDeptRow {
 export interface NnaConcentrationPoint {
   rank: number;
   clientName: string;
-  gcgDept: string;
+  clientDept: string;
   nna: number;
   cumulativeShare: number;
 }
@@ -101,7 +101,7 @@ export interface NnaConcentration {
 
 export interface StaleEngagement {
   id: number;
-  gcgDept: string;
+  clientDept: string;
   clientName: string;
   type: string;
   status: string;
@@ -111,7 +111,7 @@ export interface StaleEngagement {
 
 export interface DormantClient {
   clientName: string;
-  gcgDept: string;
+  clientDept: string;
   historicalCount: number;
   lastEngagedDate: string;
   daysSinceLast: number;
@@ -123,7 +123,7 @@ export interface KpiDashboardData {
   heroKpis: HeroKpis;
   journeySankey: JourneySankeyData;
   journeyTemplates: JourneyTemplate[];
-  gcgDepts: GcgDeptRow[];
+  clientDepts: ClientDeptRow[];
   nnaConcentration: NnaConcentration;
   staleEngagements: StaleEngagement[];
   dormantClients: DormantClient[];
@@ -143,7 +143,7 @@ export async function getKpiDashboardData(
     body: JSON.stringify({
       scope: filters.scope,
       period: filters.period,
-      gcgDepts: filters.gcgDepts ?? [],
+      clientDepts: filters.clientDepts ?? [],
       intakeTypes: filters.intakeTypes ?? [],
       staleThreshold: filters.staleThreshold,
     }),

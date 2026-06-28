@@ -9,7 +9,7 @@ import LinkInteractionModal from '@/app/components/dashboard/interactions-and-tr
 import { Select } from '@/app/components/ui/Select';
 import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
 import {
-  getGcgClients, GcgClient, searchEngagementsForLink,
+  getInternalClients, InternalClientOption, searchEngagementsForLink,
   getClients, registerClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
@@ -19,8 +19,8 @@ export interface InteractionFormData {
   clientCrn: string;          // CRN of the selected registered external client (required)
   externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
-  internalClientDept: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group' | '';
-  intakeType: 'IRQ' | 'SERF' | 'GCG Ad-Hoc' | '';
+  internalClientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement' | '';
+  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc' | '';
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
   teamMembers: string[];
@@ -31,7 +31,7 @@ export interface InteractionFormData {
   portfolioLogged: boolean;
   portfolio?: PortfolioHolding[];
   nna: number | null;
-  tickersMentioned?: string[]; // Only for GCG Ad-Hoc - tickers discussed during interaction
+  tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
   linkedFromId?: number | null; // Parent engagement this one is the result of (funnel KPIs)
   linkedFromPreview?: EngagementLinkSummary | null; // Cached preview so we can render the chip without re-fetching
 }
@@ -58,14 +58,14 @@ interface NewInteractionFormProps {
   onBulkUploadClick?: () => void;
 }
 
-const GCG_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'] as const;
+const CLIENT_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'] as const;
 
 
 // Project types by intake
 const projectTypesByIntake = {
   'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
   'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'GCG Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
+  'Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
 };
 
 // Format NNA for display
@@ -107,8 +107,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [formData, setFormData] = useState<InteractionFormData>(getDefaultFormData());
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [gcgClients, setGcgClients] = useState<GcgClient[]>([]);
-  const [gcgClientsLoading, setGcgClientsLoading] = useState(false);
+  const [internalClients, setInternalClients] = useState<InternalClientOption[]>([]);
+  const [internalClientsLoading, setInternalClientsLoading] = useState(false);
   const [internalClientSearch, setInternalClientSearch] = useState('');
   const [showInternalClientDropdown, setShowInternalClientDropdown] = useState(false);
   // External client registry (keyed by CRN)
@@ -185,14 +185,14 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       .catch(() => setTeamMembersByOffice({}));
   }, [currentUser]);
 
-  // Fetch GCG clients fresh each time the form opens
+  // Fetch internal clients fresh each time the form opens
   useEffect(() => {
     if (!isOpen) return;
-    setGcgClientsLoading(true);
-    getGcgClients()
-      .then(setGcgClients)
-      .catch(() => setGcgClients([]))
-      .finally(() => setGcgClientsLoading(false));
+    setInternalClientsLoading(true);
+    getInternalClients()
+      .then(setInternalClients)
+      .catch(() => setInternalClients([]))
+      .finally(() => setInternalClientsLoading(false));
   }, [isOpen]);
 
   // Reset form when opened (or populate with editing data)
@@ -241,19 +241,19 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const trimmedSearch = internalClientSearch.trim();
   const filteredClientGroups = useMemo(() => {
     const filtered = trimmedSearch
-      ? gcgClients.filter(c => c.name.toLowerCase().includes(trimmedSearch.toLowerCase()))
-      : gcgClients;
+      ? internalClients.filter(c => c.name.toLowerCase().includes(trimmedSearch.toLowerCase()))
+      : internalClients;
     const groups: Record<string, string[]> = {};
     filtered.forEach(c => {
       if (!groups[c.dept]) groups[c.dept] = [];
       groups[c.dept].push(c.name);
     });
     return Object.entries(groups);
-  }, [gcgClients, trimmedSearch]);
+  }, [internalClients, trimmedSearch]);
 
   // True when the typed name doesn't match any existing client exactly
   const isNewClient = trimmedSearch.length > 0 &&
-    !gcgClients.some(c => c.name.toLowerCase() === trimmedSearch.toLowerCase());
+    !internalClients.some(c => c.name.toLowerCase() === trimmedSearch.toLowerCase());
 
   // Get available project types based on intake type
   const availableProjectTypes = formData.intakeType
@@ -333,8 +333,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       newErrors.dateStarted = 'Start date is required';
     }
 
-    if (formData.intakeType === 'GCG Ad-Hoc' && !formData.adHocChannel) {
-      newErrors.adHocChannel = 'Channel is required for GCG Ad-Hoc';
+    if (formData.intakeType === 'Ad-Hoc' && !formData.adHocChannel) {
+      newErrors.adHocChannel = 'Channel is required for Ad-Hoc';
     }
 
     setErrors(newErrors);
@@ -450,7 +450,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6 space-y-4">
               {/* Row 1: Intake Type + Project Type + Interaction Type for Ad-Hoc */}
-              <div className={`grid gap-4 ${formData.intakeType === 'GCG Ad-Hoc' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-4 ${formData.intakeType === 'Ad-Hoc' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Intake Type <span className="text-red-400">*</span>
@@ -458,13 +458,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   <div className="relative">
                     <select
                       value={formData.intakeType}
-                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value as 'IRQ' | 'SERF' | 'GCG Ad-Hoc' | '', adHocChannel: undefined }))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value as 'IRQ' | 'SERF' | 'Ad-Hoc' | '', adHocChannel: undefined }))}
                       className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50 transition-colors appearance-none cursor-pointer"
                     >
                       <option value="" className="bg-zinc-800">Select...</option>
                       <option value="IRQ" className="bg-zinc-800">IRQ</option>
                       <option value="SERF" className="bg-zinc-800">SERF</option>
-                      <option value="GCG Ad-Hoc" className="bg-zinc-800">GCG Ad-Hoc</option>
+                      <option value="Ad-Hoc" className="bg-zinc-800">Ad-Hoc</option>
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                   </div>
@@ -489,7 +489,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   </div>
                   {errors.projectType && <p className="mt-1 text-xs text-red-400">{errors.projectType}</p>}
                 </div>
-                {formData.intakeType === 'GCG Ad-Hoc' && (
+                {formData.intakeType === 'Ad-Hoc' && (
                   <div>
                     <label className="block text-sm font-medium text-muted mb-1.5">
                       Interaction Type <span className="text-red-400">*</span>
@@ -564,8 +564,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                 )}
               </div>
 
-              {/* Tickers Mentioned - Only for GCG Ad-Hoc */}
-              {formData.intakeType === 'GCG Ad-Hoc' && (
+              {/* Tickers Mentioned - Only for Ad-Hoc */}
+              {formData.intakeType === 'Ad-Hoc' && (
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Tickers Mentioned <span className="text-muted font-normal text-xs">(Optional - for Ticker Trends)</span>
@@ -713,7 +713,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                 </div>
                 <div className="relative" ref={internalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
-                    Internal Client (GCG) <span className="text-red-400">*</span>
+                    Internal Client <span className="text-red-400">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -725,13 +725,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         setShowInternalClientDropdown(true);
                       }}
                       onFocus={() => setShowInternalClientDropdown(true)}
-                      placeholder={gcgClientsLoading ? 'Loading...' : 'Search or add a client...'}
+                      placeholder={internalClientsLoading ? 'Loading...' : 'Search or add a client...'}
                       className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
                     />
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                   </div>
                   {/* Dropdown */}
-                  {showInternalClientDropdown && !gcgClientsLoading && (
+                  {showInternalClientDropdown && !internalClientsLoading && (
                     <div className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
                       {filteredClientGroups.length > 0 ? (
                         filteredClientGroups.map(([dept, names]) => (
@@ -744,8 +744,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 key={name}
                                 type="button"
                                 onClick={() => {
-                                  const client = gcgClients.find(c => c.name === name)!;
-                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept as 'IAG' | 'Broker-Dealer' | 'Institutional' }));
+                                  const client = internalClients.find(c => c.name === name)!;
+                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept as 'Advisory' | 'Brokerage' | 'Institutional' }));
                                   setInternalClientSearch('');
                                   setShowInternalClientDropdown(false);
                                 }}
@@ -777,7 +777,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                           className="w-full px-3 py-2 text-left text-sm text-cyan-400 hover:bg-zinc-700/50 flex items-center gap-2 border-t border-zinc-700/50"
                         >
                           <span className="text-muted text-base leading-none">+</span>
-                          Add &quot;{trimmedSearch}&quot; as new GCG client
+                          Add &quot;{trimmedSearch}&quot; as new internal client
                         </button>
                       )}
                     </div>
@@ -806,7 +806,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         <Select
                           value={formData.internalClientDept}
                           onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v as typeof prev.internalClientDept }))}
-                          options={GCG_DEPARTMENTS}
+                          options={CLIENT_DEPARTMENTS}
                           placeholder="Select department..."
                         />
                       </div>

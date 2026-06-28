@@ -2,7 +2,7 @@
 // Used for mock data (when SQLITE_DIR is not set) and by scripts/seed-db.ts
 
 
-import type { Engagement, Client, DayData, GCGAdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';
+import type { Engagement, Client, DayData, AdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';
 
 // Sample tickers for portfolio generation
 const sampleTickers = [
@@ -57,10 +57,10 @@ function generatePortfolio(seed: number): PortfolioHolding[] {
   return holdings;
 }
 
-// GCG Ad-Hoc interaction channels
-const adHocChannels: GCGAdHocChannel[] = ['In-Person', 'Email', 'Teams'];
+// Ad-Hoc interaction channels
+const adHocChannels: AdHocChannel[] = ['In-Person', 'Email', 'Teams'];
 
-// Sample tickers mentioned in GCG Ad-Hoc conversations (mix of firm funds, competitors, and popular ETFs)
+// Sample tickers mentioned in Ad-Hoc conversations (mix of firm funds, competitors, and popular ETFs)
 const conversationTickers = [
   // Firm funds
   'FMAC', 'FMAS', 'FMAT', 'FMAX', 'FMCF', 'FMEM', 'FMEV', 'FMIC', 'FMIV', 'FMLV', 'FMUV', 'FMSV',
@@ -111,23 +111,23 @@ const sampleNotes = [
   'Addressed compliance questions regarding trading restrictions.',
 ];
 
-// Internal client (relationship owner/salesperson) roster mapped to GCG departments
+// Internal client (relationship owner/salesperson) roster mapped to client departments
 const internalClients = {
-  // IAG Team
-  'Jennifer Martinez': { name: 'Jennifer Martinez', gcgDepartment: 'IAG' as const },
-  'Robert Chen': { name: 'Robert Chen', gcgDepartment: 'IAG' as const },
-  'Amanda Foster': { name: 'Amanda Foster', gcgDepartment: 'IAG' as const },
-  // Broker-Dealer Team
-  'Michael Thompson': { name: 'Michael Thompson', gcgDepartment: 'Broker-Dealer' as const },
-  'Jessica Williams': { name: 'Jessica Williams', gcgDepartment: 'Broker-Dealer' as const },
-  'Daniel Park': { name: 'Daniel Park', gcgDepartment: 'Broker-Dealer' as const },
+  // Advisory Team
+  'Jennifer Martinez': { name: 'Jennifer Martinez', clientDept: 'Advisory' as const },
+  'Robert Chen': { name: 'Robert Chen', clientDept: 'Advisory' as const },
+  'Amanda Foster': { name: 'Amanda Foster', clientDept: 'Advisory' as const },
+  // Brokerage Team
+  'Michael Thompson': { name: 'Michael Thompson', clientDept: 'Brokerage' as const },
+  'Jessica Williams': { name: 'Jessica Williams', clientDept: 'Brokerage' as const },
+  'Daniel Park': { name: 'Daniel Park', clientDept: 'Brokerage' as const },
   // Institutional Team
-  'Christopher Lee': { name: 'Christopher Lee', gcgDepartment: 'Institutional' as const },
-  'Rachel Goldman': { name: 'Rachel Goldman', gcgDepartment: 'Institutional' as const },
-  'Andrew Mitchell': { name: 'Andrew Mitchell', gcgDepartment: 'Institutional' as const },
-  // Retirement Group Team
-  'Patricia Evans': { name: 'Patricia Evans', gcgDepartment: 'Retirement Group' as const },
-  'Steven Nguyen': { name: 'Steven Nguyen', gcgDepartment: 'Retirement Group' as const },
+  'Christopher Lee': { name: 'Christopher Lee', clientDept: 'Institutional' as const },
+  'Rachel Goldman': { name: 'Rachel Goldman', clientDept: 'Institutional' as const },
+  'Andrew Mitchell': { name: 'Andrew Mitchell', clientDept: 'Institutional' as const },
+  // Retirement Team
+  'Patricia Evans': { name: 'Patricia Evans', clientDept: 'Retirement' as const },
+  'Steven Nguyen': { name: 'Steven Nguyen', clientDept: 'Retirement' as const },
 };
 
 // External client companies for dummy data
@@ -170,7 +170,7 @@ export const teamMemberOffices: Record<string, 'Charlotte' | 'Austin'> = {
 const teamMembers = Object.keys(teamMemberOffices);
 const internalClientKeys = Object.keys(internalClients) as (keyof typeof internalClients)[];
 const projectTypes = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'];
-const adHocProjectTypes = ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other']; // Project types specific to GCG Ad-Hoc
+const adHocProjectTypes = ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other']; // Project types specific to Ad-Hoc
 
 // Seeded random for consistent data generation
 function seededRandom(seed: number): number {
@@ -178,34 +178,34 @@ function seededRandom(seed: number): number {
   return x - Math.floor(x);
 }
 
-// Weighted department selection: IAG 50%, Broker-Dealer 30%, Institutional 11%, Retirement Group 9%
-function getWeightedDepartment(seed: number): 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group' {
+// Weighted department selection: Advisory 50%, Brokerage 30%, Institutional 11%, Retirement 9%
+function getWeightedDepartment(seed: number): 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement' {
   const rand = seededRandom(seed);
-  if (rand < 0.50) return 'IAG';
-  if (rand < 0.80) return 'Broker-Dealer'; // 0.50 + 0.30 = 0.80
+  if (rand < 0.50) return 'Advisory';
+  if (rand < 0.80) return 'Brokerage'; // 0.50 + 0.30 = 0.80
   if (rand < 0.91) return 'Institutional'; // 0.80 + 0.11 = 0.91
-  return 'Retirement Group';
+  return 'Retirement';
 }
 
 // Get internal client from a specific department
-function getInternalClientByDepartment(dept: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group', seed: number): typeof internalClients[keyof typeof internalClients] {
-  const clientsByDept = internalClientKeys.filter(key => internalClients[key].gcgDepartment === dept);
+function getInternalClientByDepartment(dept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement', seed: number): typeof internalClients[keyof typeof internalClients] {
+  const clientsByDept = internalClientKeys.filter(key => internalClients[key].clientDept === dept);
   const selectedKey = clientsByDept[Math.floor(seededRandom(seed) * clientsByDept.length)];
   return internalClients[selectedKey];
 }
 
 // Generate NNA (Net New Assets) value based on department
-// IAG: averages ~$20M, Broker-Dealer/Institutional: usually ~$100M, rare $1B (whales)
-function generateNNA(dept: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group', seed: number): number {
+// Advisory: averages ~$20M, Brokerage/Institutional: usually ~$100M, rare $1B (whales)
+function generateNNA(dept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement', seed: number): number {
   const rand = seededRandom(seed);
 
-  if (dept === 'IAG') {
-    // IAG: $5M to $50M range, averaging around $20M
+  if (dept === 'Advisory') {
+    // Advisory: $5M to $50M range, averaging around $20M
     const base = 5_000_000;
     const variance = rand * 45_000_000; // 0-45M variance
     return Math.round((base + variance) / 100_000) * 100_000; // Round to nearest 100k
   } else {
-    // Broker-Dealer and Institutional: usually ~$100M, rare $1B whales
+    // Brokerage and Institutional: usually ~$100M, rare $1B whales
     const isWhale = seededRandom(seed + 100) < 0.05; // 5% chance of whale
     if (isWhale) {
       // Whale: $500M to $1.5B
@@ -259,7 +259,7 @@ function generateEngagements(): Engagement[] {
     const isSlowWeek = slowWeeks.includes(weekNum % 52);
     const weekSeed = weekNum * 100;
 
-    // GCG Ad-Hoc: 2-3 per day normally, 0-1 during slow weeks
+    // Ad-Hoc: 2-3 per day normally, 0-1 during slow weeks
     const baseAdHoc = isSlowWeek ? 0.5 : 2.5;
     const adHocVariance = seededRandom(weekSeed + currentDate.getDate()) - 0.5;
     const adHocToday = Math.max(0, Math.round(baseAdHoc + adHocVariance));
@@ -271,7 +271,7 @@ function generateEngagements(): Engagement[] {
 
     const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-    // Generate GCG Ad-Hoc interactions for today
+    // Generate Ad-Hoc interactions for today
     for (let i = 0; i < adHocToday; i++) {
       const seed = id * 17;
       const dept = getWeightedDepartment(seed);
@@ -292,17 +292,17 @@ function generateEngagements(): Engagement[] {
       const isAfterCutoff = finishDate > cutoffDate;
       const finishStr = isAfterCutoff ? '—' : finishDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-      // Randomly select project type for GCG Ad-Hoc
+      // Randomly select project type for Ad-Hoc
       const adHocType = adHocProjectTypes[Math.floor(seededRandom(seed + 7) * adHocProjectTypes.length)];
 
       // Randomly assign a channel for the ad-hoc interaction
       const adHocChannel = adHocChannels[Math.floor(seededRandom(seed + 11) * adHocChannels.length)];
 
-      // NNA: Extremely rare for GCG Ad-Hoc (~0.001% chance), only if completed
+      // NNA: Extremely rare for Ad-Hoc (~0.001% chance), only if completed
       const hasNNA = !isAfterCutoff && seededRandom(seed + 12) < 0.00001;
       const nnaValue = hasNNA ? generateNNA(dept, seed + 13) : undefined;
 
-      // Tickers mentioned: ~45% of GCG Ad-Hoc interactions discuss specific tickers
+      // Tickers mentioned: ~45% of Ad-Hoc interactions discuss specific tickers
       const hasTickersMentioned = seededRandom(seed + 15) < 0.45;
       const tickersMentioned = hasTickersMentioned ? generateTickersMentioned(seed + 16) : undefined;
 
@@ -312,15 +312,15 @@ function generateEngagements(): Engagement[] {
         clientCrn: adHocClient.crn,
         externalClient: adHocClient.name,
         internalClient,
-        intakeType: 'GCG Ad-Hoc',
+        intakeType: 'Ad-Hoc',
         adHocChannel,
         type: adHocType,
         teamMembers: selectedTeam,
-        department: internalClient.gcgDepartment,
+        department: internalClient.clientDept,
         dateStarted: dateStr,
         dateFinished: finishStr,
         status: isAfterCutoff ? 'In Progress' : 'Completed',
-        portfolioLogged: false, // GCG Ad-Hoc don't have logged portfolios
+        portfolioLogged: false, // Ad-Hoc don't have logged portfolios
         nna: nnaValue,
         notes: seededRandom(seed + 6) > 0.6 ? sampleNotes[Math.floor(seededRandom(seed + 14) * sampleNotes.length)] : undefined,
         tickersMentioned,
@@ -465,7 +465,7 @@ export function generateContributionData(filteredEngagements?: Engagement[]): Da
       if (!completionsByDate[key]) {
         completionsByDate[key] = { projects: 0, adHoc: 0 };
       }
-      if (engagement.intakeType === 'GCG Ad-Hoc') {
+      if (engagement.intakeType === 'Ad-Hoc') {
         completionsByDate[key].adHoc++;
       } else {
         completionsByDate[key].projects++;

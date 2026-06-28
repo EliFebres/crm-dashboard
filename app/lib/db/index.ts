@@ -111,7 +111,7 @@ function bootstrap(db: DB): void {
   // One-time migration: team column for team-based data isolation
   if (!columnExists(db, 'engagements', 'team')) {
     db.exec(`ALTER TABLE engagements ADD COLUMN team TEXT`);
-    db.exec(`UPDATE engagements SET team = 'Portfolio Consulting Group' WHERE team IS NULL`);
+    db.exec(`UPDATE engagements SET team = 'Default Team' WHERE team IS NULL`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_team ON engagements (team)`);
 

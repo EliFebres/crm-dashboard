@@ -13,7 +13,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 1,
     externalClient: 'Vanguard Advisors',
-    internalClient: { name: 'Jennifer Martinez', gcgDepartment: 'IAG' },
+    internalClient: { name: 'Jennifer Martinez', clientDept: 'Advisory' },
     loggedBy: 'Eli F.',
     loggedAt: 'Jan 15, 2026',
     dataAsOf: 'Dec 31, 2025',
@@ -51,7 +51,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 2,
     externalClient: 'Fidelity Wealth Management',
-    internalClient: { name: 'Michael Thompson', gcgDepartment: 'Broker-Dealer' },
+    internalClient: { name: 'Michael Thompson', clientDept: 'Brokerage' },
     loggedBy: 'Sarah K.',
     loggedAt: 'Jan 12, 2026',
     dataAsOf: 'Dec 31, 2025',
@@ -87,7 +87,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 3,
     externalClient: 'Northern Trust Wealth',
-    internalClient: { name: 'Christopher Lee', gcgDepartment: 'Institutional' },
+    internalClient: { name: 'Christopher Lee', clientDept: 'Institutional' },
     loggedBy: 'Mike R.',
     loggedAt: 'Jan 10, 2026',
     dataAsOf: 'Dec 31, 2025',
@@ -124,7 +124,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 4,
     externalClient: 'Raymond James Financial',
-    internalClient: { name: 'Amanda Foster', gcgDepartment: 'IAG' },
+    internalClient: { name: 'Amanda Foster', clientDept: 'Advisory' },
     loggedBy: 'Lisa M.',
     loggedAt: 'Jan 8, 2026',
     dataAsOf: 'Dec 31, 2025',
@@ -160,7 +160,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 5,
     externalClient: 'Morgan Stanley Private',
-    internalClient: { name: 'Jessica Williams', gcgDepartment: 'Broker-Dealer' },
+    internalClient: { name: 'Jessica Williams', clientDept: 'Brokerage' },
     loggedBy: 'James T.',
     loggedAt: 'Jan 5, 2026',
     dataAsOf: 'Dec 31, 2025',
@@ -197,7 +197,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 6,
     externalClient: 'Goldman Sachs PWM',
-    internalClient: { name: 'Rachel Goldman', gcgDepartment: 'Institutional' },
+    internalClient: { name: 'Rachel Goldman', clientDept: 'Institutional' },
     loggedBy: 'David L.',
     loggedAt: 'Jan 3, 2026',
     dataAsOf: 'Dec 31, 2025',
@@ -234,7 +234,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 7,
     externalClient: 'Wells Fargo Advisors',
-    internalClient: { name: 'Robert Chen', gcgDepartment: 'IAG' },
+    internalClient: { name: 'Robert Chen', clientDept: 'Advisory' },
     loggedBy: 'Eli F.',
     loggedAt: 'Dec 28, 2025',
     dataAsOf: 'Nov 30, 2025',
@@ -269,7 +269,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 8,
     externalClient: 'Ameriprise Financial',
-    internalClient: { name: 'Daniel Park', gcgDepartment: 'Broker-Dealer' },
+    internalClient: { name: 'Daniel Park', clientDept: 'Brokerage' },
     loggedBy: 'Sarah K.',
     loggedAt: 'Dec 20, 2025',
     dataAsOf: 'Nov 30, 2025',
@@ -307,7 +307,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 9,
     externalClient: 'LPL Financial',
-    internalClient: { name: 'Andrew Mitchell', gcgDepartment: 'Institutional' },
+    internalClient: { name: 'Andrew Mitchell', clientDept: 'Institutional' },
     loggedBy: 'Mike R.',
     loggedAt: 'Dec 15, 2025',
     dataAsOf: 'Nov 30, 2025',
@@ -343,7 +343,7 @@ export const loggedPortfolios: LoggedPortfolio[] = [
   {
     id: 10,
     externalClient: 'Schwab Private Client',
-    internalClient: { name: 'Jennifer Martinez', gcgDepartment: 'IAG' },
+    internalClient: { name: 'Jennifer Martinez', clientDept: 'Advisory' },
     loggedBy: 'Lisa M.',
     loggedAt: 'Dec 10, 2025',
     dataAsOf: 'Nov 30, 2025',
@@ -417,7 +417,7 @@ export function extractFilterOptions(portfolios: LoggedPortfolio[], currentUser:
   const departmentsSet = new Set<string>();
 
   portfolios.forEach(portfolio => {
-    departmentsSet.add(portfolio.internalClient.gcgDepartment);
+    departmentsSet.add(portfolio.internalClient.clientDept);
   });
 
   return {
@@ -443,7 +443,7 @@ export function filterPortfolios(
 
   // Filter by department
   if (department && department !== 'All Departments') {
-    filtered = filtered.filter(p => p.internalClient.gcgDepartment === department);
+    filtered = filtered.filter(p => p.internalClient.clientDept === department);
   }
 
   // Filter by period

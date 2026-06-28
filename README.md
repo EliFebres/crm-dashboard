@@ -15,7 +15,7 @@ A Next.js CRM and insights dashboard application. The **Client Interactions** da
 - **`/admin/team-members`** — Manage the team member directory used throughout the dashboard (name, team, office, status; link to user account)
 
 ### Client Interactions Dashboard
-- Track and manage client engagements (IRQ, SERF, GCG Ad-Hoc) with full CRUD support
+- Track and manage client engagements (IRQ, SERF, Ad-Hoc) with full CRUD support
 - Create, edit, and delete engagements via modal forms
 - **Bulk upload** — import engagements from Excel (.xlsx) or CSV; downloadable XLSX template; in-browser preview and validation before committing
 - **Real-time cross-user updates** — Server-Sent Events stream (`/api/client-interactions/events`) pushes mutations from other users into open dashboards immediately, with no page refresh
@@ -24,7 +24,7 @@ A Next.js CRM and insights dashboard application. The **Client Interactions** da
 - **Rich text notes** — TipTap-powered editor with per-note author attribution; only the original author can edit or delete their own note
 - GitHub-style contribution heatmap showing daily activity over time
 - Department breakdown bar chart
-- Metric cards: Client Projects, GCG Ad-Hoc, In Progress, and NNA — all with period-over-period change
+- Metric cards: Client Projects, Ad-Hoc, In Progress, and NNA — all with period-over-period change
 - Filterable, sortable, paginated table with expandable rows
 - Fullscreen table view
 - Filters: Team Member, Department, Intake Type, Project Type, Time Period, Status
@@ -166,7 +166,7 @@ app/
 │       ├── metrics/                    # Metric cards
 │       ├── departments/                # Department breakdown
 │       ├── contribution-data/          # Heatmap
-│       ├── gcg-clients/                # Client autocomplete source
+│       ├── internal-clients/                # Client autocomplete source
 │       ├── events/                     # SSE: cross-user real-time updates
 │       ├── export/                     # Filtered CSV export
 │       └── engagements/

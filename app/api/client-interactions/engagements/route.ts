@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const department = body.internalClient?.gcgDepartment ?? body.department ?? '';
+    const department = body.internalClient?.clientDept ?? body.department ?? '';
 
     // Client (external) is required and must reference a registered CRN.
     const clientCrn = body.clientCrn ? normalizeCrn(String(body.clientCrn)) : '';
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       [
         clientCrn,
         body.internalClient?.name ?? null,
-        body.internalClient?.gcgDepartment ?? null,
+        body.internalClient?.clientDept ?? null,
         body.intakeType,
         body.adHocChannel ?? null,
         body.type,

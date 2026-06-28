@@ -10,7 +10,7 @@ import { emitUserChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 
 const VALID_TEAMS = [
-  'Portfolio Consulting Group',
+  'Default Team',
   'Equity Specialist',
   'Fixed Income Specialist',
   'Leadership',

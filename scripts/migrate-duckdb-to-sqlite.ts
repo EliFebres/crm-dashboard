@@ -18,7 +18,7 @@
  *
  * USAGE:
  *   # Reads .duckdb files from --source, writes .sqlite files to SQLITE_DIR:
- *   npx tsx scripts/migrate-duckdb-to-sqlite.ts --source "J:/PCG/data"
+ *   npx tsx scripts/migrate-duckdb-to-sqlite.ts --source "J:/CRM/data"
  *
  *   # If old .duckdb and new .sqlite live in the same folder, --source can be
  *   # omitted (defaults to SQLITE_DIR / DUCKDB_DIR).

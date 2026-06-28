@@ -20,12 +20,12 @@ export interface ValidationResult {
   validRows: ParsedRow[];
 }
 
-const VALID_INTAKE_TYPES = ['IRQ', 'SERF', 'GCG Ad-Hoc'];
+const VALID_INTAKE_TYPES = ['IRQ', 'SERF', 'Ad-Hoc'];
 const VALID_AD_HOC_CHANNELS = ['In-Person', 'Email', 'Teams'];
 const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
-const VALID_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
+const VALID_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_STATUSES: string[] = [...STATUS_ENUM];
-const VALID_INTERNAL_CLIENT_DEPTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
+const VALID_INTERNAL_CLIENT_DEPTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
 const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds'];
 
@@ -41,10 +41,8 @@ function matchEnum(value: string, options: string[]): string | null {
 
 // Alias maps for intake type normalization
 const INTAKE_TYPE_ALIASES: Record<string, string> = {
-  'gcgadhoc': 'GCG Ad-Hoc',
-  'adhoc': 'GCG Ad-Hoc',
-  'ad-hoc': 'GCG Ad-Hoc',
-  'gcg': 'GCG Ad-Hoc',
+  'adhoc': 'Ad-Hoc',
+  'ad-hoc': 'Ad-Hoc',
   'irq': 'IRQ',
   'serf': 'SERF',
   'srrf': 'SERF', // old name alias
@@ -99,16 +97,12 @@ function normalizeStatus(value: string): string | null {
 
 // Alias map for departments
 const DEPT_ALIASES: Record<string, string> = {
-  'iag': 'IAG',
-  'institutionalassetgrowth': 'IAG',
-  'brokdealer': 'Broker-Dealer',
-  'bd': 'Broker-Dealer',
-  'brokerdealer': 'Broker-Dealer',
+  'advisory': 'Advisory',
+  'brokerage': 'Brokerage',
+  'bd': 'Brokerage',
   'institution': 'Institutional',
   'institutional': 'Institutional',
-  'retirementgroup': 'Retirement Group',
-  'rg': 'Retirement Group',
-  'retirement': 'Retirement Group',
+  'retirement': 'Retirement',
 };
 
 function normalizeDept(value: string): string | null {
@@ -195,13 +189,13 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
       row.intakeType = normIntake;
     }
 
-    // Conditional: adHocChannel required for GCG Ad-Hoc
-    if (normIntake === 'GCG Ad-Hoc') {
+    // Conditional: adHocChannel required for Ad-Hoc
+    if (normIntake === 'Ad-Hoc') {
       if (!row.adHocChannel) {
         rowErrors.push({
           rowNumber: row.rowNumber,
           field: 'Ad-Hoc Channel',
-          message: 'Required for GCG Ad-Hoc rows. Use: In-Person, Email, or Teams.',
+          message: 'Required for Ad-Hoc rows. Use: In-Person, Email, or Teams.',
         });
       } else {
         const normChannel = normalizeChannel(row.adHocChannel);
