@@ -1,7 +1,13 @@
 {
   "name": "crm-dashboard",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "license": "MIT",
+  "author": "Eli Febres <eli.febresjr@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EliFebres/crm-dashboard.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
