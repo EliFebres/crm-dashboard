@@ -19,7 +19,7 @@
     "@tiptap/react": "^3.21.0",
     "@tiptap/starter-kit": "^3.21.0",
     "better-sqlite3": "^12.11.1",
-    "dompurify": "^3.3.3",
+    "dompurify": "^3.4.11",
     "exceljs": "^4.4.0",
     "jose": "^6.2.2",
     "lucide-react": "^0.563.0",
