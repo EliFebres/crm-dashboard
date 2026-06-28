@@ -107,6 +107,21 @@ body {
 .fade-in-d2   { animation: landingFadeIn 1s ease-out 0.2s both; }
 .fade-in-d3   { animation: landingFadeIn 1s ease-out 0.35s both; }
 .fade-in-d4   { animation: landingFadeIn 1s ease-out 0.5s both; }
+.fade-in-d5   { animation: landingFadeIn 1s ease-out 0.7s both; }
+
+/* Hero scroll cue — a downward arrow that bobs down and fades, hinting there's
+   more content below the fold. */
+@keyframes scrollCueArrow {
+  0%   { opacity: 0; transform: translateY(-3px); }
+  30%  { opacity: 1; }
+  70%  { opacity: 1; transform: translateY(5px); }
+  100% { opacity: 0; transform: translateY(5px); }
+}
+.scroll-cue-arrow { animation: scrollCueArrow 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue-arrow { animation: none; opacity: 0.8; }
+}
 
 /* Reverse of landingFadeIn — used by Portfolio Trends to collapse a full top-level
    section (Equity rows or Fixed Income row) before deferred unmount. max-height is

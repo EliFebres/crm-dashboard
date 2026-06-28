@@ -208,8 +208,8 @@ export default function MetricCards({ metrics, flippedCard, onCardEnter, onCardL
                             return null;
                           }}
                         />
-                        <Bar dataKey="IAG" stackId="a" fill="#a5f3fc" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={700} />
-                        <Bar dataKey="Broker-Dealer" stackId="a" fill="#22d3ee" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={700} />
+                        <Bar dataKey="Advisory" stackId="a" fill="#a5f3fc" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={700} />
+                        <Bar dataKey="Brokerage" stackId="a" fill="#22d3ee" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={700} />
                         <Bar dataKey="Institutional" stackId="a" fill="#0e7490" radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={700} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -246,7 +246,7 @@ export default function MetricCards({ metrics, flippedCard, onCardEnter, onCardL
                 )}
               </div>
 
-              {/* Back Face - Intake Breakdown (for GCG Ad-Hoc) */}
+              {/* Back Face - Intake Breakdown (for Ad-Hoc) */}
               {hasIntakeBreakdown && (
                 <div
                   className="absolute inset-0 overflow-hidden bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-4 rounded-xl"

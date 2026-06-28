@@ -5,7 +5,7 @@ This document describes every level of access in the CRM dashboard: what each us
 Access is determined by **two independent dimensions**:
 
 1. **Role** — `admin` or `user` (granted manually by an existing admin).
-2. **Team** (account type) — `Portfolio Consulting Group`, `Equity Specialist`, `Fixed Income Specialist`, `Leadership`, or `Guest`.
+2. **Team** (account type) — `Default Team`, `Equity Specialist`, `Fixed Income Specialist`, `Leadership`, or `Guest`.
 
 Both dimensions combine. An admin on the Guest team, for example, would still have admin-only pages, but their team would still classify them as read-only on the dashboard data itself.
 
@@ -63,17 +63,17 @@ The default role for all approved accounts.
 
 Team determines **write access** and **data scope** on the dashboards. There are two groups:
 
-- **Write-enabled teams**: PCG, Equity Specialist, Fixed Income Specialist
+- **Write-enabled teams**: Default Team, Equity Specialist, Fixed Income Specialist
 - **Read-only teams**: Leadership, Guest
 
-### Portfolio Consulting Group (PCG)
+### Default Team
 
 | Capability | Access |
 |---|---|
 | Create / edit / delete interactions | ✅ |
 | Bulk upload | ✅ |
 | Edit status, NNA, notes | ✅ |
-| Data scope | Only engagements belonging to the PCG team |
+| Data scope | Only engagements belonging to the Default Team |
 
 **UI:** All action buttons visible. "+ Interaction" button shown. Rows are clickable to open the edit modal.
 
@@ -86,7 +86,7 @@ Team determines **write access** and **data scope** on the dashboards. There are
 | Edit status, NNA, notes | ✅ |
 | Data scope | Only engagements belonging to the Equity Specialist team |
 
-**UI:** Identical to PCG. Data is filtered to their own team only.
+**UI:** Identical to Default Team. Data is filtered to their own team only.
 
 ### Fixed Income Specialist
 
@@ -97,7 +97,7 @@ Team determines **write access** and **data scope** on the dashboards. There are
 | Edit status, NNA, notes | ✅ |
 | Data scope | Only engagements belonging to the Fixed Income Specialist team |
 
-**UI:** Identical to PCG. Data is filtered to their own team only.
+**UI:** Identical to Default Team. Data is filtered to their own team only.
 
 ### Leadership (read-only)
 
@@ -134,7 +134,7 @@ Team determines **write access** and **data scope** on the dashboards. There are
 | Account | Engagement data scope | Can modify? |
 |---|---|:---:|
 | Admin (any team) | All teams | Yes, unless on a read-only team |
-| User · PCG | PCG engagements only | ✅ |
+| User · Default Team | Default Team engagements only | ✅ |
 | User · Equity Specialist | Equity Specialist engagements only | ✅ |
 | User · Fixed Income Specialist | Fixed Income Specialist engagements only | ✅ |
 | User · Leadership | All teams | ❌ |

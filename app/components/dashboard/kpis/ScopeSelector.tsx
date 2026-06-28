@@ -7,7 +7,7 @@ import { useCurrentUser } from '@/app/lib/auth/context';
 import type { KpiScope } from '@/app/lib/api/kpi';
 
 export const KPI_DELIVERY_TEAMS = [
-  'Portfolio Consulting Group',
+  'Default Team',
   'Equity Specialist',
   'Fixed Income Specialist',
 ] as const;

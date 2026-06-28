@@ -20,7 +20,7 @@ import type {
   HeroKpis,
   JourneySankeyData,
   JourneyTemplate,
-  GcgDeptRow,
+  ClientDeptRow,
   NnaConcentration,
   StaleEngagement,
   DormantClient,
@@ -62,10 +62,10 @@ function buildKpiWhere(
     }
   }
 
-  if (filters.gcgDepts && filters.gcgDepts.length > 0) {
-    const placeholders = filters.gcgDepts.map(() => '?').join(', ');
+  if (filters.clientDepts && filters.clientDepts.length > 0) {
+    const placeholders = filters.clientDepts.map(() => '?').join(', ');
     conditions.push(`${col('internal_client_dept')} IN (${placeholders})`);
-    params.push(...filters.gcgDepts);
+    params.push(...filters.clientDepts);
   }
 
   if (filters.intakeTypes && filters.intakeTypes.length > 0) {
@@ -356,13 +356,13 @@ export async function computeJourneyTemplates(
 }
 
 // =============================================================================
-// 3a. GCG DEPT BREAKDOWN
+// 3a. CLIENT DEPT BREAKDOWN
 // =============================================================================
 
-export async function computeGcgDeptBreakdown(
+export async function computeClientDeptBreakdown(
   filters: KpiFilters,
   constraints: ServerConstraints
-): Promise<GcgDeptRow[]> {
+): Promise<ClientDeptRow[]> {
   if (!hasDb()) return [];
   const { whereClause, params } = buildKpiWhere(filters, constraints);
 
@@ -430,7 +430,7 @@ export async function computeNnaConcentration(
     return {
       rank: i + 1,
       clientName: String(r.client ?? ''),
-      gcgDept: String(r.dept ?? ''),
+      clientDept: String(r.dept ?? ''),
       nna,
       cumulativeShare: pct(cumulative, totalNna),
     };
@@ -487,7 +487,7 @@ export async function computeStaleEngagements(
 
   return rows.map(r => ({
     id: Number(r.id ?? 0),
-    gcgDept: String(r.dept ?? ''),
+    clientDept: String(r.dept ?? ''),
     clientName: String(r.client ?? ''),
     type: String(r.type ?? ''),
     status: String(r.status ?? ''),
@@ -497,7 +497,7 @@ export async function computeStaleEngagements(
 }
 
 // =============================================================================
-// 6b. DORMANT GCG CONTACTS
+// 6b. DORMANT CONTACTS
 // =============================================================================
 
 export async function computeDormantClients(
@@ -529,7 +529,7 @@ export async function computeDormantClients(
 
   return rows.map(r => ({
     clientName: String(r.client ?? ''),
-    gcgDept: String(r.dept ?? ''),
+    clientDept: String(r.dept ?? ''),
     historicalCount: Number(r.total_count ?? 0),
     lastEngagedDate: String(r.last_started ?? '').split('T')[0],
     daysSinceLast: Number(r.days_since ?? 0),

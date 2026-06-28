@@ -33,7 +33,7 @@ export const PROJECT_TYPE_COLOR: Record<string, string> = {
 export const INTAKE_COLOR: Record<string, string> = {
   'IRQ': KPI_COLORS.blue,
   'SERF': KPI_COLORS.emerald,
-  'GCG Ad-Hoc': KPI_COLORS.pink,
+  'Ad-Hoc': KPI_COLORS.pink,
 };
 
 export const OUTCOME_COLOR: Record<string, string> = {
@@ -43,11 +43,11 @@ export const OUTCOME_COLOR: Record<string, string> = {
   'Stalled': KPI_COLORS.orange,
 };
 
-export const GCG_DEPT_COLOR: Record<string, string> = {
-  'IAG': KPI_COLORS.cyanLight,
-  'Broker-Dealer': KPI_COLORS.cyan,
+export const CLIENT_DEPT_COLOR: Record<string, string> = {
+  'Advisory': KPI_COLORS.cyanLight,
+  'Brokerage': KPI_COLORS.cyan,
   'Institutional': KPI_COLORS.cyanDark,
-  'Retirement Group': '#67e8f9',
+  'Retirement': '#67e8f9',
 };
 
 export function formatCurrency(value: number): string {

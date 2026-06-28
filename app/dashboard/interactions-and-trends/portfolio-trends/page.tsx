@@ -16,7 +16,7 @@ import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
 // Static filter options. Filter selection is purely cosmetic on this dashboard
 // for now; the underlying portfolio data is dummy and not yet wired up.
 const TEAMS = ['Portfolio Consulting', 'Equity Specialists', 'Fixed Income Specialists'];
-const DEPARTMENTS = ['Broker-Dealer', 'IAG', 'Institutional', 'Retirement Group'];
+const DEPARTMENTS = ['Brokerage', 'Advisory', 'Institutional', 'Retirement'];
 
 // Portfolios selector — drives which series render on the cards. Avg. Client is the
 // default; Core+ Model is a firm-defined model portfolio.

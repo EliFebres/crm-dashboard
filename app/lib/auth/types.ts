@@ -8,13 +8,10 @@ export interface User {
   lastName: string;
   title: string;
   department: 'Default';
-  team:
-    | 'Portfolio Consulting Group'
-    | 'Equity Specialist'
-    | 'Fixed Income Specialist'
-    | 'Leadership'
-    | 'Guest';
-  office: 'Charlotte' | 'Austin' | 'Santa Monica' | 'UK' | 'Sydney';
+  // Teams and offices are admin-managed lists stored in the DB, so these are
+  // free-form strings rather than fixed unions. See app/lib/db/org.ts.
+  team: string;
+  office: string;
   role: 'user' | 'admin';
   status: 'pending' | 'active' | 'inactive';
   createdAt: string;
@@ -38,7 +35,7 @@ export function canUserEditEngagement(
 
 /**
  * Converts a first/last name pair to the display format used in the team_members
- * table and in engagement team_members JSON arrays. e.g. "Eli" + "Febres" → "Eli F."
+ * table and in engagement team_members JSON arrays. e.g. "Alex" + "Morgan" → "Alex M."
  */
 export function toDisplayName(firstName: string, lastName: string): string {
   if (!lastName || lastName.length === 0) return firstName;

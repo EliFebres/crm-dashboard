@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, LabelList, Tooltip } from 'recharts';
 import ClientOnlyChart from '@/app/components/dashboard/shared/ClientOnlyChart';
-import type { GcgDeptRow } from '@/app/lib/api/kpi';
-import { GCG_DEPT_COLOR, formatCurrency, formatNumber, KPI_COLORS } from './utils';
+import type { ClientDeptRow } from '@/app/lib/api/kpi';
+import { CLIENT_DEPT_COLOR, formatCurrency, formatNumber, KPI_COLORS } from './utils';
 
 type Metric = 'interactions' | 'nna' | 'nnaPerInteraction';
 
@@ -14,13 +14,13 @@ const METRIC_LABEL: Record<Metric, string> = {
   nnaPerInteraction: 'NNA / Interaction',
 };
 
-export default function GcgDeptChart({ data }: { data: GcgDeptRow[] }) {
+export default function ClientDeptChart({ data }: { data: ClientDeptRow[] }) {
   const [metric, setMetric] = useState<Metric>('interactions');
 
   const chartData = data.map(r => ({
     name: r.dept,
     value: r[metric],
-    color: GCG_DEPT_COLOR[r.dept] ?? KPI_COLORS.zinc,
+    color: CLIENT_DEPT_COLOR[r.dept] ?? KPI_COLORS.zinc,
   }));
 
   const formatValue = (v: number | undefined) =>
@@ -30,7 +30,7 @@ export default function GcgDeptChart({ data }: { data: GcgDeptRow[] }) {
     <div className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-5 rounded-xl h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-white text-base font-semibold">GCG Department Lens</h3>
+          <h3 className="text-white text-base font-semibold">Client Department Lens</h3>
           <p className="text-xs text-muted">Who drives our volume and NNA</p>
         </div>
         <div className="flex items-center gap-1 bg-zinc-800/60 border border-zinc-700/50 p-0.5 rounded-md">

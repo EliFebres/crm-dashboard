@@ -47,9 +47,9 @@ export interface SortSpec {
 /** Filters for fetching engagements */
 export interface EngagementFilters {
   search?: string;                 // Text search across multiple fields
-  teamMember?: string;             // 'All Team Members', 'Austin Office', 'Charlotte Office', or member name
-  departments?: string[];          // Multi-select: ['IAG', 'Broker-Dealer', 'Institutional']
-  intakeTypes?: string[];          // Multi-select: ['IRQ', 'SERF', 'GCG Ad-Hoc']
+  teamMember?: string;             // 'All Team Members', 'Office B', 'Office A', or member name
+  departments?: string[];          // Multi-select: ['Advisory', 'Brokerage', 'Institutional']
+  intakeTypes?: string[];          // Multi-select: ['IRQ', 'SERF', 'Ad-Hoc']
   projectTypes?: string[];         // Multi-select: ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other']
   period?: string;                 // '1W', '1M', '3M', '6M', 'YTD', '1Y', 'ALL'
   status?: string;                 // 'In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'
@@ -65,8 +65,8 @@ function appendSortParams(params: URLSearchParams, sortBy: SortSpec[] | undefine
   }
 }
 
-/** A single GCG internal client with their department */
-export interface GcgClient {
+/** A single internal client with their department */
+export interface InternalClientOption {
   name: string;
   dept: string;
 }
@@ -88,7 +88,7 @@ export interface DashboardMetrics {
     periodLabel: string;
     intakeSourceBreakdown: IntakeSourceBreakdown;
   };
-  gcgAdHoc: {
+  adHoc: {
     count: number;
     changePercent: number;
     periodLabel: string;
@@ -428,14 +428,14 @@ export async function deleteEngagement(id: number): Promise<void> {
 }
 
 /**
- * Fetches the distinct list of GCG internal clients (name + dept) from existing engagements.
- * Endpoint: GET /api/client-interactions/gcg-clients
+ * Fetches the distinct list of internal clients (name + dept) from existing engagements.
+ * Endpoint: GET /api/client-interactions/internal-clients
  */
-export async function getGcgClients(): Promise<GcgClient[]> {
-  const response = await fetch(`${API_BASE_URL}/client-interactions/gcg-clients`);
-  if (!response.ok) throw new Error('Failed to fetch GCG clients');
+export async function getInternalClients(): Promise<InternalClientOption[]> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/internal-clients`);
+  if (!response.ok) throw new Error('Failed to fetch internal clients');
   const data = await response.json();
-  return data.clients as GcgClient[];
+  return data.clients as InternalClientOption[];
 }
 
 // =============================================================================

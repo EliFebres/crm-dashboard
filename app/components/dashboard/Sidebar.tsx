@@ -53,7 +53,7 @@ interface SidebarProps {
   className?: string;
 }
 
-// Always display as "First L." (e.g., "Eli Febres" → "Eli F.")
+// Always display as "First L." (e.g., "Alex Morgan" → "Alex M.")
 function formatDisplayName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
   if (parts.length < 2) return fullName;

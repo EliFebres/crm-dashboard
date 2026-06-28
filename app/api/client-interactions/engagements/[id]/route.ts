@@ -85,7 +85,7 @@ export async function PATCH(
     }
     if (body.internalClient !== undefined) {
       setClauses.push('internal_client_name = ?', 'internal_client_dept = ?');
-      values.push(body.internalClient.name, body.internalClient.gcgDepartment);
+      values.push(body.internalClient.name, body.internalClient.clientDept);
     }
     if (body.intakeType !== undefined) {
       setClauses.push('intake_type = ?');

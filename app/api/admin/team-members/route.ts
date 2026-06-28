@@ -4,18 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { queryUsers, executeUsers } from '@/app/lib/db/users';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToTeamMember, toDisplayName } from '@/app/lib/auth/types';
-import type { User } from '@/app/lib/auth/types';
 import { randomUUID } from 'crypto';
 import { logActivity } from '@/app/lib/activity/log';
-
-const VALID_TEAMS: User['team'][] = [
-  'Portfolio Consulting Group',
-  'Equity Specialist',
-  'Fixed Income Specialist',
-  'Leadership',
-  'Guest',
-];
-const VALID_OFFICES: User['office'][] = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'];
+import { orgNameExists } from '@/app/lib/db/org';
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -84,10 +75,10 @@ export async function POST(req: NextRequest) {
     if (!firstName?.trim() || !lastName?.trim()) {
       return NextResponse.json({ error: 'First and last name are required.' }, { status: 400 });
     }
-    if (!VALID_TEAMS.includes(team as User['team'])) {
+    if (!(await orgNameExists('team', team))) {
       return NextResponse.json({ error: 'Invalid team.' }, { status: 400 });
     }
-    if (!VALID_OFFICES.includes(office as User['office'])) {
+    if (!(await orgNameExists('office', office))) {
       return NextResponse.json({ error: 'Invalid office.' }, { status: 400 });
     }
 

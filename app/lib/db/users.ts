@@ -1,4 +1,5 @@
 import { openSqlite, dbAll, dbRun, type DB } from './connection';
+import { randomUUID } from 'crypto';
 
 // Cached on `global` so the connection survives Next.js hot reloads in dev mode.
 const g = global as typeof globalThis & {
@@ -45,6 +46,58 @@ function bootstrap(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_tm_team   ON team_members (team);
     CREATE INDEX IF NOT EXISTS idx_tm_status ON team_members (status);
   `);
+
+  // Teams and offices were once hardcoded constants duplicated across the app.
+  // They now live here so admins can rename/add/remove them from Settings.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS teams (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS offices (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  seedOrgLists(db);
+}
+
+/**
+ * Idempotent seed/backfill for the teams/offices lists.
+ *
+ *  1. Backfill any distinct team/office value already referenced by users or
+ *     team_members, so an existing database keeps every value it relies on as a
+ *     valid option.
+ *  2. If a list is still empty (a brand-new database with no users yet), seed
+ *     the single default the first-run signup form should offer.
+ */
+function seedOrgLists(db: DB): void {
+  db.exec(`
+    INSERT OR IGNORE INTO teams (id, name)
+    SELECT lower(hex(randomblob(16))), team FROM (
+      SELECT team FROM users
+      UNION
+      SELECT team FROM team_members
+    ) WHERE team IS NOT NULL AND trim(team) <> '';
+
+    INSERT OR IGNORE INTO offices (id, name)
+    SELECT lower(hex(randomblob(16))), office FROM (
+      SELECT office FROM users
+      UNION
+      SELECT office FROM team_members
+    ) WHERE office IS NOT NULL AND trim(office) <> '';
+  `);
+
+  const teamCount = (db.prepare(`SELECT COUNT(*) AS c FROM teams`).get() as { c: number }).c;
+  if (teamCount === 0) {
+    db.prepare(`INSERT INTO teams (id, name) VALUES (?, 'Default Team')`).run(randomUUID());
+  }
+  const officeCount = (db.prepare(`SELECT COUNT(*) AS c FROM offices`).get() as { c: number }).c;
+  if (officeCount === 0) {
+    db.prepare(`INSERT INTO offices (id, name) VALUES (?, 'Office A')`).run(randomUUID());
+  }
 }
 
 function getDb(): DB {
@@ -73,4 +126,26 @@ export async function queryWriteUsers<T = Record<string, unknown>>(
   params: unknown[] = [],
 ): Promise<T[]> {
   return dbAll<T>(getDb(), sql, params);
+}
+
+/** Helpers passed to a {@link usersTransaction} callback for synchronous reads/writes. */
+export interface UsersTx {
+  get<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | undefined;
+  all<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[];
+  run(sql: string, params?: unknown[]): void;
+}
+
+/**
+ * Run `fn` inside a single better-sqlite3 transaction against the users DB.
+ * Use for multi-statement mutations that must be atomic — e.g. renaming a team
+ * and cascading the new name into `users` and `team_members`.
+ */
+export async function usersTransaction<T>(fn: (tx: UsersTx) => T): Promise<T> {
+  const db = getDb();
+  const tx: UsersTx = {
+    get: (sql, params = []) => dbAll(db, sql, params)[0] as never,
+    all: (sql, params = []) => dbAll(db, sql, params) as never,
+    run: (sql, params = []) => { dbRun(db, sql, params); },
+  };
+  return db.transaction(() => fn(tx))();
 }

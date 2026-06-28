@@ -17,7 +17,7 @@ export default function DormantClientsTable({ data }: { data: DormantClient[] })
       <div className="mb-3 flex items-center gap-2">
         <MoonStar className="w-4 h-4 text-violet-400" />
         <div>
-          <h3 className="text-white text-base font-semibold">Dormant GCG Contacts</h3>
+          <h3 className="text-white text-base font-semibold">Dormant Contacts</h3>
           <p className="text-xs text-muted">Clients we used to work with a lot · gone quiet for 60+ days</p>
         </div>
       </div>
@@ -42,7 +42,7 @@ export default function DormantClientsTable({ data }: { data: DormantClient[] })
                 <tr key={r.clientName} className="border-b border-zinc-800/50 hover:bg-white/[0.02] transition-colors">
                   <td className="py-2 pr-2">
                     <div className="text-zinc-200 truncate max-w-[200px]">{r.clientName}</div>
-                    <div className="text-[10px] text-muted">{r.gcgDept}</div>
+                    <div className="text-[10px] text-muted">{r.clientDept}</div>
                   </td>
                   <td className="py-2 pr-2 text-center text-muted font-mono">{r.historicalCount}×</td>
                   <td className="py-2 pr-2 text-center text-xs text-muted">{formatDate(r.lastEngagedDate)}</td>

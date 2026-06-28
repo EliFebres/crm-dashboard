@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       // Mock fallback: derive unique clients from in-memory mock data
       const clientMap = new Map<string, string>();
       mockEngagements.forEach(e => {
-        clientMap.set(e.internalClient.name, e.internalClient.gcgDepartment);
+        clientMap.set(e.internalClient.name, e.internalClient.clientDept);
       });
       const clients = Array.from(clientMap.entries())
         .map(([name, dept]) => ({ name, dept }))
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({ clients: rows });
   } catch (err) {
-    console.error('[GET /api/client-interactions/gcg-clients]', err);
+    console.error('[GET /api/client-interactions/internal-clients]', err);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

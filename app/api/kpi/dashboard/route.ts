@@ -12,7 +12,7 @@ import {
   computeHeroKpis,
   computeJourneySankey,
   computeJourneyTemplates,
-  computeGcgDeptBreakdown,
+  computeClientDeptBreakdown,
   computeNnaConcentration,
   computeStaleEngagements,
   computeDormantClients,
@@ -20,7 +20,7 @@ import {
 import { resolveStaleThreshold, type KpiFilters } from '@/app/lib/api/kpi';
 
 // POST /api/kpi/dashboard
-// Body: { scope, period, gcgDepts, intakeTypes }
+// Body: { scope, period, clientDepts, intakeTypes }
 // Returns team-level / cross-team KPI aggregates. No individual-level data.
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req);
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const filters: KpiFilters = {
     scope: scope as KpiScope,
     period: body.period || '1Y',
-    gcgDepts: Array.isArray(body.gcgDepts) ? body.gcgDepts : [],
+    clientDepts: Array.isArray(body.clientDepts) ? body.clientDepts : [],
     intakeTypes: Array.isArray(body.intakeTypes) ? body.intakeTypes : [],
     staleThreshold: resolveStaleThreshold(body.staleThreshold),
   };
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       heroKpis,
       journeySankey,
       journeyTemplates,
-      gcgDepts,
+      clientDepts,
       nnaConcentration,
       staleEngagements,
       dormantClients,
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       computeHeroKpis(filters, constraints),
       computeJourneySankey(filters, constraints),
       computeJourneyTemplates(filters, constraints),
-      computeGcgDeptBreakdown(filters, constraints),
+      computeClientDeptBreakdown(filters, constraints),
       computeNnaConcentration(filters, constraints),
       computeStaleEngagements(filters, constraints),
       computeDormantClients(filters, constraints),
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       heroKpis,
       journeySankey,
       journeyTemplates,
-      gcgDepts,
+      clientDepts,
       nnaConcentration,
       staleEngagements,
       dormantClients,

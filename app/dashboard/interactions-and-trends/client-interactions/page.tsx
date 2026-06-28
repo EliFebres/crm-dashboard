@@ -54,13 +54,13 @@ function toMetricCards(metrics: DashboardMetrics): EngagementMetric[] {
       intakeSourceBreakdown: metrics.clientProjects.intakeSourceBreakdown,
     },
     {
-      label: 'GCG Ad-Hoc',
-      sublabel: metrics.gcgAdHoc.periodLabel,
-      value: metrics.gcgAdHoc.count.toLocaleString(),
-      change: pct(metrics.gcgAdHoc.changePercent),
-      isPositive: metrics.gcgAdHoc.changePercent >= 0,
+      label: 'Ad-Hoc',
+      sublabel: metrics.adHoc.periodLabel,
+      value: metrics.adHoc.count.toLocaleString(),
+      change: pct(metrics.adHoc.changePercent),
+      isPositive: metrics.adHoc.changePercent >= 0,
       icon: 'MessageSquare',
-      intakeBreakdown: metrics.gcgAdHoc.intakeBreakdown,
+      intakeBreakdown: metrics.adHoc.intakeBreakdown,
     },
     {
       label: 'In Progress',
@@ -337,12 +337,12 @@ export default function EngagementsDashboard() {
       const newEngagement = await createEngagement({
         clientCrn: data.clientCrn,
         externalClient: data.externalClient,
-        internalClient: { name: data.internalClient, gcgDepartment: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional' },
-        intakeType: data.intakeType as 'IRQ' | 'SERF' | 'GCG Ad-Hoc',
+        internalClient: { name: data.internalClient, clientDept: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional' },
+        intakeType: data.intakeType as 'IRQ' | 'SERF' | 'Ad-Hoc',
         adHocChannel: data.adHocChannel,
         type: data.projectType,
         teamMembers: data.teamMembers,
-        department: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional',
+        department: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional',
         dateStarted: formatDisplayDate(data.dateStarted),
         dateFinished: data.dateFinished ? formatDisplayDate(data.dateFinished) : '—',
         status: data.status ?? 'In Progress',
@@ -414,7 +414,7 @@ export default function EngagementsDashboard() {
         clientCrn: engagement.clientCrn,
         externalClient: engagement.externalClient,
         internalClient: engagement.internalClient.name,
-        internalClientDept: engagement.internalClient.gcgDepartment,
+        internalClientDept: engagement.internalClient.clientDept,
         intakeType: engagement.intakeType,
         adHocChannel: engagement.adHocChannel,
         projectType: engagement.type,
@@ -452,12 +452,12 @@ export default function EngagementsDashboard() {
     try {
       await updateEngagement(engagementId, {
         clientCrn: data.clientCrn,
-        internalClient: { name: data.internalClient, gcgDepartment: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional' },
-        intakeType: data.intakeType as 'IRQ' | 'SERF' | 'GCG Ad-Hoc',
+        internalClient: { name: data.internalClient, clientDept: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional' },
+        intakeType: data.intakeType as 'IRQ' | 'SERF' | 'Ad-Hoc',
         adHocChannel: data.adHocChannel,
         type: data.projectType,
         teamMembers: data.teamMembers,
-        department: data.internalClientDept as 'IAG' | 'Broker-Dealer' | 'Institutional',
+        department: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional',
         dateStarted: dateStartedChanged ? formatDisplayDate(data.dateStarted) : (originalDateStarted || undefined),
         dateFinished: dateFinishedChanged
           ? (data.dateFinished ? formatDisplayDate(data.dateFinished) : '—')
@@ -643,7 +643,7 @@ export default function EngagementsDashboard() {
                 <div className="relative z-10 h-full flex flex-col">
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
                     <div>
-                      <h3 className="text-sm font-medium text-white">GCG Department</h3>
+                      <h3 className="text-sm font-medium text-white">Client Department</h3>
                       <p className="text-xs text-muted">Total projects (1YR)</p>
                     </div>
                     <button className="p-1.5 bg-zinc-800/50 backdrop-blur-sm text-muted hover:text-cyan-400 transition-colors" title="Download chart data">
