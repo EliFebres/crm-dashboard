@@ -11,26 +11,28 @@ export async function GET() {
   // ── Data sheet ─────────────────────────────────────────────────────────────
   const data = workbook.addWorksheet('Engagements');
 
-  // Column order (16 cols — Department is auto-derived):
-  // A  External Client
-  // B  Internal Client Name
-  // C  Internal Client Dept
-  // D  Intake Type
-  // E  Ad-Hoc Channel
-  // F  Project Type
-  // G  Team Members
-  // H  Date Started
-  // I  Date Finished
-  // J  Status
-  // K  NNA ($M)
-  // L  Notes
-  // M  Tickers Mentioned
-  // N  Portfolio Logged
-  // O  Portfolio
-  // P  Notes (JSON)
+  // Column order (17 cols — Department is auto-derived):
+  // A  CRN
+  // B  External Client
+  // C  Internal Client Name
+  // D  Internal Client Dept
+  // E  Intake Type
+  // F  Ad-Hoc Channel
+  // G  Project Type
+  // H  Team Members
+  // I  Date Started
+  // J  Date Finished
+  // K  Status
+  // L  NNA ($M)
+  // M  Notes
+  // N  Tickers Mentioned
+  // O  Portfolio Logged
+  // P  Portfolio
+  // Q  Notes (JSON)
   // No `header` property here: header row is added manually below to prevent
   // ExcelJS from bleeding row-level styling beyond the last column.
   data.columns = [
+    { key: 'crn',                width: 16 },
     { key: 'externalClient',     width: 24 },
     { key: 'internalClientName', width: 24 },
     { key: 'internalClientDept', width: 22 },
@@ -52,7 +54,7 @@ export async function GET() {
   // Add header row manually and style only the populated cells.
   // eachCell({ includeEmpty: false }) ensures nothing beyond the last column is touched.
   const headerRow = data.addRow([
-    'External Client', 'Internal Client Name', 'Internal Client Dept',
+    'CRN', 'External Client', 'Internal Client Name', 'Internal Client Dept',
     'Intake Type', 'Ad-Hoc Channel', 'Project Type', 'Team Members',
     'Date Started', 'Date Finished', 'Status', 'NNA ($M)', 'Notes', 'Tickers Mentioned',
     'Portfolio Logged', 'Portfolio', 'Notes (JSON)',
@@ -78,29 +80,30 @@ export async function GET() {
     }
   };
 
-  addValidation('C', '"IAG,Broker-Dealer,Institutional"');
-  addValidation('D', '"IRQ,SERF,GCG Ad-Hoc"');
-  addValidation('E', '"In-Person,Email,Teams"');
-  addValidation('F', '"Meeting,Discovery Meeting,Data Request,PCR,Other"');
-  addValidation('J', '"In Progress,Awaiting Meeting,Follow Up,Completed"');
-  addValidation('N', '"Yes,No"');
+  addValidation('D', '"Advisory,Brokerage,Institutional"');
+  addValidation('E', '"IRQ,SERF,Ad-Hoc"');
+  addValidation('F', '"In-Person,Email,Teams"');
+  addValidation('G', '"Meeting,Discovery Meeting,Data Request,Data Update,PCR,Other"');
+  addValidation('K', '"In Progress,Awaiting Meeting,Follow Up,Completed"');
+  addValidation('O', '"Yes,No"');
 
   // Date format for date columns
   for (let i = 2; i <= 1001; i++) {
-    data.getCell(`H${i}`).numFmt = 'yyyy-mm-dd';
     data.getCell(`I${i}`).numFmt = 'yyyy-mm-dd';
+    data.getCell(`J${i}`).numFmt = 'yyyy-mm-dd';
   }
 
   // Example rows
   const examples: Record<string, unknown>[] = [
     {
+      crn: 'CRN-000001',
       externalClient: 'Acme Pension Fund',
-      internalClientName: 'Sarah K.',
-      internalClientDept: 'IAG',
+      internalClientName: 'Blake N.',
+      internalClientDept: 'Advisory',
       intakeType: 'IRQ',
       adHocChannel: '',
       type: 'Meeting',
-      teamMembers: 'Eli F., Sarah K.',
+      teamMembers: 'Alex M., Blake N.',
       dateStarted: '2024-06-10',
       dateFinished: '2024-06-14',
       status: 'Completed',
@@ -109,16 +112,17 @@ export async function GET() {
       tickersMentioned: '',
       portfolioLogged: 'Yes',
       portfolio: '[{"identifier":"FMAC","constituentType":"Security","assetClass":"Equity","weight":0.6},{"identifier":"FMCF","constituentType":"Security","assetClass":"Fixed Income","weight":0.4}]',
-      structuredNotes: '[{"text":"Client requested equity exposure analysis.","author":"Sarah K.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]',
+      structuredNotes: '[{"text":"Client requested equity exposure analysis.","author":"Blake N.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]',
     },
     {
+      crn: 'CRN-000002',
       externalClient: 'BlueStar Wealth',
-      internalClientName: 'David L.',
-      internalClientDept: 'Broker-Dealer',
+      internalClientName: 'Finley T.',
+      internalClientDept: 'Brokerage',
       intakeType: 'SERF',
       adHocChannel: '',
       type: 'Data Request',
-      teamMembers: 'David L.',
+      teamMembers: 'Finley T.',
       dateStarted: '2024-09-03',
       dateFinished: '',
       status: 'In Progress',
@@ -130,13 +134,14 @@ export async function GET() {
       structuredNotes: '',
     },
     {
-      externalClient: '',
-      internalClientName: 'Chris B.',
+      crn: 'CRN-000003',
+      externalClient: 'Summit Capital Group',
+      internalClientName: 'Harper B.',
       internalClientDept: 'Institutional',
-      intakeType: 'GCG Ad-Hoc',
+      intakeType: 'Ad-Hoc',
       adHocChannel: 'Teams',
       type: 'Meeting',
-      teamMembers: 'Chris B., Amanda P.',
+      teamMembers: 'Harper B., Indi C.',
       dateStarted: '2024-11-18',
       dateFinished: '2024-11-18',
       status: 'Completed',
@@ -145,7 +150,7 @@ export async function GET() {
       tickersMentioned: 'FMAC, VTI',
       portfolioLogged: 'No',
       portfolio: '',
-      structuredNotes: '[{"text":"Discussed firm core equity vs Vanguard.","author":"Chris B.","authorId":"user_2","date":"2024-11-18T14:30:00Z"}]',
+      structuredNotes: '[{"text":"Discussed firm core equity vs Vanguard.","author":"Harper B.","authorId":"user_2","date":"2024-11-18T14:30:00Z"}]',
     },
   ];
 
@@ -170,22 +175,23 @@ export async function GET() {
   refHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7EF' } };
 
   const refData: [string, string][] = [
-    ['External Client', 'Name of the external client/fund. Leave blank for GCG Ad-Hoc rows.'],
-    ['Internal Client Name', 'Required. Name of the internal contact (e.g. "Sarah K.")'],
-    ['Internal Client Dept', 'Required. IAG | Broker-Dealer | Institutional'],
-    ['Intake Type', 'Required. IRQ | SERF | GCG Ad-Hoc'],
-    ['Ad-Hoc Channel', 'Required only for GCG Ad-Hoc rows. In-Person | Email | Teams'],
-    ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | PCR | Other'],
-    ['Team Members', 'Optional. Comma-separated names, e.g. "Eli F., Sarah K."'],
+    ['CRN', 'Client Reference Number — the unique ID of the external client. Provide an existing CRN, or leave blank to look up/register by External Client name (auto-generate mode assigns one).'],
+    ['External Client', 'Required. Name of the external client/fund. Used to register a new client when no CRN is given.'],
+    ['Internal Client Name', 'Required. Name of the internal contact (e.g. "Blake N.")'],
+    ['Internal Client Dept', 'Required. Advisory | Brokerage | Institutional'],
+    ['Intake Type', 'Required. IRQ | SERF | Ad-Hoc'],
+    ['Ad-Hoc Channel', 'Required only for Ad-Hoc rows. In-Person | Email | Teams'],
+    ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | Data Update | PCR | Other'],
+    ['Team Members', 'Optional. Comma-separated names, e.g. "Alex M., Blake N."'],
     ['Date Started', 'Required. Format: YYYY-MM-DD or M/D/YYYY'],
     ['Date Finished', 'Leave blank for In Progress / Awaiting rows.'],
     ['Status', 'Required. In Progress | Awaiting Meeting | Follow Up | Completed'],
     ['NNA ($M)', 'Optional. Net New Assets in millions. "120" = $120M.'],
     ['Notes', 'Optional. Human-readable notes text.'],
-    ['Tickers Mentioned', 'Optional. Comma-separated tickers (GCG Ad-Hoc). E.g. "FMAC, VTI"'],
+    ['Tickers Mentioned', 'Optional. Comma-separated tickers (Ad-Hoc). E.g. "FMAC, VTI"'],
     ['Portfolio Logged', 'Yes or No. Whether a client portfolio was logged for this engagement.'],
     ['Portfolio', 'Optional. JSON array of holdings. Format: [{"identifier":"FMAC","constituentType":"Security","assetClass":"Equity","weight":0.35}]'],
-    ['Notes (JSON)', 'Optional. JSON array of notes with metadata. Format: [{"text":"...","author":"Eli F.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]'],
+    ['Notes (JSON)', 'Optional. JSON array of notes with metadata. Format: [{"text":"...","author":"Alex M.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]'],
     ['', ''],
     ['Auto-filled by system', 'Department (from Internal Client Dept)'],
     ['Backup/restore', 'Columns N-P are populated by the Export button for full backup. On import, Notes (JSON) takes priority over Notes for restoring individual note entries.'],

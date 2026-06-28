@@ -107,6 +107,246 @@ body {
 .fade-in-d2   { animation: landingFadeIn 1s ease-out 0.2s both; }
 .fade-in-d3   { animation: landingFadeIn 1s ease-out 0.35s both; }
 .fade-in-d4   { animation: landingFadeIn 1s ease-out 0.5s both; }
+.fade-in-d5   { animation: landingFadeIn 1s ease-out 0.7s both; }
+
+/* Hero scroll cue — a downward arrow that bobs down and fades, hinting there's
+   more content below the fold. */
+@keyframes scrollCueArrow {
+  0%   { opacity: 0; transform: translateY(-3px); }
+  30%  { opacity: 1; }
+  70%  { opacity: 1; transform: translateY(5px); }
+  100% { opacity: 0; transform: translateY(5px); }
+}
+.scroll-cue-arrow { animation: scrollCueArrow 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue-arrow { animation: none; opacity: 0.8; }
+}
+
+/* Reverse of landingFadeIn — used by Portfolio Trends to collapse a full top-level
+   section (Equity rows or Fixed Income row) before deferred unmount. max-height is
+   generous so it doesn't clip real content while the section is still mounted. */
+@keyframes sectionExit {
+  0%   { opacity: 1; max-height: 4000px; transform: translateY(0); }
+  100% { opacity: 0; max-height: 0;      transform: translateY(-24px); }
+}
+.section-exit {
+  animation: sectionExit 1s ease-in both;
+  overflow: hidden;
+}
+
+/* Chart data entrance — used by Portfolio Trends XY dots/crosshairs and benchmark bars */
+@keyframes dataPop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.data-pop      { animation: dataPop 1.32s cubic-bezier(0.4, 0, 0.2, 1) both; }
+.data-pop-d1   { animation: dataPop 1.32s cubic-bezier(0.4, 0, 0.2, 1) 0.3s both; }
+.data-pop-d2   { animation: dataPop 1.32s cubic-bezier(0.4, 0, 0.2, 1) 0.55s both; }
+
+/* Horizontal bar grow — physically expands the bar's width from 0 to 100% so the
+   colored segments inside scale proportionally with the container. Pair with
+   overflow-hidden on each segment so the inline %% labels clip until the segment is
+   wide enough to show them. */
+@keyframes barGrow {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+.bar-grow { animation: barGrow 1.1s cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+/* Row enter — used by the Credit Breakdown card on 1→N transitions to stage a new
+   portfolio row's appearance. The row sits at max-height 0 / opacity 0 for the first
+   900ms (while the existing bars thin from h-14 to h-10), then grows in vertically
+   between the existing rows. max-height is generous so it never clips real content. */
+@keyframes rowEnter {
+  0%   { max-height: 0;     opacity: 0; }
+  100% { max-height: 200px; opacity: 1; }
+}
+.row-enter {
+  animation: rowEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.9s both;
+  overflow: hidden;
+}
+
+/* Label enter — paired with row-enter so the new portfolio's label fades in alongside
+   the bar's left-to-right grow (rather than appearing instantly when max-height clears).
+   Delay matches the row-enter / bar-grow start; duration matches the entering bar-grow. */
+@keyframes labelEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.label-enter {
+  animation: labelEnter 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.9s both;
+}
+
+/* Reverse-of-bar-grow — Credit Breakdown 2→1 exit. The deselected portfolio's bar
+   shrinks width 100%→0% over 1.5s, mirroring the entering bar-grow. */
+@keyframes barShrink {
+  from { width: 100%; }
+  to   { width: 0; }
+}
+.bar-shrink { animation: barShrink 1.5s cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+/* Reverse-of-label-enter — fades the deselected portfolio's label out concurrently
+   with bar-shrink. */
+@keyframes labelExit {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.label-exit { animation: labelExit 1.5s cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+/* Reverse-of-row-enter — collapses the row's vertical space after bar-shrink and
+   label-exit have mostly run, so the row finishes shrinking just as it's removed from
+   the DOM. Delay (0.7s) + duration (0.8s) = 1.5s total, matching PORTFOLIO_EXIT_MS. */
+@keyframes rowExit {
+  0%   { max-height: 200px; opacity: 1; }
+  100% { max-height: 0;     opacity: 0; }
+}
+.row-exit {
+  animation: rowExit 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.7s both;
+  overflow: hidden;
+}
+
+/* Exit fade — applied to portfolio-keyed elements (XY dots, bars, table cells, legend chips, etc.)
+   while their portfolio is being deselected, before deferred unmount. Mirrors data-pop. */
+@keyframes dataFade {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.data-fade { animation: dataFade 0.4s ease-out both; }
+
+/* Table column entrance / exit — used by the Metrics vs Index card so portfolio-keyed
+   columns slide in/out instead of snapping. The animation has to live on an inline-block
+   wrapper inside the cell because <td>/<th> (display: table-cell) ignore max-width during
+   table layout in most browsers. The cell itself has px-0; the wrapper carries the
+   padding that grows alongside max-width so the column track shrinks to genuinely 0
+   when collapsed. The 'to' padding (0.5rem) matches Tailwind's pl-2. */
+@keyframes colExpand {
+  from { max-width: 0;     padding-left: 0;      opacity: 0; }
+  to   { max-width: 240px; padding-left: 0.5rem; opacity: 1; }
+}
+@keyframes colCollapse {
+  from { max-width: 240px; padding-left: 0.5rem; opacity: 1; }
+  to   { max-width: 0;     padding-left: 0;      opacity: 0; }
+}
+.col-expand,
+.col-collapse {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.col-expand   { animation: colExpand   1.2s cubic-bezier(0.4, 0, 0.2, 1) both; }
+.col-collapse { animation: colCollapse 1.2s cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+@keyframes barGrowX {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.bar-grow-x { animation: barGrowX 1.32s cubic-bezier(0.4, 0, 0.2, 1) both; transform-origin: left; }
+.bar-grow-x-left { animation: barGrowX 1.32s cubic-bezier(0.4, 0, 0.2, 1) both; transform-origin: right; }
+
+/* Benchmark vertical-bar rise: applied to a newly-mounted SVG <rect> in BenchmarkBarChart.
+   The 550ms delay lets the existing bars finish their slide-apart (x/width transitions)
+   before the new bar grows up from its baseline. Total runtime = 1320ms to match the rest
+   of the portfolio-trends cards. transformOrigin is set per-bar inline. */
+@keyframes benchmarkBarRise {
+  0%   { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
+}
+.benchmark-bar--rising { animation: benchmarkBarRise 770ms 550ms ease-out both; }
+
+@keyframes benchmarkLabelRise {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+.benchmark-label--rising { animation: benchmarkLabelRise 330ms 990ms ease-out both; }
+
+/* Benchmark vertical-bar shrink: applied to a <rect> whose portfolio was just deselected.
+   Uses a keyframe (rather than inline transition) so it cleanly overrides the rising
+   animation's fill state. transformOrigin is set per-bar inline so the bar collapses to
+   its baseline. Duration matches SHRINK_MS in BenchmarkBarChart.tsx. */
+@keyframes benchmarkBarShrink {
+  0%   { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(0); opacity: 0; }
+}
+.benchmark-bar--shrinking { animation: benchmarkBarShrink 550ms ease-out forwards; }
+
+@keyframes benchmarkLabelShrink {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+.benchmark-label--shrinking { animation: benchmarkLabelShrink 350ms ease-out forwards; }
+
+/* Row stagger — when applied to a container, every animation primitive used by Portfolio
+   Trends cards inside it starts 1s later than its default. Used to cascade row 2 of the
+   Portfolio Trends grid behind row 1 (initial mount, portfolio add, portfolio remove).
+   For elements with inline animationDelay (e.g. table rows that already cascade
+   internally), bump the inline value by ROW_2_STAGGER_MS in TSX — inline styles win
+   over class rules. */
+.row-stagger-2 .data-pop                  { animation-delay: 1s; }
+.row-stagger-2 .data-fade                 { animation-delay: 1s; }
+.row-stagger-2 .col-expand                { animation-delay: 1s; }
+.row-stagger-2 .col-collapse              { animation-delay: 1s; }
+.row-stagger-2 .benchmark-bar--rising     { animation-delay: 1.55s; } /* 0.55s built-in + 1s */
+.row-stagger-2 .benchmark-label--rising   { animation-delay: 1.99s; } /* 0.99s built-in + 1s */
+.row-stagger-2 .benchmark-bar--shrinking  { animation-delay: 1s; }
+.row-stagger-2 .benchmark-label--shrinking { animation-delay: 1s; }
+
+/* Row 3 stagger — same 1s cadence as row-stagger-2, applied to the first Fixed Income row
+   of cards so its data-pop / bar-grow / col-expand animations start once row 2's data-pop
+   is mostly done. Mirrors the inline-delay convention: elements with their own
+   animationDelay get ROW_3_STAGGER_MS added in TSX. */
+.row-stagger-3 .data-pop      { animation-delay: 2s; }
+.row-stagger-3 .data-fade     { animation-delay: 2s; }
+.row-stagger-3 .bar-grow      { animation-delay: 2s; }
+.row-stagger-3 .col-expand    { animation-delay: 2s; }
+.row-stagger-3 .col-collapse  { animation-delay: 2s; }
+
+/* Yield Curve line reveal — clips each polyline's wrapper from `inset(0 100% 0 0)`
+   (fully clipped from the right) to `inset(0 0 0 0)` (no clip), drawing the line
+   left-to-right. The card stages the year-ago line first, then its dots, then the
+   current line, then its dots, instead of fading everything in at once.
+   Animation has `both` fill mode so the line stays fully revealed afterward —
+   range toggles (10Y/30Y) update the polyline points without replaying the draw. */
+@keyframes ycLineReveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.yc-line-reveal {
+  clip-path: inset(0 100% 0 0);
+  animation: ycLineReveal 1000ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.yc-line-reveal-current { animation-delay: 1500ms; }
+
+/* Yield Curve sits in row 3, so its line reveals start after ROW_3_STAGGER_MS like
+   the surrounding .data-pop / .bar-grow elements. Current trails year-ago by 1.5s. */
+.row-stagger-3 .yc-line-reveal         { animation-delay: 2s; }
+.row-stagger-3 .yc-line-reveal-current { animation-delay: 3.5s; }
+
+/* Row 4 stagger — applied to the second Fixed Income row (Credit Breakdown + Credit
+   Spread) so it cascades after the first FI row (FI Metrics + Yield Curve) finishes.
+   Same 1s cadence as the other rows. */
+.row-stagger-4 .data-pop      { animation-delay: 3s; }
+.row-stagger-4 .data-fade     { animation-delay: 3s; }
+.row-stagger-4 .bar-grow      { animation-delay: 3s; }
+.row-stagger-4 .col-expand    { animation-delay: 3s; }
+.row-stagger-4 .col-collapse  { animation-delay: 3s; }
+
+/* Row 5 stagger — Security Type row.
+   One cadence below row-stagger-4 so it cascades after Credit Breakdown finishes. */
+.row-stagger-5 .data-pop      { animation-delay: 4s; }
+.row-stagger-5 .data-fade     { animation-delay: 4s; }
+.row-stagger-5 .bar-grow      { animation-delay: 4s; }
+.row-stagger-5 .col-expand    { animation-delay: 4s; }
+.row-stagger-5 .col-collapse  { animation-delay: 4s; }
+
+/* Row 6 stagger — Maturity Breakdown row.
+   One cadence below row-stagger-5 so it cascades after Security Type finishes. */
+.row-stagger-6 .data-pop      { animation-delay: 5s; }
+.row-stagger-6 .data-fade     { animation-delay: 5s; }
+.row-stagger-6 .bar-grow      { animation-delay: 5s; }
+.row-stagger-6 .col-expand    { animation-delay: 5s; }
+.row-stagger-6 .col-collapse  { animation-delay: 5s; }
 
 /* Scroll-triggered fade-in */
 .scroll-fade-in {

@@ -194,6 +194,7 @@ const CompetitiveNotesModal: React.FC<CompetitiveNotesModalProps> = ({
                         onChange={setEditText}
                         onCtrlEnter={() => handleSaveEdit(entry.id)}
                         minHeight="4.5rem"
+                        maxHeight="30vh"
                         autoFocus
                       />
                       <div className="flex items-center gap-2 justify-end">
@@ -230,6 +231,7 @@ const CompetitiveNotesModal: React.FC<CompetitiveNotesModalProps> = ({
             onCtrlEnter={handleAddNote}
             placeholder="Add a note... (Ctrl+Enter to save)"
             minHeight="6rem"
+            maxHeight="35vh"
             autoFocus={!loading}
           />
           <div className="flex items-center justify-end gap-3">

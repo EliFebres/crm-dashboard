@@ -3,16 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, ArrowRight, CheckCircle, X } from 'lucide-react';
 import { Select } from '@/app/components/ui/Select';
-
-const TEAMS = [
-  'Portfolio Consulting Group',
-  'Equity Specialist',
-  'Fixed Income Specialist',
-  'Leadership',
-  'Guest',
-] as const;
-
-const OFFICES = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'] as const;
+import { getTeams, getOffices } from '@/app/lib/api/org';
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -37,6 +28,8 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState<'pending' | null>(null);
+  const [teams, setTeams] = useState<string[]>([]);
+  const [offices, setOffices] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,6 +40,23 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       setFieldErrors({});
       setIsLoading(false);
       setSuccess(null);
+
+      // Teams/offices are admin-managed. Fetch the current lists and default the
+      // form to the first of each (a fresh workspace offers just one of each).
+      getTeams()
+        .then(items => {
+          const names = items.map(t => t.name);
+          setTeams(names);
+          setForm(prev => (prev.team ? prev : { ...prev, team: names[0] ?? '' }));
+        })
+        .catch(() => setTeams([]));
+      getOffices()
+        .then(items => {
+          const names = items.map(o => o.name);
+          setOffices(names);
+          setForm(prev => (prev.office ? prev : { ...prev, office: names[0] ?? '' }));
+        })
+        .catch(() => setOffices([]));
     }
   }, [isOpen]);
 
@@ -134,7 +144,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ fontFamily: 'var(--font-geist-sans)' }}
-        onClick={onClose}
       >
         <div className="absolute inset-0 bg-[#08070b]/80 backdrop-blur-md" />
         <div
@@ -184,7 +193,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ fontFamily: 'var(--font-geist-sans)' }}
-      onClick={onClose}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-[#08070b]/80 backdrop-blur-md" />
@@ -326,7 +334,7 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   <Select
                     value={form.team}
                     onValueChange={v => { setForm(prev => ({ ...prev, team: v })); setFieldErrors(prev => ({ ...prev, team: '' })); }}
-                    options={TEAMS}
+                    options={teams}
                     placeholder="Select team"
                     hasError={!!fieldErrors.team}
                   />
@@ -337,7 +345,7 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   <Select
                     value={form.office}
                     onValueChange={v => { setForm(prev => ({ ...prev, office: v })); setFieldErrors(prev => ({ ...prev, office: '' })); }}
-                    options={OFFICES}
+                    options={offices}
                     placeholder="Select office"
                     hasError={!!fieldErrors.office}
                   />

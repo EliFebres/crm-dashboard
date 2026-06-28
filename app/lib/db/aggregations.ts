@@ -2,32 +2,34 @@
  * Server-side aggregation functions for the Client Interactions dashboard.
  *
  * DATA SOURCE:
- * - If DUCKDB_DIR env var is set → query DuckDB (real data)
- * - If DUCKDB_DIR is not set    → return mock data (development/demo)
+ * - If SQLITE_DIR env var is set → query SQLite (real data)
+ * - If SQLITE_DIR is not set    → return mock data (development/demo)
  */
 import { query } from './index';
+import { hasDb } from './connection';
 import {
   getMockMetrics,
   getMockDepartmentBreakdown,
   getMockContributionData,
   getMockEngagementsList,
 } from '../api/mock-computations';
-import { buildFilterClause, rowToEngagement, SORT_COLUMN_MAP } from './queries';
+import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
 import type { DayData } from '../types/engagements';
+import { VALID_STATUSES } from '../statusHelpers';
 
 // Static filter options — these don't change dynamically in this application
 export const STATIC_FILTER_OPTIONS: FilterOptions = {
-  teamMembers: ['All Team Members', 'Austin Office', 'Charlotte Office'],
+  teamMembers: ['All Team Members', 'Office B', 'Office A'],
   teamMemberGroups: [
-    { label: 'Office', options: ['Austin Office', 'Charlotte Office'] },
+    { label: 'Office', options: ['Office B', 'Office A'] },
   ],
-  departments: ['Broker-Dealer', 'IAG', 'Institutional', 'Retirement Group'],
-  intakeTypes: ['IRQ', 'SERF', 'GCG Ad-Hoc'],
-  projectTypes: ['Data Request', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
-  statuses: ['In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'],
+  departments: ['Brokerage', 'Advisory', 'Institutional', 'Retirement'],
+  intakeTypes: ['IRQ', 'SERF', 'Ad-Hoc'],
+  projectTypes: ['Data Request', 'Data Update', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
+  statuses: [...VALID_STATUSES],
 };
 
 // =============================================================================
@@ -35,32 +37,33 @@ export const STATIC_FILTER_OPTIONS: FilterOptions = {
 // =============================================================================
 
 export async function computeMetrics(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<DashboardMetrics> {
-  if (!process.env.DUCKDB_DIR) return getMockMetrics(filters);
+  if (!hasDb()) return getMockMetrics(filters);
 
-  const period = filters.period || '1Y';
+  const resolved = await resolveOfficeMembers(filters);
+  const period = resolved.period || '1Y';
   const prevDates = getPreviousPeriodDates(period);
-  const { whereClause: currWhere, params: currParams } = buildFilterClause({ ...filters, period }, '', serverConstraints);
+  const { whereClause: currWhere, params: currParams } = buildFilterClause({ ...resolved, period }, 'e', serverConstraints);
 
   // ---- Build all WHERE clauses before firing queries in parallel ----
 
   // Previous period
-  const prevFilters = { ...filters, period: undefined };
-  const { whereClause: baseWhere, params: baseParams } = buildFilterClause(prevFilters, '', serverConstraints);
+  const prevFilters = { ...resolved, period: undefined };
+  const { whereClause: baseWhere, params: baseParams } = buildFilterClause(prevFilters, 'e', serverConstraints);
   const prevAndClause = baseWhere
     ? `${baseWhere} AND date_started >= ? AND date_started <= ?`
     : `WHERE date_started >= ? AND date_started <= ?`;
   const prevParams = [...baseParams, prevDates.start, prevDates.end];
 
   // In-progress count + sparkline (share the same base filter)
-  const inProgressFilters = { ...filters, status: undefined };
-  const { whereClause: ipWhere, params: ipParams } = buildFilterClause(inProgressFilters, '', serverConstraints);
+  const inProgressFilters = { ...resolved, status: undefined };
+  const { whereClause: ipWhere, params: ipParams } = buildFilterClause(inProgressFilters, 'e', serverConstraints);
   const sparklineAndClause = ipWhere
-    ? `${ipWhere} AND date_started >= (CURRENT_DATE - INTERVAL '8 weeks')`
-    : `WHERE date_started >= (CURRENT_DATE - INTERVAL '8 weeks')`;
+    ? `${ipWhere} AND date_started >= date('now', '-56 days')`
+    : `WHERE date_started >= date('now', '-56 days')`;
 
   // ---- Fire all 4 queries in parallel — none depends on another's result ----
   const [projectRows, prevRows, inProgressRows, sparklineRows] = await Promise.all([
-    // Current period: client projects (IRQ/SERF non-PCR) + GCG Ad-Hoc
+    // Current period: client projects (IRQ/SERF non-PCR) + Ad-Hoc
     query<Record<string, unknown>>(`
       SELECT
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS project_count,
@@ -69,40 +72,40 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS eligible_count,
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR'
                            AND portfolio_logged = TRUE)                            AS portfolios_logged,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')                        AS adhoc_count,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc' AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc' AND ad_hoc_channel = 'Email')     AS adhoc_email,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc' AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                        AS adhoc_count,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Email')     AS adhoc_email,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
         COALESCE(SUM(nna), 0)                                                     AS total_nna,
         COUNT(*) FILTER (WHERE nna > 0)                                           AS nna_project_count,
         COUNT(*) FILTER (WHERE nna > 0 AND nna < 50000000)                        AS nna_tier1,
         COUNT(*) FILTER (WHERE nna > 0 AND nna >= 50000000  AND nna < 200000000)  AS nna_tier2,
         COUNT(*) FILTER (WHERE nna > 0 AND nna >= 200000000)                      AS nna_tier3
-      FROM engagements ${currWhere}
+      FROM engagements e ${CLIENT_JOIN} ${currWhere}
     `, currParams),
     // Previous period: for change% calculations
     query<Record<string, unknown>>(`
       SELECT
         COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR') AS prev_projects,
-        COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')                       AS prev_adhoc,
+        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                       AS prev_adhoc,
         COALESCE(SUM(nna), 0)                                                    AS prev_nna
-      FROM engagements ${prevAndClause}
+      FROM engagements e ${CLIENT_JOIN} ${prevAndClause}
     `, prevParams),
     // In-progress: current count + last week's count (currently in-progress OR finished this week)
     query<Record<string, unknown>>(`
       SELECT
         COUNT(*) FILTER (WHERE status = 'In Progress') AS count,
         COUNT(*) FILTER (WHERE status = 'In Progress'
-          OR (date_finished >= date_trunc('week', CURRENT_DATE) AND status != 'In Progress')
+          OR (date_finished >= date('now', '-' || ((strftime('%w','now') + 6) % 7) || ' days') AND status != 'In Progress')
         ) AS last_week
-      FROM engagements ${ipWhere || ''}
+      FROM engagements e ${CLIENT_JOIN} ${ipWhere || ''}
     `, ipParams),
     // Weekly in-progress sparkline (last 8 weeks, same filters)
     query<Record<string, unknown>>(`
       SELECT
-        strftime(date_started, '%Y-W%W') AS week_key,
+        strftime('%Y-W%W', date_started) AS week_key,
         COUNT(*) FILTER (WHERE status = 'In Progress') AS in_progress_count
-      FROM engagements ${sparklineAndClause}
+      FROM engagements e ${CLIENT_JOIN} ${sparklineAndClause}
       GROUP BY week_key
       ORDER BY week_key
     `, ipParams),
@@ -173,7 +176,7 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
         portfoliosPercent: eligibleCount > 0 ? Math.round((portfoliosLogged / eligibleCount) * 100) : 0,
       },
     },
-    gcgAdHoc: {
+    adHoc: {
       count: adhocCount,
       changePercent: adhocChangePercent,
       periodLabel: prevDates.label,
@@ -206,28 +209,29 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
 // =============================================================================
 
 export async function computeDepartmentBreakdown(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<DepartmentBreakdown> {
-  if (!process.env.DUCKDB_DIR) return getMockDepartmentBreakdown(filters);
+  if (!hasDb()) return getMockDepartmentBreakdown(filters);
 
-  const { whereClause, params } = buildFilterClause(filters, '', serverConstraints);
+  const resolved = await resolveOfficeMembers(filters);
+  const { whereClause, params } = buildFilterClause(resolved, 'e', serverConstraints);
 
   const rows = await query<Record<string, unknown>>(`
     SELECT internal_client_dept AS dept, COUNT(*) AS cnt
-    FROM engagements ${whereClause}
+    FROM engagements e ${CLIENT_JOIN} ${whereClause}
     GROUP BY internal_client_dept
   `, params);
 
   const DEPT_COLORS: Record<string, string> = {
-    IAG: '#a5f3fc',
-    'Broker-Dealer': '#22d3ee',
+    Advisory: '#a5f3fc',
+    'Brokerage': '#22d3ee',
     Institutional: '#0e7490',
-    'Retirement Group': '#67e8f9',
+    'Retirement': '#67e8f9',
   };
 
   const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
   const safeTotal = total || 1;
 
   // Ensure all three departments appear even if count is 0
-  const deptMap: Record<string, number> = { IAG: 0, 'Broker-Dealer': 0, Institutional: 0, 'Retirement Group': 0 };
+  const deptMap: Record<string, number> = { Advisory: 0, 'Brokerage': 0, Institutional: 0, 'Retirement': 0 };
   rows.forEach(r => {
     const dept = r.dept as string;
     deptMap[dept] = Number(r.cnt);
@@ -249,11 +253,12 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
 // =============================================================================
 
 export async function computeContributionData(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<ContributionDataResponse> {
-  if (!process.env.DUCKDB_DIR) return getMockContributionData(filters);
+  if (!hasDb()) return getMockContributionData(filters);
 
+  const resolved = await resolveOfficeMembers(filters);
   // Apply all filters EXCEPT period — heatmap always shows a rolling 104-week window
-  const heatmapFilters = { ...filters, period: undefined };
-  const { whereClause, params } = buildFilterClause(heatmapFilters, '', serverConstraints);
+  const heatmapFilters = { ...resolved, period: undefined };
+  const { whereClause, params } = buildFilterClause(heatmapFilters, 'e', serverConstraints);
 
   const heatmapStart = new Date();
   heatmapStart.setDate(heatmapStart.getDate() - 104 * 7);
@@ -266,9 +271,9 @@ export async function computeContributionData(filters: EngagementFilters, server
   const rows = await query<Record<string, unknown>>(`
     SELECT
       CAST(date_finished AS VARCHAR) AS finish_date,
-      COUNT(*) FILTER (WHERE intake_type != 'GCG Ad-Hoc') AS project_count,
-      COUNT(*) FILTER (WHERE intake_type = 'GCG Ad-Hoc')  AS ad_hoc_count
-    FROM engagements ${dateFilter}
+      COUNT(*) FILTER (WHERE intake_type != 'Ad-Hoc') AS project_count,
+      COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')  AS ad_hoc_count
+    FROM engagements e ${CLIENT_JOIN} ${dateFilter}
     GROUP BY CAST(date_finished AS VARCHAR)
     ORDER BY finish_date
   `, [...params, heatmapStartISO]);
@@ -333,26 +338,44 @@ export async function computeContributionData(filters: EngagementFilters, server
 // =============================================================================
 
 export async function computeEngagementsList(filters: EngagementFilters, serverConstraints: ServerConstraints = {}): Promise<EngagementsResponse> {
-  if (!process.env.DUCKDB_DIR) return getMockEngagementsList(filters);
+  if (!hasDb()) return getMockEngagementsList(filters);
 
-  const { whereClause, params } = buildFilterClause(filters, '', serverConstraints);
+  const resolved = await resolveOfficeMembers(filters);
+  const { whereClause, params } = buildFilterClause(resolved, 'e', serverConstraints);
   const page = filters.page || 1;
   const pageSize = filters.pageSize || 50;
   const offset = (page - 1) * pageSize;
 
-  const sortCol = SORT_COLUMN_MAP[filters.sortColumn || ''] || 'date_started';
-  const sortDir = filters.sortDirection === 'asc' ? 'ASC' : 'DESC';
+  // Translate the sortBy array into a list of ORDER BY fragments. Each entry
+  // produces "<col> <dir> NULLS FIRST|LAST". Unknown column names are ignored
+  // (rather than silently falling back to a different column).
+  const sortClauses: string[] = [];
+  const seen = new Set<string>();
+  for (const spec of filters.sortBy ?? []) {
+    const sortCol = SORT_COLUMN_MAP[spec.column];
+    if (!sortCol || seen.has(sortCol)) continue;
+    seen.add(sortCol);
+    const sortDir = spec.direction === 'asc' ? 'ASC' : 'DESC';
+    const nullsOrder = sortDir === 'DESC' ? 'NULLS FIRST' : 'NULLS LAST';
+    sortClauses.push(`${sortCol} ${sortDir} ${nullsOrder}`);
+  }
+  if (sortClauses.length === 0) {
+    sortClauses.push('date_finished DESC NULLS FIRST');
+  }
+  // `id DESC` is the final tiebreaker so pagination stays stable when the
+  // sort columns produce ties.
+  const orderBy = `${sortClauses.join(', ')}, id DESC`;
 
   const [countRows, dataRows] = await Promise.all([
     query<Record<string, unknown>>(
-      `SELECT COUNT(*) AS total FROM engagements ${whereClause}`,
+      `SELECT COUNT(*) AS total FROM engagements e ${CLIENT_JOIN} ${whereClause}`,
       params
     ),
     query<Record<string, unknown>>(
-      `SELECT *,
-         (SELECT COUNT(*) FROM engagement_notes WHERE engagement_id = engagements.id) AS note_count
-       FROM engagements ${whereClause}
-       ORDER BY ${sortCol} ${sortDir} ${sortDir === 'DESC' ? 'NULLS FIRST' : 'NULLS LAST'}
+      `SELECT e.*, c.name AS client_name,
+         (SELECT COUNT(*) FROM engagement_notes WHERE engagement_id = e.id) AS note_count
+       FROM engagements e ${CLIENT_JOIN} ${whereClause}
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]
     ),

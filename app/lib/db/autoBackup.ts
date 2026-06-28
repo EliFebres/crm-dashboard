@@ -1,9 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import type { DuckDBConnection } from '@duckdb/node-api';
-import { runBackup, type LiveSources } from './backupCore';
-import { getUsersConnectionIfOpen } from './users';
-import { getActivityConnectionIfOpen } from './activity';
+import { runBackup } from './backupCore';
+import { getDbDir } from './connection';
 
 const MARKER_FILE = '.last-auto-backup';
 // Fire once per day. 20h (not 24h) so a user who starts the server at ~8am
@@ -18,16 +16,13 @@ const g = global as typeof globalThis & {
 
 // Called once per day from the engagements connection bootstrap. Fire-and-
 // forget: any error is logged and swallowed so a backup failure can never
-// prevent the app from serving requests. The caller passes in its own
-// connection (engagements) so the backup can copy the live DB without needing
-// to re-enter getConnection() mid-bootstrap.
-export function maybeRunDailyAutoBackup(
-  engagementsConn?: DuckDBConnection,
-): Promise<void> {
+// prevent the app from serving requests. The online backup API snapshots each
+// live DB safely, so no live connection handles are needed.
+export function maybeRunDailyAutoBackup(): Promise<void> {
   if (g._autoBackupInFlight) return g._autoBackupInFlight;
 
   const p = (async () => {
-    const dbDir = process.env.DUCKDB_DIR;
+    const dbDir = getDbDir();
     const backupDir = process.env.BACKUP_DIR;
     if (!dbDir || !backupDir) return;
 
@@ -51,34 +46,16 @@ export function maybeRunDailyAutoBackup(
       /* corrupt marker — just proceed and overwrite it */
     }
 
-    // Gather live connections so the copy goes through DuckDB's ATTACH/COPY
-    // path instead of fs.copyFileSync, which fails with EBUSY on Windows while
-    // the DB file is held open. Users/activity are opportunistic — only
-    // included if their connection has already been initialized elsewhere.
-    const liveSources: LiveSources = {};
-    if (engagementsConn) liveSources['engagements.duckdb'] = engagementsConn;
-    const usersPromise = getUsersConnectionIfOpen();
-    if (usersPromise) {
-      try { liveSources['users.duckdb'] = await usersPromise; }
-      catch { /* bootstrap failed — fall back to fs copy */ }
-    }
-    const activityPromise = getActivityConnectionIfOpen();
-    if (activityPromise) {
-      try { liveSources['activity.duckdb'] = await activityPromise; }
-      catch { /* bootstrap failed — fall back to fs copy */ }
-    }
-
     try {
       const result = await runBackup({
         dbDir: resolvedDb,
         backupDir: resolvedBackup,
-        liveSources,
         log: (m) => console.log('[auto-backup]', m),
       });
       if (result.skipped) {
         console.warn('[auto-backup] snapshot skipped:', result.skipReason);
-        // Deliberately do NOT touch the marker on skip — we want to keep
-        // retrying so the user sees the warning on every boot until resolved.
+        // Deliberately do NOT touch the marker on skip — keep retrying so the
+        // warning shows on every boot until resolved.
         return;
       }
       if (result.backupPath) {

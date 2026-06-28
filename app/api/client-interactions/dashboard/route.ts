@@ -9,6 +9,7 @@ import {
   STATIC_FILTER_OPTIONS,
 } from '@/app/lib/db/aggregations';
 import { getMockFilterOptions } from '@/app/lib/api/mock-computations';
+import { hasDb } from '@/app/lib/db';
 import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
 import type { EngagementFilters } from '@/app/lib/api/client-interactions';
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
       departments,
       contributionData,
       engagements,
-      filterOptions: process.env.DUCKDB_DIR ? STATIC_FILTER_OPTIONS : getMockFilterOptions(),
+      filterOptions: hasDb() ? STATIC_FILTER_OPTIONS : getMockFilterOptions(),
     });
   } catch (err) {
     console.error('POST /api/client-interactions/dashboard error:', err);

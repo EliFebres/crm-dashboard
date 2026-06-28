@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 
 export interface ParsedRow {
   rowNumber: number; // 1-based, row 1 = first data row (after header)
+  crn: string | null; // External client CRN (resolved/registered server-side)
   externalClient: string | null;
   internalClientName: string;
   internalClientDept: string;
@@ -126,22 +127,23 @@ export async function parseUploadedFile(buffer: Buffer, filename: string): Promi
     try {
       const get = (col: number) => row.getCell(col).value;
 
-      const externalClient = str(get(1)) || null;
-      const internalClientName = str(get(2));
-      const internalClientDept = str(get(3));
-      const intakeType = str(get(4));
-      const adHocChannel = str(get(5)) || null;
-      const type = str(get(6));
-      const teamMembers = parseCommaSeparated(get(7));
-      const dateStartedRaw = get(8);
-      const dateFinishedRaw = get(9);
-      const status = str(get(10));
-      const nnaMRaw = get(11);
-      const notes = str(get(12)) || null;
-      const tickersMentioned = parseCommaSeparated(get(13));
-      const portfolioLoggedRaw = get(14);
-      const portfolioRaw = str(get(15)) || null;
-      const structuredNotesRaw = str(get(16)) || null;
+      const crn = str(get(1)) || null;
+      const externalClient = str(get(2)) || null;
+      const internalClientName = str(get(3));
+      const internalClientDept = str(get(4));
+      const intakeType = str(get(5));
+      const adHocChannel = str(get(6)) || null;
+      const type = str(get(7));
+      const teamMembers = parseCommaSeparated(get(8));
+      const dateStartedRaw = get(9);
+      const dateFinishedRaw = get(10);
+      const status = str(get(11));
+      const nnaMRaw = get(12);
+      const notes = str(get(13)) || null;
+      const tickersMentioned = parseCommaSeparated(get(14));
+      const portfolioLoggedRaw = get(15);
+      const portfolioRaw = str(get(16)) || null;
+      const structuredNotesRaw = str(get(17)) || null;
 
       const dateStarted = parseDate(dateStartedRaw);
       const dateFinished = parseDate(dateFinishedRaw);
@@ -160,6 +162,7 @@ export async function parseUploadedFile(buffer: Buffer, filename: string): Promi
 
       rows.push({
         rowNumber,
+        crn,
         externalClient,
         internalClientName,
         internalClientDept,

@@ -8,15 +8,7 @@ import { signJWT, SESSION_COOKIE, COOKIE_OPTIONS } from '@/app/lib/auth/jwt';
 import { rowToUser } from '@/app/lib/auth/types';
 import { emitUserChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
-
-const VALID_TEAMS = [
-  'Portfolio Consulting Group',
-  'Equity Specialist',
-  'Fixed Income Specialist',
-  'Leadership',
-  'Guest',
-];
-const VALID_OFFICES = ['Austin', 'Charlotte', 'Santa Monica', 'UK', 'Sydney'];
+import { orgNameExists } from '@/app/lib/db/org';
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,11 +38,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Passwords do not match.' }, { status: 400 });
     }
 
-    // Validate enum fields
-    if (!VALID_TEAMS.includes(team)) {
+    // Validate team/office against the admin-managed lists in the DB
+    if (!(await orgNameExists('team', team))) {
       return NextResponse.json({ error: 'Invalid team selection.' }, { status: 400 });
     }
-    if (!VALID_OFFICES.includes(office)) {
+    if (!(await orgNameExists('office', office))) {
       return NextResponse.json({ error: 'Invalid office selection.' }, { status: 400 });
     }
 
@@ -72,13 +64,13 @@ export async function POST(req: NextRequest) {
     if (isFirstUser) {
       await executeUsers(
         `INSERT INTO users (id, email, first_name, last_name, title, department, team, office, role, status, password_hash, created_at, approved_at)
-         VALUES (?, ?, ?, ?, ?, 'ISG', ?, ?, ?, ?, ?, now(), now())`,
+         VALUES (?, ?, ?, ?, ?, 'Default', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         [id, email.toLowerCase(), firstName.trim(), lastName.trim(), title.trim(), team, office, role, status, passwordHash]
       );
     } else {
       await executeUsers(
         `INSERT INTO users (id, email, first_name, last_name, title, department, team, office, role, status, password_hash, created_at)
-         VALUES (?, ?, ?, ?, ?, 'ISG', ?, ?, ?, ?, ?, now())`,
+         VALUES (?, ?, ?, ?, ?, 'Default', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         [id, email.toLowerCase(), firstName.trim(), lastName.trim(), title.trim(), team, office, role, status, passwordHash]
       );
     }

@@ -1,6 +1,6 @@
 /**
  * Mock data computation functions for the Client Interactions dashboard.
- * Used as a fallback when DUCKDB_DIR is not set in the environment.
+ * Used as a fallback when SQLITE_DIR is not set in the environment.
  */
 
 import type { Engagement } from '../types/engagements';
@@ -96,17 +96,17 @@ export function applyMockFilters(engagements: Engagement[], filters: EngagementF
   }
 
   if (filters.teamMember && filters.teamMember !== 'All Team Members') {
-    if (filters.teamMember === 'Charlotte Office') {
-      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Charlotte'));
-    } else if (filters.teamMember === 'Austin Office') {
-      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Austin'));
+    if (filters.teamMember === 'Office A') {
+      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Office A'));
+    } else if (filters.teamMember === 'Office B') {
+      filtered = filtered.filter(e => e.teamMembers.some(m => teamMemberOffices[m] === 'Office B'));
     } else {
       filtered = filtered.filter(e => e.teamMembers.includes(filters.teamMember!));
     }
   }
 
   if (filters.departments && filters.departments.length > 0) {
-    filtered = filtered.filter(e => filters.departments!.includes(e.internalClient.gcgDepartment));
+    filtered = filtered.filter(e => filters.departments!.includes(e.internalClient.clientDept));
   }
 
   if (filters.intakeTypes && filters.intakeTypes.length > 0) {
@@ -125,10 +125,11 @@ export function applyMockFilters(engagements: Engagement[], filters: EngagementF
     const s = filters.search.toLowerCase();
     filtered = filtered.filter(e =>
       (e.externalClient?.toLowerCase().includes(s) ?? false) ||
+      (e.clientCrn?.toLowerCase().includes(s) ?? false) ||
       e.internalClient.name.toLowerCase().includes(s) ||
       e.intakeType.toLowerCase().includes(s) ||
       e.type.toLowerCase().includes(s) ||
-      e.internalClient.gcgDepartment.toLowerCase().includes(s) ||
+      e.internalClient.clientDept.toLowerCase().includes(s) ||
       e.teamMembers.some(m => teamMemberOffices[m]?.toLowerCase().includes(s))
     );
   }
@@ -167,18 +168,18 @@ export function getMockMetrics(filters: EngagementFilters): DashboardMetrics {
   );
   const portfoliosLogged = eligibleForPortfolio.filter(e => e.portfolioLogged).length;
 
-  const gcgAdHocEngagements = filtered.filter(e => e.intakeType === 'GCG Ad-Hoc');
-  const gcgAdHoc = gcgAdHocEngagements.length;
-  const prevGcgAdHoc = mockEngagements.filter(e => {
+  const adHocEngagements = filtered.filter(e => e.intakeType === 'Ad-Hoc');
+  const adHoc = adHocEngagements.length;
+  const prevAdHoc = mockEngagements.filter(e => {
     const d = new Date(e.dateStarted);
-    return e.intakeType === 'GCG Ad-Hoc' && d >= periodDates.previousStart && d <= periodDates.previousEnd;
+    return e.intakeType === 'Ad-Hoc' && d >= periodDates.previousStart && d <= periodDates.previousEnd;
   }).length;
-  const gcgAdHocChangePercent = prevGcgAdHoc > 0
-    ? Math.round(((gcgAdHoc - prevGcgAdHoc) / prevGcgAdHoc) * 100)
-    : gcgAdHoc > 0 ? 100 : 0;
+  const adHocChangePercent = prevAdHoc > 0
+    ? Math.round(((adHoc - prevAdHoc) / prevAdHoc) * 100)
+    : adHoc > 0 ? 100 : 0;
 
   const intakeCounts: Record<string, number> = { 'In-Person': 0, 'Email': 0, 'Teams': 0 };
-  gcgAdHocEngagements.forEach(e => {
+  adHocEngagements.forEach(e => {
     if (e.adHocChannel && e.adHocChannel in intakeCounts) intakeCounts[e.adHocChannel]++;
   });
   const INTAKE_COLORS: Record<string, string> = { 'In-Person': '#a5f3fc', 'Email': '#22d3ee', 'Teams': '#0e7490' };
@@ -216,14 +217,14 @@ export function getMockMetrics(filters: EngagementFilters): DashboardMetrics {
         portfoliosPercent: eligibleForPortfolio.length > 0 ? Math.round((portfoliosLogged / eligibleForPortfolio.length) * 100) : 0,
       },
     },
-    gcgAdHoc: {
-      count: gcgAdHoc,
-      changePercent: gcgAdHocChangePercent,
+    adHoc: {
+      count: adHoc,
+      changePercent: adHocChangePercent,
       periodLabel: periodDates.label,
       intakeBreakdown: Object.entries(intakeCounts).map(([intake, count]) => ({
         intake,
         count,
-        percent: gcgAdHoc > 0 ? Math.round((count / gcgAdHoc) * 100) : 0,
+        percent: adHoc > 0 ? Math.round((count / adHoc) * 100) : 0,
         color: INTAKE_COLORS[intake] || '#71717a',
       })),
     },
@@ -251,10 +252,10 @@ export function getMockMetrics(filters: EngagementFilters): DashboardMetrics {
 
 export function getMockDepartmentBreakdown(filters: EngagementFilters): DepartmentBreakdown {
   const filtered = applyMockFilters(mockEngagements, filters);
-  const deptCounts: Record<string, number> = { IAG: 0, 'Broker-Dealer': 0, Institutional: 0 };
-  filtered.forEach(e => { deptCounts[e.internalClient.gcgDepartment]++; });
+  const deptCounts: Record<string, number> = { Advisory: 0, 'Brokerage': 0, Institutional: 0 };
+  filtered.forEach(e => { deptCounts[e.internalClient.clientDept]++; });
   const total = filtered.length || 1;
-  const colors: Record<string, string> = { IAG: '#a5f3fc', 'Broker-Dealer': '#22d3ee', Institutional: '#0e7490' };
+  const colors: Record<string, string> = { Advisory: '#a5f3fc', 'Brokerage': '#22d3ee', Institutional: '#0e7490' };
   return {
     departments: Object.entries(deptCounts).map(([name, count]) => ({
       name,
@@ -289,14 +290,32 @@ export function getMockContributionData(filters: EngagementFilters): Contributio
 export function getMockEngagementsList(filters: EngagementFilters): EngagementsResponse {
   const filtered = applyMockFilters(mockEngagements, filters);
 
+  // Resolve a sort column name to the value on an engagement. Handles nested
+  // fields (internalClient name) and the JSON-array teamMembers (first member).
+  const valueFor = (e: Engagement, column: string): string | number | boolean | undefined => {
+    switch (column) {
+      case 'internalClient': return e.internalClient.name;
+      case 'teamMembers': return e.teamMembers[0];
+      case 'portfolioLogged': return e.portfolioLogged;
+      default: return e[column as keyof Engagement] as string | number | undefined;
+    }
+  };
+
   const sorted = [...filtered];
-  if (filters.sortColumn) {
-    const dir = filters.sortDirection === 'asc' ? 1 : -1;
+  const sortBy = filters.sortBy ?? [];
+  if (sortBy.length > 0) {
     sorted.sort((a, b) => {
-      const aVal = a[filters.sortColumn as keyof Engagement];
-      const bVal = b[filters.sortColumn as keyof Engagement];
-      if (typeof aVal === 'string' && typeof bVal === 'string') return aVal.localeCompare(bVal) * dir;
-      if (typeof aVal === 'number' && typeof bVal === 'number') return (aVal - bVal) * dir;
+      for (const { column, direction } of sortBy) {
+        const dir = direction === 'asc' ? 1 : -1;
+        const aVal = valueFor(a, column);
+        const bVal = valueFor(b, column);
+        if (aVal === bVal) continue;
+        if (aVal === undefined || aVal === null) return 1;
+        if (bVal === undefined || bVal === null) return -1;
+        if (typeof aVal === 'string' && typeof bVal === 'string') return aVal.localeCompare(bVal) * dir;
+        if (typeof aVal === 'number' && typeof bVal === 'number') return (aVal - bVal) * dir;
+        if (typeof aVal === 'boolean' && typeof bVal === 'boolean') return (Number(aVal) - Number(bVal)) * dir;
+      }
       return 0;
     });
   }
@@ -326,17 +345,17 @@ export function getMockFilterOptions(): FilterOptions {
   const statuses = new Set<string>();
 
   mockEngagements.forEach(e => {
-    departments.add(e.internalClient.gcgDepartment);
+    departments.add(e.internalClient.clientDept);
     intakeTypes.add(e.intakeType);
     projectTypes.add(e.type);
     statuses.add(e.status);
   });
 
   return {
-    teamMembers: ['All Team Members', 'Austin Office', 'Charlotte Office'],
-    teamMemberGroups: [{ label: 'Office', options: ['Austin Office', 'Charlotte Office'] }],
+    teamMembers: ['All Team Members', 'Office B', 'Office A'],
+    teamMemberGroups: [{ label: 'Office', options: ['Office B', 'Office A'] }],
     departments: Array.from(departments).sort(),
-    intakeTypes: ['IRQ', 'SERF', 'GCG Ad-Hoc'].filter(t => intakeTypes.has(t)),
+    intakeTypes: ['IRQ', 'SERF', 'Ad-Hoc'].filter(t => intakeTypes.has(t)),
     projectTypes: Array.from(projectTypes).sort(),
     statuses: Array.from(statuses).sort(),
   };

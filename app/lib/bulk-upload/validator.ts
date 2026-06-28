@@ -1,4 +1,6 @@
 import type { ParsedRow } from './parser';
+import { VALID_STATUSES as STATUS_ENUM } from '../statusHelpers';
+import { normalizeCrn, isValidCrn } from '../config/crn';
 
 export interface ValidationError {
   rowNumber: number;
@@ -18,12 +20,12 @@ export interface ValidationResult {
   validRows: ParsedRow[];
 }
 
-const VALID_INTAKE_TYPES = ['IRQ', 'SERF', 'GCG Ad-Hoc'];
+const VALID_INTAKE_TYPES = ['IRQ', 'SERF', 'Ad-Hoc'];
 const VALID_AD_HOC_CHANNELS = ['In-Person', 'Email', 'Teams'];
-const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
-const VALID_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
-const VALID_STATUSES = ['In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'];
-const VALID_INTERNAL_CLIENT_DEPTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'];
+const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
+const VALID_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
+const VALID_STATUSES: string[] = [...STATUS_ENUM];
+const VALID_INTERNAL_CLIENT_DEPTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
 const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds'];
 
@@ -39,10 +41,8 @@ function matchEnum(value: string, options: string[]): string | null {
 
 // Alias maps for intake type normalization
 const INTAKE_TYPE_ALIASES: Record<string, string> = {
-  'gcgadhoc': 'GCG Ad-Hoc',
-  'adhoc': 'GCG Ad-Hoc',
-  'ad-hoc': 'GCG Ad-Hoc',
-  'gcg': 'GCG Ad-Hoc',
+  'adhoc': 'Ad-Hoc',
+  'ad-hoc': 'Ad-Hoc',
   'irq': 'IRQ',
   'serf': 'SERF',
   'srrf': 'SERF', // old name alias
@@ -97,16 +97,12 @@ function normalizeStatus(value: string): string | null {
 
 // Alias map for departments
 const DEPT_ALIASES: Record<string, string> = {
-  'iag': 'IAG',
-  'institutionalassetgrowth': 'IAG',
-  'brokdealer': 'Broker-Dealer',
-  'bd': 'Broker-Dealer',
-  'brokerdealer': 'Broker-Dealer',
+  'advisory': 'Advisory',
+  'brokerage': 'Brokerage',
+  'bd': 'Brokerage',
   'institution': 'Institutional',
   'institutional': 'Institutional',
-  'retirementgroup': 'Retirement Group',
-  'rg': 'Retirement Group',
-  'retirement': 'Retirement Group',
+  'retirement': 'Retirement',
 };
 
 function normalizeDept(value: string): string | null {
@@ -125,6 +121,7 @@ function normalizeProjectType(value: string): string | null {
     'discovery': 'Discovery Meeting',
     'datarequest': 'Data Request',
     'data': 'Data Request',
+    'dataupdate': 'Data Update',
     'pcr': 'PCR',
     'other': 'Other',
     'followupmaterial': 'Follow-up Material',
@@ -147,6 +144,21 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
   for (const row of rows) {
     const rowErrors: ValidationError[] = [];
     const rowWarnings: ValidationWarning[] = [];
+
+    // Client identity: a row must carry a CRN or an External Client name (the
+    // server resolves the name to an existing CRN, or registers a new client).
+    // Uniqueness/existence is enforced server-side in the bulk route.
+    const crnRaw = row.crn ? row.crn.trim() : '';
+    if (crnRaw) {
+      const norm = normalizeCrn(crnRaw);
+      if (!isValidCrn(norm)) {
+        rowErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: `"${crnRaw}" is not a valid CRN.` });
+      } else {
+        row.crn = norm;
+      }
+    } else if (!row.externalClient) {
+      rowErrors.push({ rowNumber: row.rowNumber, field: 'CRN', message: 'Provide a CRN or an External Client name.' });
+    }
 
     // Required: internalClientName
     if (!row.internalClientName) {
@@ -177,13 +189,13 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
       row.intakeType = normIntake;
     }
 
-    // Conditional: adHocChannel required for GCG Ad-Hoc
-    if (normIntake === 'GCG Ad-Hoc') {
+    // Conditional: adHocChannel required for Ad-Hoc
+    if (normIntake === 'Ad-Hoc') {
       if (!row.adHocChannel) {
         rowErrors.push({
           rowNumber: row.rowNumber,
           field: 'Ad-Hoc Channel',
-          message: 'Required for GCG Ad-Hoc rows. Use: In-Person, Email, or Teams.',
+          message: 'Required for Ad-Hoc rows. Use: In-Person, Email, or Teams.',
         });
       } else {
         const normChannel = normalizeChannel(row.adHocChannel);

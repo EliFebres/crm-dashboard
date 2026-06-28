@@ -1,18 +1,30 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, execute } from '@/app/lib/db';
-import { rowToEngagement } from '@/app/lib/db/queries';
+import { query, queryWrite, hasDb } from '@/app/lib/db';
+import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
 import { computeEngagementsList } from '@/app/lib/db/aggregations';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
-import type { EngagementFilters } from '@/app/lib/api/client-interactions';
+import type { EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 
+// Parses repeated `sort=col:dir` params into a SortSpec[] (preserves order).
+function parseSortParams(sp: URLSearchParams): SortSpec[] {
+  return sp.getAll('sort').reduce<SortSpec[]>((acc, raw) => {
+    const [column, dir] = raw.split(':');
+    if (column && (dir === 'asc' || dir === 'desc')) {
+      acc.push({ column, direction: dir });
+    }
+    return acc;
+  }, []);
+}
+
 // GET /api/client-interactions/engagements
 // Query params: page, page_size, period, search, team_member, status,
-//               sort_column, sort_direction, departments[], intake_types[], project_types[]
+//               sort=col:dir (repeatable), departments[], intake_types[], project_types[]
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -27,8 +39,7 @@ export async function GET(req: NextRequest) {
       search: sp.get('search') || undefined,
       teamMember: sp.get('team_member') || undefined,
       status: sp.get('status') || undefined,
-      sortColumn: sp.get('sort_column') || undefined,
-      sortDirection: (sp.get('sort_direction') as 'asc' | 'desc') || 'desc',
+      sortBy: parseSortParams(sp),
       departments: sp.getAll('departments').filter(Boolean),
       intakeTypes: sp.getAll('intake_types').filter(Boolean),
       projectTypes: sp.getAll('project_types').filter(Boolean),
@@ -45,8 +56,8 @@ export async function GET(req: NextRequest) {
 // POST /api/client-interactions/engagements
 // Body: engagement fields (camelCase)
 export async function POST(req: NextRequest) {
-  if (!process.env.DUCKDB_DIR) {
-    return NextResponse.json({ error: 'Database not configured. Set DUCKDB_PATH to enable write operations.' }, { status: 503 });
+  if (!hasDb()) {
+    return NextResponse.json({ error: 'Database not configured. Set SQLITE_DIR to enable write operations.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -55,13 +66,20 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // Get next ID from sequence
-    const seqRows = await query<Record<string, unknown>>(
-      `SELECT nextval('engagements_id_seq') AS nextval`
-    );
-    const id = Number(seqRows[0].nextval);
+    const department = body.internalClient?.clientDept ?? body.department ?? '';
 
-    const department = body.internalClient?.gcgDepartment ?? body.department ?? '';
+    // Client (external) is required and must reference a registered CRN.
+    const clientCrn = body.clientCrn ? normalizeCrn(String(body.clientCrn)) : '';
+    if (!clientCrn) {
+      return NextResponse.json({ error: 'Client CRN is required' }, { status: 400 });
+    }
+    const clientRows = await query<{ crn: string }>(
+      `SELECT crn FROM clients WHERE crn = ?`,
+      [clientCrn]
+    );
+    if (clientRows.length === 0) {
+      return NextResponse.json({ error: 'Unknown client CRN' }, { status: 400 });
+    }
 
     // Validate linkedFromId (if provided): must be a number and point to an engagement in the same team
     let linkedFromId: number | null = null;
@@ -69,9 +87,6 @@ export async function POST(req: NextRequest) {
       const n = Number(body.linkedFromId);
       if (!Number.isFinite(n) || n <= 0) {
         return NextResponse.json({ error: 'Invalid linkedFromId' }, { status: 400 });
-      }
-      if (n === id) {
-        return NextResponse.json({ error: 'Cannot link an engagement to itself' }, { status: 400 });
       }
       const parent = await query<{ id: number }>(
         `SELECT id FROM engagements WHERE id = ? AND team = ?`,
@@ -83,19 +98,19 @@ export async function POST(req: NextRequest) {
       linkedFromId = n;
     }
 
-    await execute(
+    const insertRows = await queryWrite<{ id: number }>(
       `INSERT INTO engagements (
-        id, external_client, internal_client_name, internal_client_dept,
+        client_crn, internal_client_name, internal_client_dept,
         intake_type, ad_hoc_channel, type, team_members, department,
         date_started, date_finished, status, portfolio_logged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
         linked_from_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      RETURNING id`,
       [
-        id,
-        body.externalClient ?? null,
+        clientCrn,
         body.internalClient?.name ?? null,
-        body.internalClient?.gcgDepartment ?? null,
+        body.internalClient?.clientDept ?? null,
         body.intakeType,
         body.adHocChannel ?? null,
         body.type,
@@ -115,9 +130,10 @@ export async function POST(req: NextRequest) {
         linkedFromId,
       ]
     );
+    const id = Number(insertRows[0].id);
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ?`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [id]
     );
 

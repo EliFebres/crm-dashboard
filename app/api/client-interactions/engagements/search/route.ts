@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/app/lib/db';
+import { CLIENT_JOIN } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
 import { toDisplayDate } from '@/app/lib/db/dateUtils';
 import type { EngagementLinkSummary } from '@/app/lib/types/engagements';
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
     const params: unknown[] = [];
 
     if (sc.team) {
-      conditions.push('team = ?');
+      conditions.push('e.team = ?');
       params.push(sc.team);
     }
 
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     if (id) {
       const n = Number(id);
       if (Number.isFinite(n)) {
-        conditions.push('id = ?');
+        conditions.push('e.id = ?');
         params.push(n);
       }
     }
@@ -42,34 +43,37 @@ export async function GET(req: NextRequest) {
     if (excludeId) {
       const n = Number(excludeId);
       if (Number.isFinite(n)) {
-        conditions.push('id != ?');
+        conditions.push('e.id != ?');
         params.push(n);
       }
     }
 
     if (client) {
-      conditions.push('internal_client_name = ?');
+      conditions.push('e.internal_client_name = ?');
       params.push(client);
     }
 
     if (q) {
       const s = `%${q.toLowerCase()}%`;
       conditions.push(`(
-        lower(external_client) LIKE ?
-        OR lower(internal_client_name) LIKE ?
-        OR lower(intake_type) LIKE ?
-        OR lower(type) LIKE ?
-        OR CAST(id AS VARCHAR) LIKE ?
+        lower(c.name) LIKE ?
+        OR lower(e.client_crn) LIKE ?
+        OR lower(e.internal_client_name) LIKE ?
+        OR lower(e.intake_type) LIKE ?
+        OR lower(e.type) LIKE ?
+        OR CAST(e.id AS VARCHAR) LIKE ?
       )`);
-      params.push(s, s, s, s, s);
+      params.push(s, s, s, s, s, s);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const rows = await query<Record<string, unknown>>(
-      `SELECT id, date_started, type, intake_type, internal_client_name, internal_client_dept, external_client
-       FROM engagements
+      `SELECT e.id, e.date_started, e.type, e.intake_type, e.internal_client_name, e.internal_client_dept,
+              e.client_crn, c.name AS client_name
+       FROM engagements e
+       ${CLIENT_JOIN}
        ${where}
-       ORDER BY date_started DESC, id DESC
+       ORDER BY e.date_started DESC, e.id DESC
        LIMIT ${limit}`,
       params
     );
@@ -81,7 +85,8 @@ export async function GET(req: NextRequest) {
       intakeType: row.intake_type as string,
       internalClientName: row.internal_client_name as string,
       internalClientDept: row.internal_client_dept as string,
-      externalClient: (row.external_client as string | null) ?? null,
+      clientCrn: (row.client_crn as string | null) ?? '',
+      externalClient: (row.client_name as string | null) ?? '',
     }));
 
     return NextResponse.json({ results });

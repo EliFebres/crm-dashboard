@@ -1,16 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileText, Download, Check, X, ChevronUp, ChevronDown, ChevronsUpDown, Maximize2, Minimize2, Plus, Loader2, Link2 } from 'lucide-react';
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import NNAModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NNAModal';
 import { Select } from '@/app/components/ui/Select';
 import type { Engagement } from '@/app/lib/types/engagements';
+import type { SortSpec } from '@/app/lib/api/client-interactions';
 import type { ChangeFlash, EngagementField } from '@/app/lib/hooks/useDashboardChanges';
 import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChanges';
+import { VALID_STATUSES } from '@/app/lib/statusHelpers';
+import { canUserEditEngagement, type User } from '@/app/lib/auth/types';
 
-// Sort configuration types
-type SortDirection = 'asc' | 'desc' | null;
 type SortColumn =
   | 'externalClient'
   | 'internalClient'
@@ -21,42 +22,42 @@ type SortColumn =
   | 'dateFinished'
   | 'portfolioLogged'
   | 'nna'
-  | 'status'
-  | null;
-
-interface SortConfig {
-  column: SortColumn;
-  direction: SortDirection;
-}
+  | 'status';
 
 // Sortable column header component
 interface SortableHeaderProps {
   label: string;
   column: SortColumn;
-  currentSort: SortConfig;
-  onSort: (column: SortColumn) => void;
+  // The column's entry in the sortBy array (if any) and its 0-based position.
+  active?: { direction: 'asc' | 'desc'; index: number };
+  // Total number of columns currently being sorted — used to decide whether to
+  // show a priority badge next to the arrow.
+  totalActive: number;
+  onSort: (column: SortColumn, shift: boolean) => void;
   centered?: boolean;
 }
 
-const SortableHeader: React.FC<SortableHeaderProps> = ({ label, column, currentSort, onSort, centered }) => {
-  const isActive = currentSort.column === column;
-
+const SortableHeader: React.FC<SortableHeaderProps> = ({ label, column, active, totalActive, onSort, centered }) => {
   return (
     <th
-      onClick={() => onSort(column)}
+      onClick={(e) => onSort(column, e.shiftKey)}
+      title="Click to sort. Shift+click to add a secondary sort."
       className={`${centered ? 'text-center' : 'text-left'} text-xs font-medium text-muted uppercase tracking-wider px-4 py-3 cursor-pointer hover:text-zinc-200 transition-colors select-none group`}
     >
       <div className={`flex items-center gap-1 ${centered ? 'justify-center' : ''}`}>
         {label}
-        <span className="inline-flex">
-          {isActive ? (
-            currentSort.direction === 'asc' ? (
+        <span className="inline-flex items-center gap-0.5">
+          {active ? (
+            active.direction === 'asc' ? (
               <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
             ) : (
               <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
             )
           ) : (
             <ChevronsUpDown className="w-3.5 h-3.5 text-muted group-hover:text-muted transition-colors" />
+          )}
+          {active && totalActive > 1 && (
+            <span className="text-[9px] font-bold text-cyan-400 leading-none">{active.index + 1}</span>
           )}
         </span>
       </div>
@@ -66,12 +67,12 @@ const SortableHeader: React.FC<SortableHeaderProps> = ({ label, column, currentS
 
 interface InteractionsTableProps {
   engagements: Engagement[];
-  sortColumn: string | null;
-  sortDirection: 'asc' | 'desc' | null;
-  onSort: (column: string | null, direction: 'asc' | 'desc' | null) => void;
+  sortBy: SortSpec[];
+  onSort: (column: string, shift: boolean) => void;
   onStatusChange: (engagementId: number, newStatus: string) => void;
   onNoteAdded: (engagementId: number) => void;
   onNoteDeleted: (engagementId: number) => void;
+  onFilepathSaved: (engagementId: number, filepath: string | null) => void;
   onNNAChange: (engagementId: number, nna: number | undefined) => void;
   onRowClick: (engagement: Engagement) => void;
   onExport: () => void;
@@ -80,6 +81,7 @@ interface InteractionsTableProps {
   removedRowIds?: Map<number, ChangeFlash>;
   rowFieldChanges?: Map<number, Partial<Record<EngagementField, ChangeFlash>>>;
   readOnly?: boolean;
+  currentUser?: User | null;
 }
 
 interface GhostRow {
@@ -87,11 +89,13 @@ interface GhostRow {
   expiresAt: number;
 }
 
-const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortColumn, sortDirection, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onNNAChange, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false }) => {
-  const sortConfig: SortConfig = useMemo(
-    () => ({ column: sortColumn as SortColumn, direction: sortDirection as SortDirection }),
-    [sortColumn, sortDirection]
-  );
+const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortBy, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onFilepathSaved, onNNAChange, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false, currentUser }) => {
+  // O(1) lookup from column name → its position in sortBy + direction.
+  const sortIndex = useMemo(() => {
+    const map = new Map<string, { direction: 'asc' | 'desc'; index: number }>();
+    sortBy.forEach((s, i) => map.set(s.column, { direction: s.direction, index: i }));
+    return map;
+  }, [sortBy]);
   const [currentPage, setCurrentPage] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notesModalEngagement, setNotesModalEngagement] = useState<Engagement | null>(null);
@@ -135,23 +139,12 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     return () => clearTimeout(timer);
   }, [ghostRows]);
 
-  const statusOptions = ['In Progress', 'Awaiting Meeting', 'Follow Up', 'Completed'];
-
-  // Handle column sort — cycles asc → desc → null (reset), then notifies parent to re-fetch
-  const handleSort = useCallback((column: SortColumn) => {
-    if (sortConfig.column === column) {
-      if (sortConfig.direction === 'asc') onSort(column, 'desc');
-      else if (sortConfig.direction === 'desc') onSort(null, null);
-      else onSort(column, 'asc');
-    } else {
-      onSort(column, 'asc');
-    }
-  }, [sortConfig, onSort]);
+  const statusOptions = [...VALID_STATUSES];
 
   // Reset to page 1 when data or sort changes. Adjust state during render
   // rather than in an effect — React discards the in-progress render and
   // restarts with the new state, so there's no extra commit.
-  const resetKey = `${engagements.length}|${sortConfig.column}|${sortConfig.direction}`;
+  const resetKey = `${engagements.length}|${sortBy.map(s => `${s.column}:${s.direction}`).join(',')}`;
   const [prevResetKey, setPrevResetKey] = useState(resetKey);
   if (prevResetKey !== resetKey) {
     setPrevResetKey(resetKey);
@@ -209,6 +202,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
   const getTypeStyle = (type: string): string => {
     switch (type) {
       case 'Data Request': return BADGE_COLORS.cyan;
+      case 'Data Update': return BADGE_COLORS.orange;
       case 'Meeting': return BADGE_COLORS.violet;
       case 'Discovery Meeting': return BADGE_COLORS.blue;
       case 'PCR': return BADGE_COLORS.rose;
@@ -223,7 +217,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     switch (intakeType) {
       case 'IRQ': return BADGE_COLORS.blue;
       case 'SERF': return BADGE_COLORS.emerald;
-      case 'GCG Ad-Hoc': return BADGE_COLORS.pink;
+      case 'Ad-Hoc': return BADGE_COLORS.pink;
       default: return BADGE_COLORS.zinc;
     }
   };
@@ -259,21 +253,25 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
   const renderTableRow = (engagement: Engagement, keyPrefix: string = '', isGhost: boolean = false) => {
     const rowFlash = !isGhost && newRowIds?.has(engagement.id) ? FLASH_CLASS[newRowIds.get(engagement.id)!.kind] : '';
     const ghostClass = isGhost ? 'ghost-row' : '';
+    const canEdit = !readOnly && canUserEditEngagement(currentUser, engagement.teamMembers);
     return (
     <tr
       key={`${keyPrefix}${isGhost ? 'ghost-' : ''}${engagement.id}`}
-      className={`hover:bg-white/[0.02] transition-colors ${readOnly ? '' : 'cursor-pointer'} ${rowFlash} ${ghostClass}`.trim()}
-      onClick={isGhost || readOnly ? undefined : () => onRowClick(engagement)}
+      className={`hover:bg-white/[0.02] transition-colors ${canEdit ? 'cursor-pointer' : ''} ${rowFlash} ${ghostClass}`.trim()}
+      onClick={isGhost || !canEdit ? undefined : () => onRowClick(engagement)}
     >
       <td className="px-4 py-3">
-        <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
-          {engagement.externalClient ?? '—'}
-        </span>
+        <div>
+          <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
+            {engagement.externalClient || '—'}
+          </span>
+          {engagement.clientCrn && <p className="text-xs text-muted">{engagement.clientCrn}</p>}
+        </div>
       </td>
       <td className="px-4 py-3">
         <div>
           <span className="text-sm font-medium text-zinc-200">{engagement.internalClient.name}</span>
-          <p className="text-xs text-muted">{engagement.internalClient.gcgDepartment}</p>
+          <p className="text-xs text-muted">{engagement.internalClient.clientDept}</p>
         </div>
       </td>
       <td className="px-4 py-3">
@@ -340,7 +338,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         )}
       </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        {readOnly ? (
+        {!canEdit ? (
           <span
             className={`inline-flex items-center gap-1.5 px-2 py-1 text-sm font-mono ${
               engagement.nna ? 'text-emerald-400' : 'text-muted'
@@ -370,7 +368,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         )}
       </td>
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        {readOnly ? (
+        {!canEdit ? (
           <span
             className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${getStatusStyle(engagement.status)} ${flashTextFor(engagement.id, 'status')}`}
           >
@@ -408,20 +406,28 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     );
   };
 
+  // Common props for every header — derives the active state from sortIndex.
+  const headerProps = (column: SortColumn) => ({
+    column,
+    active: sortIndex.get(column),
+    totalActive: sortBy.length,
+    onSort: onSort as (column: SortColumn, shift: boolean) => void,
+  });
+
   // Render table header
   const renderTableHeader = () => (
     <thead className="sticky top-0 bg-zinc-800/95 backdrop-blur-sm z-10">
       <tr>
-        <SortableHeader label="External Client" column="externalClient" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Internal Client" column="internalClient" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Intake Type" column="intakeType" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Project Type" column="type" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Team Members" column="teamMembers" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Date Started" column="dateStarted" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Date Finished" column="dateFinished" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="Portfolio Logged" column="portfolioLogged" currentSort={sortConfig} onSort={handleSort} />
-        <SortableHeader label="NNA" column="nna" currentSort={sortConfig} onSort={handleSort} centered />
-        <SortableHeader label="Status" column="status" currentSort={sortConfig} onSort={handleSort} />
+        <SortableHeader label="External Client" {...headerProps('externalClient')} />
+        <SortableHeader label="Internal Client" {...headerProps('internalClient')} />
+        <SortableHeader label="Intake Type" {...headerProps('intakeType')} />
+        <SortableHeader label="Project Type" {...headerProps('type')} />
+        <SortableHeader label="Team Members" {...headerProps('teamMembers')} />
+        <SortableHeader label="Date Started" {...headerProps('dateStarted')} />
+        <SortableHeader label="Date Finished" {...headerProps('dateFinished')} />
+        <SortableHeader label="Model Logged" {...headerProps('portfolioLogged')} />
+        <SortableHeader label="NNA" {...headerProps('nna')} centered />
+        <SortableHeader label="Status" {...headerProps('status')} />
         <th className="text-center text-xs font-medium text-muted uppercase tracking-wider px-4 py-3">Notes</th>
       </tr>
     </thead>
@@ -482,7 +488,15 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         title="Notes"
         subtitle={notesModalEngagement?.externalClient || notesModalEngagement?.internalClient.name || ''}
         engagementId={notesModalEngagement?.id ?? 0}
-        readOnly={readOnly}
+        readOnly={readOnly || !canUserEditEngagement(currentUser, notesModalEngagement?.teamMembers ?? [])}
+        filepath={notesModalEngagement?.filepath ?? null}
+        canEditFilepath={!readOnly && canUserEditEngagement(currentUser, notesModalEngagement?.teamMembers ?? [])}
+        onFilepathSaved={(next) => {
+          if (notesModalEngagement) {
+            onFilepathSaved(notesModalEngagement.id, next);
+            setNotesModalEngagement({ ...notesModalEngagement, filepath: next });
+          }
+        }}
         onNoteAdded={() => {
           if (notesModalEngagement) {
             onNoteAdded(notesModalEngagement.id);
@@ -585,16 +599,16 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
               <table className="w-full">
                 <thead className="sticky top-0 bg-zinc-800 z-10">
                   <tr>
-                    <SortableHeader label="External Client" column="externalClient" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Internal Client" column="internalClient" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Intake Type" column="intakeType" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Project Type" column="type" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Team Members" column="teamMembers" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Date Started" column="dateStarted" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Date Finished" column="dateFinished" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="Portfolio Logged" column="portfolioLogged" currentSort={sortConfig} onSort={handleSort} />
-                    <SortableHeader label="NNA" column="nna" currentSort={sortConfig} onSort={handleSort} centered />
-                    <SortableHeader label="Status" column="status" currentSort={sortConfig} onSort={handleSort} />
+                    <SortableHeader label="External Client" {...headerProps('externalClient')} />
+                    <SortableHeader label="Internal Client" {...headerProps('internalClient')} />
+                    <SortableHeader label="Intake Type" {...headerProps('intakeType')} />
+                    <SortableHeader label="Project Type" {...headerProps('type')} />
+                    <SortableHeader label="Team Members" {...headerProps('teamMembers')} />
+                    <SortableHeader label="Date Started" {...headerProps('dateStarted')} />
+                    <SortableHeader label="Date Finished" {...headerProps('dateFinished')} />
+                    <SortableHeader label="Model Logged" {...headerProps('portfolioLogged')} />
+                    <SortableHeader label="NNA" {...headerProps('nna')} centered />
+                    <SortableHeader label="Status" {...headerProps('status')} />
                     <th className="text-center text-xs font-medium text-muted uppercase tracking-wider px-4 py-3">Notes</th>
                   </tr>
                 </thead>

@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const rows = await queryActivity<Record<string, unknown>>(
       `SELECT user_id, user_email, user_name, last_seen
        FROM user_presence
-       WHERE last_seen >= now() - INTERVAL 5 MINUTE
+       WHERE last_seen >= datetime('now', '-5 minutes')
        ORDER BY last_seen DESC`
     );
 

@@ -1,12 +1,12 @@
-# PCG Insights Dashboard
+# CRM Dashboard
 
-A Next.js dashboard application for the firm's Portfolio Construction Group. The **Client Interactions** dashboard is fully live, backed by DuckDB with real-time cross-user updates. The Portfolio Trends, Ticker Trends, and Competitive Landscape sections are scaffolded and disabled in the sidebar pending a future re-enable.
+A Next.js CRM and insights dashboard application. The **Client Interactions** dashboard is fully live, backed by SQLite (better-sqlite3) with real-time cross-user updates. The Portfolio Trends, Ticker Trends, and Competitive Landscape sections are scaffolded and disabled in the sidebar pending a future re-enable.
 
 ## Features
 
 ### Authentication
 - Login/signup with email and password (scrypt-hashed via Node.js crypto)
-- JWT session cookies (24-hour expiration, httpOnly, sameSite: lax)
+- JWT session cookies (30-day expiration, httpOnly, sameSite: lax)
 - First registered user is automatically granted admin status
 - Subsequent users start as **pending** and must be approved by an admin before they can log in
 
@@ -15,7 +15,7 @@ A Next.js dashboard application for the firm's Portfolio Construction Group. The
 - **`/admin/team-members`** — Manage the team member directory used throughout the dashboard (name, team, office, status; link to user account)
 
 ### Client Interactions Dashboard
-- Track and manage client engagements (IRQ, SERF, GCG Ad-Hoc) with full CRUD support
+- Track and manage client engagements (IRQ, SERF, Ad-Hoc) with full CRUD support
 - Create, edit, and delete engagements via modal forms
 - **Bulk upload** — import engagements from Excel (.xlsx) or CSV; downloadable XLSX template; in-browser preview and validation before committing
 - **Real-time cross-user updates** — Server-Sent Events stream (`/api/client-interactions/events`) pushes mutations from other users into open dashboards immediately, with no page refresh
@@ -24,7 +24,7 @@ A Next.js dashboard application for the firm's Portfolio Construction Group. The
 - **Rich text notes** — TipTap-powered editor with per-note author attribution; only the original author can edit or delete their own note
 - GitHub-style contribution heatmap showing daily activity over time
 - Department breakdown bar chart
-- Metric cards: Client Projects, GCG Ad-Hoc, In Progress, and NNA — all with period-over-period change
+- Metric cards: Client Projects, Ad-Hoc, In Progress, and NNA — all with period-over-period change
 - Filterable, sortable, paginated table with expandable rows
 - Fullscreen table view
 - Filters: Team Member, Department, Intake Type, Project Type, Time Period, Status
@@ -52,14 +52,14 @@ The page code still exists under `app/dashboard/interactions-and-trends/ticker-t
 - **Fixed Income** — same pattern for fixed-income funds
 - **vs. Competitor** — head-to-head firm vs. competitor comparison split by category
 
-All three nav items are currently greyed out. UI components (`CompetitorTable`, `CompetitorVsFirmTable`, `CompetitiveNotesModal`) live under `app/components/dashboard/competitive-landscape/`, but data is mocked and the section is not yet wired up to DuckDB.
+All three nav items are currently greyed out. UI components (`CompetitorTable`, `CompetitorVsFirmTable`, `CompetitiveNotesModal`) live under `app/components/dashboard/competitive-landscape/`, but data is mocked and the section is not yet wired up to the database.
 
 ## Tech Stack
 
 - **Next.js 16.2.1** with App Router and Server-Sent Events
 - **React 19.2.3** with TypeScript
 - **Tailwind CSS 4** for styling
-- **DuckDB 1.5.1** (Node API) for data persistence
+- **SQLite** via **better-sqlite3 12** (embedded, WAL mode) for data persistence
 - **Jose 6.2.2** for JWT authentication
 - **Recharts 3.7.0** for data visualization
 - **TipTap 3.21** for rich text note editing
@@ -69,11 +69,12 @@ All three nav items are currently greyed out. UI components (`CompetitorTable`, 
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in all values:
+Copy `.env.example` to `.env` and fill in all values:
 
 ```bash
-# Absolute path to the folder where DuckDB database files will be stored
-DUCKDB_DIR=./data
+# Absolute path to the folder where the SQLite database files will be stored.
+# Keep this on LOCAL disk (not a network share) for reliability.
+SQLITE_DIR=./data
 
 # 32+ character hex string used to sign JWT session tokens
 # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -83,7 +84,16 @@ JWT_SECRET=your_jwt_secret_here
 BACKUP_DIR=/path/to/backups
 ```
 
-When `DUCKDB_DIR` is set, the app reads from and writes to real DuckDB databases. If it is unset, the app falls back to in-memory mock data (read-only).
+When `SQLITE_DIR` is set, the app reads from and writes to real SQLite databases. If it is unset, the app falls back to in-memory mock data (read-only).
+
+### App settings (`app.config.ts`)
+
+Non-secret, app-level settings live in **`app.config.ts`** at the repo root (committed — not in `.env`). Edit that file and restart the server to apply changes.
+
+Every external client is identified by a unique **CRN**. Under `appConfig.crn`:
+
+- `autoGenerate: false` (default) — users enter an existing CRN from your source system when registering a client.
+- `autoGenerate: true` — the app assigns CRNs automatically, formatted as `prefix` + a zero-padded counter (`pad` width), e.g. `CRN-000001`.
 
 ## Getting Started
 
@@ -92,7 +102,7 @@ When `DUCKDB_DIR` is set, the app reads from and writes to real DuckDB databases
 npm install
 
 # Set up environment variables
-cp .env.example .env.local  # then edit .env.local with your values
+cp .env.example .env  # then edit .env with your values
 
 # Initialize the database and populate with mock data
 npm run seed:mock
@@ -111,9 +121,9 @@ Open [http://localhost:3000](http://localhost:3000) and sign up — the first ac
 | `npm run build` | Build for production |
 | `npm start` | Start production server |
 | `npm run lint` | Run ESLint |
-| `npm run seed` | Create DuckDB schema only (no data) |
+| `npm run seed` | Create SQLite schema only (no data) |
 | `npm run seed:mock` | Create schema and populate with ~500 mock engagements |
-| `npm run db:backup` | Back up both databases to a timestamped folder in `BACKUP_DIR` |
+| `npm run db:backup` | Back up all databases to a timestamped folder in `BACKUP_DIR` |
 | `npm run db:restore` | Restore databases from the most recent backup (see options below) |
 
 ### Restore options
@@ -126,7 +136,7 @@ npm run db:restore -- --db users                     # users DB only
 npm run db:restore -- --yes                          # skip confirmation prompt
 ```
 
-**Stop the app server before restoring.** DuckDB requires exclusive write access.
+**Stop the app server before restoring** so no connection holds a WAL over the file being replaced.
 
 ### Automated weekly backups (Windows Task Scheduler)
 
@@ -134,7 +144,7 @@ npm run db:restore -- --yes                          # skip confirmation prompt
 2. Trigger: **Weekly**, Sunday at **2:00 AM**
 3. Action: Start a program
    - Program: `cmd.exe`
-   - Arguments: `/c "cd /d D:\path\to\pcg-dashboard && npm run db:backup >> D:\path\to\backups\backup.log 2>&1"`
+   - Arguments: `/c "cd /d D:\path\to\crm-dashboard && npm run db:backup >> D:\path\to\backups\backup.log 2>&1"`
 
 The 8 most recent backups are kept automatically (~2 months of history).
 
@@ -156,7 +166,7 @@ app/
 │       ├── metrics/                    # Metric cards
 │       ├── departments/                # Department breakdown
 │       ├── contribution-data/          # Heatmap
-│       ├── gcg-clients/                # Client autocomplete source
+│       ├── internal-clients/                # Client autocomplete source
 │       ├── events/                     # SSE: cross-user real-time updates
 │       ├── export/                     # Filtered CSV export
 │       └── engagements/
@@ -212,7 +222,7 @@ app/
     ├── auth/                           # JWT, scrypt password utils, AuthContext, require-auth
     ├── bulk-upload/                    # Excel/CSV parser and row validator
     ├── data/                           # Mock data generators (engagements is seed-only)
-    ├── db/                             # DuckDB connection, queries, aggregations, dateUtils
+    ├── db/                             # SQLite connection, queries, aggregations, dateUtils
     ├── hooks/                          # useDashboardChanges (flash-animation diffing)
     ├── types/                          # TypeScript interfaces per domain
     └── utils/

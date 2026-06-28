@@ -1,9 +1,10 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryWrite, executeTransaction } from '@/app/lib/db';
-import { rowToEngagement } from '@/app/lib/db/queries';
-import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { query, queryWrite, executeTransaction, hasDb } from '@/app/lib/db';
+import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
+import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
+import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
@@ -19,10 +20,10 @@ export async function GET(
 
   try {
     const { id } = await params;
-    const teamClause = sc.team ? 'AND team = ?' : '';
+    const teamClause = sc.team ? 'AND e.team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ? ${teamClause}`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
       [Number(id), ...teamParams]
     );
     if (rows.length === 0) {
@@ -41,8 +42,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!process.env.DUCKDB_DIR) {
-    return NextResponse.json({ error: 'Database not configured. Set DUCKDB_PATH to enable write operations.' }, { status: 503 });
+  if (!hasDb()) {
+    return NextResponse.json({ error: 'Database not configured. Set SQLITE_DIR to enable write operations.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -54,16 +55,37 @@ export async function PATCH(
     const engagementId = Number(id);
     const body = await req.json();
 
+    // Team-member gate: only users on the engagement's current team_members list
+    // (or admins) may edit. Check the stored value, not anything in the body, so
+    // a non-member can't add themselves and then mutate.
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
+    }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
+
     const setClauses: string[] = [];
     const values: unknown[] = [];
 
-    if (body.externalClient !== undefined) {
-      setClauses.push('external_client = ?');
-      values.push(body.externalClient ?? null);
+    if (body.clientCrn !== undefined) {
+      const crn = body.clientCrn ? normalizeCrn(String(body.clientCrn)) : '';
+      if (!crn) {
+        return NextResponse.json({ error: 'Client CRN is required' }, { status: 400 });
+      }
+      const exists = await query<{ crn: string }>(`SELECT crn FROM clients WHERE crn = ?`, [crn]);
+      if (exists.length === 0) {
+        return NextResponse.json({ error: 'Unknown client CRN' }, { status: 400 });
+      }
+      setClauses.push('client_crn = ?');
+      values.push(crn);
     }
     if (body.internalClient !== undefined) {
       setClauses.push('internal_client_name = ?', 'internal_client_dept = ?');
-      values.push(body.internalClient.name, body.internalClient.gcgDepartment);
+      values.push(body.internalClient.name, body.internalClient.clientDept);
     }
     if (body.intakeType !== undefined) {
       setClauses.push('intake_type = ?');
@@ -176,7 +198,7 @@ export async function PATCH(
     }
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM engagements WHERE id = ?`,
+      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [engagementId]
     );
     emitEngagementChange('updated');
@@ -200,8 +222,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!process.env.DUCKDB_DIR) {
-    return NextResponse.json({ error: 'Database not configured. Set DUCKDB_PATH to enable write operations.' }, { status: 503 });
+  if (!hasDb()) {
+    return NextResponse.json({ error: 'Database not configured. Set SQLITE_DIR to enable write operations.' }, { status: 503 });
   }
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -212,19 +234,16 @@ export async function DELETE(
     const { id } = await params;
     const engagementId = Number(id);
 
-    // Non-admins can only delete engagements they created
-    if (auth.payload.role !== 'admin') {
-      const rows = await query<{ created_by_id: string | null }>(
-        `SELECT created_by_id FROM engagements WHERE id = ?`,
-        [engagementId]
-      );
-      if (rows.length === 0) {
-        return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
-      }
-      if (rows[0].created_by_id !== auth.payload.sub) {
-        return NextResponse.json({ error: 'Not authorized to delete this engagement' }, { status: 403 });
-      }
+    // Only assigned Team Members (or admins) may delete.
+    const teamRows = await query<{ team_members: string }>(
+      `SELECT team_members FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (teamRows.length === 0) {
+      return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
     }
+    const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
+    if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
 
     const teamClause = sc.team ? 'AND team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];
@@ -236,9 +255,9 @@ export async function DELETE(
     const internalClient = preDelete[0]?.internal_client_name ?? null;
 
     // Null out any children's link, then delete — in one transaction so we don't leave orphans.
-    await executeTransaction(async (conn) => {
-      await conn.run(`UPDATE engagements SET linked_from_id = NULL WHERE linked_from_id = ?`, [engagementId]);
-      await conn.run(
+    await executeTransaction((tx) => {
+      tx.run(`UPDATE engagements SET linked_from_id = NULL WHERE linked_from_id = ?`, [engagementId]);
+      tx.run(
         `DELETE FROM engagements WHERE id = ? ${teamClause}`,
         [engagementId, ...teamParams]
       );

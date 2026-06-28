@@ -7,12 +7,13 @@ import { queryUsers } from '@/app/lib/db/users';
 
 type Range = '24h' | '7d' | '30d';
 
+// Returns a SQLite datetime() modifier for the selected range.
 function rangeToInterval(range: Range): string {
   switch (range) {
-    case '24h': return '1 DAY';
-    case '30d': return '30 DAY';
+    case '24h': return '-1 day';
+    case '30d': return '-30 days';
     case '7d':
-    default: return '7 DAY';
+    default: return '-7 days';
   }
 }
 
@@ -41,22 +42,22 @@ export async function GET(req: NextRequest) {
     );
 
     const signupsThisWeek = await queryUsers<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM users WHERE created_at >= now() - INTERVAL 7 DAY`
+      `SELECT COUNT(*) AS count FROM users WHERE created_at >= datetime('now', '-7 days')`
     );
 
     // Event counts
     const eventsToday = await queryActivity<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM activity_logs WHERE timestamp >= date_trunc('day', now())`
+      `SELECT COUNT(*) AS count FROM activity_logs WHERE date(timestamp) >= date('now')`
     );
     const eventsYesterday = await queryActivity<{ count: number }>(
       `SELECT COUNT(*) AS count FROM activity_logs
-       WHERE timestamp >= date_trunc('day', now()) - INTERVAL 1 DAY
-         AND timestamp <  date_trunc('day', now())`
+       WHERE date(timestamp) >= date('now', '-1 day')
+         AND date(timestamp) <  date('now')`
     );
 
     // Online now
     const onlineNow = await queryActivity<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM user_presence WHERE last_seen >= now() - INTERVAL 5 MINUTE`
+      `SELECT COUNT(*) AS count FROM user_presence WHERE last_seen >= datetime('now', '-5 minutes')`
     );
 
     // Per-category breakdown over selected range.
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
          END AS entity_type,
          COUNT(*) AS count
        FROM activity_logs
-       WHERE timestamp >= now() - INTERVAL ${interval}
+       WHERE datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY 1
        ORDER BY count DESC`
     );
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
     const byAction = await queryActivity<{ action: string; count: number }>(
       `SELECT action, COUNT(*) AS count
        FROM activity_logs
-       WHERE timestamp >= now() - INTERVAL ${interval}
+       WHERE datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY action
        ORDER BY count DESC
        LIMIT 10`
@@ -93,9 +94,9 @@ export async function GET(req: NextRequest) {
 
     // Per-day timeseries over selected range
     const byDay = await queryActivity<{ day: string; count: number }>(
-      `SELECT CAST(date_trunc('day', timestamp) AS VARCHAR) AS day, COUNT(*) AS count
+      `SELECT date(timestamp) AS day, COUNT(*) AS count
        FROM activity_logs
-       WHERE timestamp >= now() - INTERVAL ${interval}
+       WHERE datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY 1
        ORDER BY 1 ASC`
     );
@@ -103,12 +104,12 @@ export async function GET(req: NextRequest) {
     // Per-day page.view timeseries split by path (for Activity by Page chart)
     const byDayByPage = await queryActivity<{ day: string; path: string | null; count: number }>(
       `SELECT
-         CAST(date_trunc('day', timestamp) AS VARCHAR) AS day,
+         date(timestamp) AS day,
          entity_id AS path,
          COUNT(*) AS count
        FROM activity_logs
        WHERE action = 'page.view'
-         AND timestamp >= now() - INTERVAL ${interval}
+         AND datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY 1, 2
        ORDER BY 1 ASC`
     );
@@ -117,7 +118,7 @@ export async function GET(req: NextRequest) {
     const topUsers = await queryActivity<{ user_name: string | null; user_email: string | null; count: number }>(
       `SELECT user_name, user_email, COUNT(*) AS count
        FROM activity_logs
-       WHERE timestamp >= now() - INTERVAL ${interval}
+       WHERE datetime(timestamp) >= datetime('now', '${interval}')
          AND user_id IS NOT NULL
        GROUP BY user_name, user_email
        ORDER BY count DESC

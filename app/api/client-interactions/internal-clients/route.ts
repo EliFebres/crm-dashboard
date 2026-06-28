@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/app/lib/db';
+import { query, hasDb } from '@/app/lib/db';
 import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
 import { engagements as mockEngagements } from '@/app/lib/data/engagements';
 
@@ -11,11 +11,11 @@ export async function GET(req: NextRequest) {
   const sc = teamConstraint(auth.payload);
 
   try {
-    if (!process.env.DUCKDB_DIR) {
+    if (!hasDb()) {
       // Mock fallback: derive unique clients from in-memory mock data
       const clientMap = new Map<string, string>();
       mockEngagements.forEach(e => {
-        clientMap.set(e.internalClient.name, e.internalClient.gcgDepartment);
+        clientMap.set(e.internalClient.name, e.internalClient.clientDept);
       });
       const clients = Array.from(clientMap.entries())
         .map(([name, dept]) => ({ name, dept }))
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({ clients: rows });
   } catch (err) {
-    console.error('[GET /api/client-interactions/gcg-clients]', err);
+    console.error('[GET /api/client-interactions/internal-clients]', err);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 }

@@ -59,8 +59,8 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '82B', firm: '14B' },
     flows: { competitor: '+2.1B', firm: '+0.8B' },
     notes: 'IJR tracks S&P 600 which has profitability screens. FMAS has deeper small-cap exposure with value/profitability tilts. Key differentiator is factor exposure, not just market cap.',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/ijr-vs-fmas',
-    pcrUrl: 'https://internal.firm.com/pcr/ijr-vs-fmas',
+    talkingPointsUrl: 'https://example.com/talking-points/ijr-vs-fmas',
+    pcrUrl: 'https://example.com/pcr/ijr-vs-fmas',
   },
   {
     rank: 2,
@@ -85,8 +85,8 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '428B', firm: '32B' },
     flows: { competitor: '+18.5B', firm: '+3.2B' },
     notes: 'FMUS provides broader market exposure with systematic factor tilts. Similar large-cap core exposure but with the firm\'s research-driven approach.',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/voo-vs-fmus',
-    pcrUrl: 'https://internal.firm.com/pcr/voo-vs-fmus',
+    talkingPointsUrl: 'https://example.com/talking-points/voo-vs-fmus',
+    pcrUrl: 'https://example.com/pcr/voo-vs-fmus',
   },
   {
     rank: 3,
@@ -111,7 +111,7 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '389B', firm: '32B' },
     flows: { competitor: '+12.3B', firm: '+3.2B' },
     notes: '',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/vti-vs-fmus',
+    talkingPointsUrl: 'https://example.com/talking-points/vti-vs-fmus',
     pcrUrl: '',
   },
   {
@@ -163,8 +163,8 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '108B', firm: '8B' },
     flows: { competitor: '-1.8B', firm: '+0.4B' },
     notes: '',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/bnd-vs-fmcf',
-    pcrUrl: 'https://internal.firm.com/pcr/bnd-vs-fmcf',
+    talkingPointsUrl: 'https://example.com/talking-points/bnd-vs-fmcf',
+    pcrUrl: 'https://example.com/pcr/bnd-vs-fmcf',
   },
   {
     rank: 6,
@@ -215,8 +215,8 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '56B', firm: '9B' },
     flows: { competitor: '+8.9B', firm: '+0.6B' },
     notes: 'SCHD focuses on dividend growth quality. FMLV uses value/profitability factors. Different approaches - dividend yield vs systematic value exposure.',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/schd-vs-fmlv',
-    pcrUrl: 'https://internal.firm.com/pcr/schd-vs-fmlv',
+    talkingPointsUrl: 'https://example.com/talking-points/schd-vs-fmlv',
+    pcrUrl: 'https://example.com/pcr/schd-vs-fmlv',
   },
   {
     rank: 8,
@@ -241,7 +241,7 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '82B', firm: '6B' },
     flows: { competitor: '+2.4B', firm: '+0.5B' },
     notes: '',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/vwo-vs-fmae',
+    talkingPointsUrl: 'https://example.com/talking-points/vwo-vs-fmae',
     pcrUrl: '',
   },
   {
@@ -293,8 +293,8 @@ const mockHotTickers: HotTicker[] = [
     aum: { competitor: '245B', firm: '32B' },
     flows: { competitor: '+21.3B', firm: '+3.2B' },
     notes: 'QQQ is Nasdaq-100 concentrated in tech. No direct firm equivalent. FMUS is diversified core. Different risk profiles - sector bet vs broad market.',
-    talkingPointsUrl: 'https://internal.firm.com/talking-points/qqq-vs-fmus',
-    pcrUrl: 'https://internal.firm.com/pcr/qqq-vs-fmus',
+    talkingPointsUrl: 'https://example.com/talking-points/qqq-vs-fmus',
+    pcrUrl: 'https://example.com/pcr/qqq-vs-fmus',
   },
 ];
 
@@ -323,7 +323,7 @@ export async function getTickerTrendsFilterOptions(): Promise<FilterOptions> {
   if (SIMULATED_DELAY) await delay(SIMULATED_DELAY);
 
   return {
-    departments: ['All Departments', 'IAG', 'Broker-Dealer', 'Institutional'],
+    departments: ['All Departments', 'Advisory', 'Brokerage', 'Institutional'],
     periods: ['1M', '3M', '6M', '1Y', 'YTD', 'All'],
   };
 }

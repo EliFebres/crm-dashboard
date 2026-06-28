@@ -35,7 +35,7 @@ function maybeRunRetentionSweep(): void {
   if (now - _lastCleanup < CLEANUP_INTERVAL_MS) return;
   _lastCleanup = now;
   void executeActivity(
-    `DELETE FROM activity_logs WHERE timestamp < now() - INTERVAL ${RETENTION_DAYS} DAY`
+    `DELETE FROM activity_logs WHERE datetime(timestamp) < datetime('now', '-${RETENTION_DAYS} days')`
   ).catch(err => console.error('[activity] retention sweep failed:', err));
 }
 
@@ -148,7 +148,7 @@ export async function touchPresence(
   try {
     await executeActivity(
       `INSERT OR REPLACE INTO user_presence (user_id, user_email, user_name, last_seen)
-       VALUES (?, ?, ?, now())`,
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
       [userId, userEmail, userName]
     );
   } catch (err) {

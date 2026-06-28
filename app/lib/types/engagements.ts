@@ -1,6 +1,6 @@
 // Types for Client Engagements Dashboard
 
-export type GCGAdHocChannel = 'In-Person' | 'Email' | 'Teams';
+export type AdHocChannel = 'In-Person' | 'Email' | 'Teams';
 
 export interface DayData {
   date: Date;
@@ -43,8 +43,8 @@ export interface EngagementMetric {
   percent?: number; // Optional percentage for progress bar visualization
   sparklineData?: { value: number }[]; // Optional sparkline data for trend visualization
   pieData?: { name: string; value: number; color: string }[]; // Optional pie chart data for breakdown visualization
-  stackedBarData?: { month: string; IAG: number; 'Broker-Dealer': number; Institutional: number; 'Retirement Group': number }[]; // Optional stacked bar data
-  intakeBreakdown?: IntakeBreakdown[]; // Optional intake breakdown for GCG Ad-Hoc
+  stackedBarData?: { month: string; Advisory: number; 'Brokerage': number; Institutional: number; 'Retirement': number }[]; // Optional stacked bar data
+  intakeBreakdown?: IntakeBreakdown[]; // Optional intake breakdown for Ad-Hoc
   intakeSourceBreakdown?: IntakeSourceBreakdown; // Optional intake source breakdown for Client Projects
   nnaTiers?: NNATier[]; // Optional NNA distribution tiers
 }
@@ -58,7 +58,16 @@ export interface DepartmentData {
 
 export interface InternalClient {
   name: string;
-  gcgDepartment: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group';
+  clientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement';
+}
+
+// A registered external client. The CRN is the canonical, unique identifier; the
+// name is the single canonical display name (lives only in the clients registry).
+export interface Client {
+  crn: string;
+  name: string;
+  createdByName?: string;
+  createdAt?: string;
 }
 
 export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds';
@@ -82,10 +91,11 @@ export interface NoteEntry {
 
 export interface Engagement {
   id: number;
-  externalClient: string | null; // Optional - GCG Ad-Hoc may not have an external client
+  clientCrn: string; // CRN of the registered external client (required)
+  externalClient: string; // Canonical external-client name, resolved from the registry via JOIN
   internalClient: InternalClient; // Contact/relationship owner/salesperson
-  intakeType: 'IRQ' | 'SERF' | 'GCG Ad-Hoc';
-  adHocChannel?: GCGAdHocChannel; // Only applicable when intakeType is 'GCG Ad-Hoc'
+  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc';
+  adHocChannel?: AdHocChannel; // Only applicable when intakeType is 'Ad-Hoc'
   type: string; // Project Type
   teamMembers: string[];
   department: string;
@@ -98,10 +108,11 @@ export interface Engagement {
   notes?: string; // Optional notes field (legacy — used by engagement form)
   noteCount?: number; // Number of entries in engagement_notes table (undefined when not loaded)
   version?: number; // Optimistic locking counter — send back with PATCH to detect concurrent edits
-  tickersMentioned?: string[]; // Tickers discussed during GCG Ad-Hoc interactions (used for Ticker Trends)
+  tickersMentioned?: string[]; // Tickers discussed during Ad-Hoc interactions (used for Ticker Trends)
   createdById?: string; // User ID of the person who created this engagement
   createdByName?: string; // Display name of the creator
   linkedFromId?: number | null; // Parent engagement this one was the result of (for funnel KPIs)
+  filepath?: string | null; // Path to the project's source folder on disk (for opening in File Explorer)
 }
 
 // Slim shape for the link picker — avoids fetching full engagement payloads
@@ -112,7 +123,8 @@ export interface EngagementLinkSummary {
   intakeType: string;
   internalClientName: string;
   internalClientDept: string;
-  externalClient: string | null;
+  clientCrn: string;
+  externalClient: string; // Canonical external-client name, resolved from the registry
 }
 
 export interface ContributionData {

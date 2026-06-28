@@ -7,16 +7,20 @@ import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/c
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import LinkInteractionModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/LinkInteractionModal';
 import { Select } from '@/app/components/ui/Select';
-import { PortfolioHolding, EngagementLinkSummary } from '@/app/lib/types/engagements';
-import { getGcgClients, GcgClient, searchEngagementsForLink } from '@/app/lib/api/client-interactions';
+import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
+import {
+  getInternalClients, InternalClientOption, searchEngagementsForLink,
+  getClients, registerClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+} from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import type { TeamMember } from '@/app/lib/auth/types';
 
 export interface InteractionFormData {
-  externalClient: string | null;
+  clientCrn: string;          // CRN of the selected registered external client (required)
+  externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
-  internalClientDept: 'IAG' | 'Broker-Dealer' | 'Institutional' | 'Retirement Group' | '';
-  intakeType: 'IRQ' | 'SERF' | 'GCG Ad-Hoc' | '';
+  internalClientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement' | '';
+  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc' | '';
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
   teamMembers: string[];
@@ -27,7 +31,7 @@ export interface InteractionFormData {
   portfolioLogged: boolean;
   portfolio?: PortfolioHolding[];
   nna: number | null;
-  tickersMentioned?: string[]; // Only for GCG Ad-Hoc - tickers discussed during interaction
+  tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
   linkedFromId?: number | null; // Parent engagement this one is the result of (funnel KPIs)
   linkedFromPreview?: EngagementLinkSummary | null; // Cached preview so we can render the chip without re-fetching
 }
@@ -54,14 +58,14 @@ interface NewInteractionFormProps {
   onBulkUploadClick?: () => void;
 }
 
-const GCG_DEPARTMENTS = ['IAG', 'Broker-Dealer', 'Institutional', 'Retirement Group'] as const;
+const CLIENT_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'] as const;
 
 
 // Project types by intake
 const projectTypesByIntake = {
-  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'GCG Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Other'],
+  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
+  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
+  'Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
 };
 
 // Format NNA for display
@@ -82,6 +86,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const { user: currentUser } = useCurrentUser();
 
   const getDefaultFormData = (): InteractionFormData => ({
+    clientCrn: '',
     externalClient: '',
     internalClient: '',
     internalClientDept: '',
@@ -102,10 +107,21 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [formData, setFormData] = useState<InteractionFormData>(getDefaultFormData());
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [gcgClients, setGcgClients] = useState<GcgClient[]>([]);
-  const [gcgClientsLoading, setGcgClientsLoading] = useState(false);
+  const [internalClients, setInternalClients] = useState<InternalClientOption[]>([]);
+  const [internalClientsLoading, setInternalClientsLoading] = useState(false);
   const [internalClientSearch, setInternalClientSearch] = useState('');
   const [showInternalClientDropdown, setShowInternalClientDropdown] = useState(false);
+  // External client registry (keyed by CRN)
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [crnConfig, setCrnConfig] = useState<CrnConfigResponse | null>(null);
+  const [registeringClient, setRegisteringClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientCrn, setNewClientCrn] = useState('');
+  const [registerError, setRegisterError] = useState('');
+  const [registerBusy, setRegisterBusy] = useState(false);
+  const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
@@ -127,6 +143,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Close the external-client registry dropdown when clicking outside.
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (externalClientRef.current && !externalClientRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch the CRN sourcing mode once the form opens (drives the register UI).
+  useEffect(() => {
+    if (!isOpen) return;
+    getCrnConfig().then(setCrnConfig).catch(() => setCrnConfig({ autoGenerate: false, prefix: '' }));
+  }, [isOpen]);
+
+  // Search the client registry (by name OR CRN), debounced.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handle = setTimeout(() => {
+      getClients(clientSearch.trim()).then(setClients).catch(() => setClients([]));
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [isOpen, clientSearch]);
+
   // Fetch team members for current user's team
   useEffect(() => {
     if (!currentUser) return;
@@ -143,14 +185,14 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       .catch(() => setTeamMembersByOffice({}));
   }, [currentUser]);
 
-  // Fetch GCG clients fresh each time the form opens
+  // Fetch internal clients fresh each time the form opens
   useEffect(() => {
     if (!isOpen) return;
-    setGcgClientsLoading(true);
-    getGcgClients()
-      .then(setGcgClients)
-      .catch(() => setGcgClients([]))
-      .finally(() => setGcgClientsLoading(false));
+    setInternalClientsLoading(true);
+    getInternalClients()
+      .then(setInternalClients)
+      .catch(() => setInternalClients([]))
+      .finally(() => setInternalClientsLoading(false));
   }, [isOpen]);
 
   // Reset form when opened (or populate with editing data)
@@ -166,6 +208,12 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       setErrors({});
       setInternalClientSearch('');
       setShowInternalClientDropdown(false);
+      setClientSearch('');
+      setShowClientDropdown(false);
+      setRegisteringClient(false);
+      setNewClientName('');
+      setNewClientCrn('');
+      setRegisterError('');
       setTickerInput('');
       setLocalNoteCount(initialNoteCount ?? 0);
       setDeleteConfirm(false);
@@ -193,19 +241,19 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const trimmedSearch = internalClientSearch.trim();
   const filteredClientGroups = useMemo(() => {
     const filtered = trimmedSearch
-      ? gcgClients.filter(c => c.name.toLowerCase().includes(trimmedSearch.toLowerCase()))
-      : gcgClients;
+      ? internalClients.filter(c => c.name.toLowerCase().includes(trimmedSearch.toLowerCase()))
+      : internalClients;
     const groups: Record<string, string[]> = {};
     filtered.forEach(c => {
       if (!groups[c.dept]) groups[c.dept] = [];
       groups[c.dept].push(c.name);
     });
     return Object.entries(groups);
-  }, [gcgClients, trimmedSearch]);
+  }, [internalClients, trimmedSearch]);
 
   // True when the typed name doesn't match any existing client exactly
   const isNewClient = trimmedSearch.length > 0 &&
-    !gcgClients.some(c => c.name.toLowerCase() === trimmedSearch.toLowerCase());
+    !internalClients.some(c => c.name.toLowerCase() === trimmedSearch.toLowerCase());
 
   // Get available project types based on intake type
   const availableProjectTypes = formData.intakeType
@@ -220,11 +268,51 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.intakeType]);
 
+  // Register a brand-new external client, then select it.
+  const handleRegisterClient = async () => {
+    const name = newClientName.trim();
+    if (!name) {
+      setRegisterError('Client name is required.');
+      return;
+    }
+    const manual = !crnConfig?.autoGenerate;
+    const crn = newClientCrn.trim();
+    if (manual && !crn) {
+      setRegisterError('CRN is required.');
+      return;
+    }
+    setRegisterBusy(true);
+    setRegisterError('');
+    try {
+      const client = await registerClient(name, manual ? crn : undefined);
+      setFormData(prev => ({ ...prev, clientCrn: client.crn, externalClient: client.name }));
+      setClients(prev => (prev.some(c => c.crn === client.crn) ? prev : [client, ...prev]));
+      setRegisteringClient(false);
+      setNewClientName('');
+      setNewClientCrn('');
+      setClientSearch('');
+      setShowClientDropdown(false);
+      setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
+    } catch (err) {
+      setRegisterError(
+        err instanceof ClientConflictError ? err.message
+          : err instanceof Error ? err.message
+          : 'Failed to register client.'
+      );
+    } finally {
+      setRegisterBusy(false);
+    }
+  };
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.intakeType) {
       newErrors.intakeType = 'Intake type is required';
+    }
+
+    if (!formData.clientCrn) {
+      newErrors.externalClient = 'Client (CRN) is required';
     }
 
     if (!formData.internalClient) {
@@ -245,8 +333,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       newErrors.dateStarted = 'Start date is required';
     }
 
-    if (formData.intakeType === 'GCG Ad-Hoc' && !formData.adHocChannel) {
-      newErrors.adHocChannel = 'Channel is required for GCG Ad-Hoc';
+    if (formData.intakeType === 'Ad-Hoc' && !formData.adHocChannel) {
+      newErrors.adHocChannel = 'Channel is required for Ad-Hoc';
     }
 
     setErrors(newErrors);
@@ -256,20 +344,14 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      const submissionData = {
-        ...formData,
-        externalClient: formData.externalClient?.trim() || null,
-      };
+      const submissionData = { ...formData };
 
       if (isEditMode && editingEngagement && onUpdate) {
         // Update existing interaction
         onUpdate(editingEngagement.id, submissionData);
       } else {
-        // Create new interaction
-        onSubmit({
-          ...submissionData,
-          nna: null, // NNA is added later, not at interaction creation
-        });
+        // Create new interaction — keep any NNA the user entered on the form
+        onSubmit(submissionData);
       }
       onClose();
     }
@@ -368,7 +450,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6 space-y-4">
               {/* Row 1: Intake Type + Project Type + Interaction Type for Ad-Hoc */}
-              <div className={`grid gap-4 ${formData.intakeType === 'GCG Ad-Hoc' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-4 ${formData.intakeType === 'Ad-Hoc' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Intake Type <span className="text-red-400">*</span>
@@ -376,13 +458,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   <div className="relative">
                     <select
                       value={formData.intakeType}
-                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value as 'IRQ' | 'SERF' | 'GCG Ad-Hoc' | '', adHocChannel: undefined }))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value as 'IRQ' | 'SERF' | 'Ad-Hoc' | '', adHocChannel: undefined }))}
                       className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50 transition-colors appearance-none cursor-pointer"
                     >
                       <option value="" className="bg-zinc-800">Select...</option>
                       <option value="IRQ" className="bg-zinc-800">IRQ</option>
                       <option value="SERF" className="bg-zinc-800">SERF</option>
-                      <option value="GCG Ad-Hoc" className="bg-zinc-800">GCG Ad-Hoc</option>
+                      <option value="Ad-Hoc" className="bg-zinc-800">Ad-Hoc</option>
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                   </div>
@@ -407,7 +489,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   </div>
                   {errors.projectType && <p className="mt-1 text-xs text-red-400">{errors.projectType}</p>}
                 </div>
-                {formData.intakeType === 'GCG Ad-Hoc' && (
+                {formData.intakeType === 'Ad-Hoc' && (
                   <div>
                     <label className="block text-sm font-medium text-muted mb-1.5">
                       Interaction Type <span className="text-red-400">*</span>
@@ -482,8 +564,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                 )}
               </div>
 
-              {/* Tickers Mentioned - Only for GCG Ad-Hoc */}
-              {formData.intakeType === 'GCG Ad-Hoc' && (
+              {/* Tickers Mentioned - Only for Ad-Hoc */}
+              {formData.intakeType === 'Ad-Hoc' && (
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Tickers Mentioned <span className="text-muted font-normal text-xs">(Optional - for Ticker Trends)</span>
@@ -520,21 +602,118 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
 
               {/* Row 2: External Client + Internal Client */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="relative" ref={externalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
-                    External Client <span className="text-muted font-normal text-xs">(Optional)</span>
+                    External Client <span className="text-red-400">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={formData.externalClient || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, externalClient: e.target.value }))}
-                    placeholder="e.g., Vanguard Advisors"
-                    className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-                  />
+                  {!registeringClient ? (
+                    <>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.externalClient || clientSearch}
+                          onChange={(e) => {
+                            setClientSearch(e.target.value);
+                            setFormData(prev => ({ ...prev, clientCrn: '', externalClient: '' }));
+                            setShowClientDropdown(true);
+                          }}
+                          onFocus={() => setShowClientDropdown(true)}
+                          placeholder="Search by name or CRN..."
+                          className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                        />
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                      </div>
+                      {formData.clientCrn && (
+                        <p className="mt-1 text-xs text-muted">CRN: <span className="text-cyan-400">{formData.clientCrn}</span></p>
+                      )}
+                      {showClientDropdown && (
+                        <div className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
+                          {clients.length > 0 ? (
+                            clients.map(c => (
+                              <button
+                                key={c.crn}
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, clientCrn: c.crn, externalClient: c.name }));
+                                  setClientSearch('');
+                                  setShowClientDropdown(false);
+                                  setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
+                                }}
+                                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                                  formData.clientCrn === c.crn
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-muted hover:bg-zinc-700/50'
+                                }`}
+                              >
+                                <span className="block text-white">{c.name}</span>
+                                <span className="block text-xs text-muted">{c.crn}</span>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-3 text-sm text-muted text-center">No matching clients</div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRegisteringClient(true);
+                              setNewClientName(clientSearch.trim());
+                              setNewClientCrn('');
+                              setRegisterError('');
+                              setShowClientDropdown(false);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm text-cyan-400 hover:bg-zinc-700/50 flex items-center gap-2 border-t border-zinc-700/50"
+                          >
+                            <span className="text-muted text-base leading-none">+</span>
+                            Register new client
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-2 p-3 bg-zinc-800/40 border border-zinc-700 rounded-lg">
+                      <input
+                        type="text"
+                        value={newClientName}
+                        onChange={(e) => setNewClientName(e.target.value)}
+                        placeholder="Client name"
+                        className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                      />
+                      {crnConfig?.autoGenerate ? (
+                        <p className="text-xs text-muted">A CRN will be generated automatically.</p>
+                      ) : (
+                        <input
+                          type="text"
+                          value={newClientCrn}
+                          onChange={(e) => setNewClientCrn(e.target.value)}
+                          placeholder={`CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
+                          className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                        />
+                      )}
+                      {registerError && <p className="text-xs text-red-400">{registerError}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleRegisterClient}
+                          disabled={registerBusy}
+                          className="px-3 py-1.5 text-sm rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 transition-colors"
+                        >
+                          {registerBusy ? 'Saving…' : 'Register'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setRegisteringClient(false); setRegisterError(''); }}
+                          className="px-3 py-1.5 text-sm rounded-lg bg-zinc-700/50 text-muted hover:bg-zinc-700 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {errors.externalClient && <p className="mt-1 text-xs text-red-400">{errors.externalClient}</p>}
                 </div>
                 <div className="relative" ref={internalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
-                    Internal Client (GCG) <span className="text-red-400">*</span>
+                    Internal Client <span className="text-red-400">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -546,13 +725,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         setShowInternalClientDropdown(true);
                       }}
                       onFocus={() => setShowInternalClientDropdown(true)}
-                      placeholder={gcgClientsLoading ? 'Loading...' : 'Search or add a client...'}
+                      placeholder={internalClientsLoading ? 'Loading...' : 'Search or add a client...'}
                       className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
                     />
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                   </div>
                   {/* Dropdown */}
-                  {showInternalClientDropdown && !gcgClientsLoading && (
+                  {showInternalClientDropdown && !internalClientsLoading && (
                     <div className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
                       {filteredClientGroups.length > 0 ? (
                         filteredClientGroups.map(([dept, names]) => (
@@ -565,8 +744,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 key={name}
                                 type="button"
                                 onClick={() => {
-                                  const client = gcgClients.find(c => c.name === name)!;
-                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept as 'IAG' | 'Broker-Dealer' | 'Institutional' }));
+                                  const client = internalClients.find(c => c.name === name)!;
+                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept as 'Advisory' | 'Brokerage' | 'Institutional' }));
                                   setInternalClientSearch('');
                                   setShowInternalClientDropdown(false);
                                 }}
@@ -598,7 +777,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                           className="w-full px-3 py-2 text-left text-sm text-cyan-400 hover:bg-zinc-700/50 flex items-center gap-2 border-t border-zinc-700/50"
                         >
                           <span className="text-muted text-base leading-none">+</span>
-                          Add &quot;{trimmedSearch}&quot; as new GCG client
+                          Add &quot;{trimmedSearch}&quot; as new internal client
                         </button>
                       )}
                     </div>
@@ -627,7 +806,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         <Select
                           value={formData.internalClientDept}
                           onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v as typeof prev.internalClientDept }))}
-                          options={GCG_DEPARTMENTS}
+                          options={CLIENT_DEPARTMENTS}
                           placeholder="Select department..."
                         />
                       </div>

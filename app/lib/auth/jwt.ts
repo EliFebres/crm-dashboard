@@ -7,15 +7,11 @@ export interface JWTPayload {
   lastName: string;
   role: 'user' | 'admin';
   status: 'pending' | 'active' | 'inactive';
-  team:
-    | 'Portfolio Consulting Group'
-    | 'Equity Specialist'
-    | 'Fixed Income Specialist'
-    | 'Leadership'
-    | 'Guest';
+  // Admin-managed list stored in the DB — see app/lib/db/org.ts.
+  team: string;
 }
 
-export const SESSION_COOKIE = 'pcg_session';
+export const SESSION_COOKIE = 'crm_session';
 
 export const COOKIE_OPTIONS = {
   httpOnly: true,

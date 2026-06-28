@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 
 // Single in-process emitter shared across all route handlers.
-// Works because Next.js and DuckDB run in the same Node.js process.
+// Works because Next.js and SQLite run in the same Node.js process.
 // NOTE: This approach does not work in serverless/edge deployments.
 
 declare global {

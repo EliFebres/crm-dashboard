@@ -30,8 +30,8 @@ The Client Interactions API provides endpoints for managing client engagement da
 The frontend automatically converts between `snake_case` (API) and `camelCase` (TypeScript) using the `toCamelCase()` helper.
 
 Example:
-- API sends: `{ "external_client": "Acme", "internal_client": { "gcg_department": "IAG" } }`
-- Frontend receives: `{ "externalClient": "Acme", "internalClient": { "gcgDepartment": "IAG" } }`
+- API sends: `{ "external_client": "Acme", "internal_client": { "client_department": "Advisory" } }`
+- Frontend receives: `{ "externalClient": "Acme", "internalClient": { "clientDept": "Advisory" } }`
 
 ---
 
@@ -67,8 +67,8 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
 ```json
 {
   "period": "1Y",
-  "team_member": "Eli F.",
-  "departments": ["IAG", "Broker-Dealer"],
+  "team_member": "Alex M.",
+  "departments": ["Advisory", "Brokerage"],
   "intake_types": ["IRQ", "SERF"],
   "project_types": ["Meeting", "Data Request"],
   "search": "Vanguard",
@@ -83,10 +83,10 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `period` | string | No | Time period: `1W`, `1M`, `3M`, `6M`, `YTD`, `1Y`, `ALL`. Default: `1Y` |
-| `team_member` | string | No | Filter by team member name or office (`Austin Office`, `Charlotte Office`) |
-| `departments` | string[] | No | Multi-select: `IAG`, `Broker-Dealer`, `Institutional` |
-| `intake_types` | string[] | No | Multi-select: `IRQ`, `SERF`, `GCG Ad-Hoc` |
-| `project_types` | string[] | No | Multi-select: `Meeting`, `Discovery Meeting`, `Data Request`, `PCR`, `Other` |
+| `team_member` | string | No | Filter by team member name or office (`Office B`, `Office A`) |
+| `departments` | string[] | No | Multi-select: `Advisory`, `Brokerage`, `Institutional` |
+| `intake_types` | string[] | No | Multi-select: `IRQ`, `SERF`, `Ad-Hoc` |
+| `project_types` | string[] | No | Multi-select: `Meeting`, `Discovery Meeting`, `Data Request`, `Data Update`, `PCR`, `Other` |
 | `search` | string | No | Text search across client names, types, departments |
 | `status` | string | No | Filter by status: `In Progress`, `Pending`, `Completed` |
 | `page` | number | No | Page number for engagements (default: 1) |
@@ -113,7 +113,7 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
         "portfolios_percent": 81
       }
     },
-    "gcg_ad_hoc": {
+    "ad_hoc": {
       "count": 87,
       "change_percent": 18,
       "period_label": "YoY",
@@ -145,8 +145,8 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
   },
   "departments": {
     "departments": [
-      { "name": "IAG", "value": 55, "count": 135, "color": "#a5f3fc" },
-      { "name": "Broker-Dealer", "value": 33, "count": 81, "color": "#22d3ee" },
+      { "name": "Advisory", "value": 55, "count": 135, "color": "#a5f3fc" },
+      { "name": "Brokerage", "value": 33, "count": 81, "color": "#22d3ee" },
       { "name": "Institutional", "value": 12, "count": 29, "color": "#0e7490" }
     ],
     "total": 245
@@ -167,14 +167,14 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
         "id": 1234,
         "external_client": "Vanguard Advisors",
         "internal_client": {
-          "name": "Jennifer Martinez",
-          "gcg_department": "IAG"
+          "name": "Avery Bennett",
+          "client_department": "Advisory"
         },
-        "intake_type": "GCG Ad-Hoc",
+        "intake_type": "Ad-Hoc",
         "ad_hoc_channel": "In-Person",
         "type": "Meeting",
-        "team_members": ["Eli F.", "Sarah K."],
-        "department": "IAG",
+        "team_members": ["Alex M.", "Blake N."],
+        "department": "Advisory",
         "date_started": "Jan 15, 2025",
         "date_finished": "Jan 20, 2025",
         "status": "Completed",
@@ -190,12 +190,12 @@ Fetch all dashboard data in a single optimized call. This is the primary endpoin
     "has_more": true
   },
   "filter_options": {
-    "team_members": ["All Team Members", "Austin Office", "Charlotte Office"],
+    "team_members": ["All Team Members", "Office B", "Office A"],
     "team_member_groups": [
-      { "label": "Office", "options": ["Austin Office", "Charlotte Office"] }
+      { "label": "Office", "options": ["Office B", "Office A"] }
     ],
-    "departments": ["Broker-Dealer", "IAG", "Institutional"],
-    "intake_types": ["GCG Ad-Hoc", "SERF", "IRQ"],
+    "departments": ["Brokerage", "Advisory", "Institutional"],
+    "intake_types": ["Ad-Hoc", "SERF", "IRQ"],
     "project_types": ["Data Request", "Discovery Meeting", "Meeting", "Other", "PCR"],
     "statuses": ["Completed", "In Progress", "On Hold"]
   }
@@ -226,7 +226,7 @@ Fetch paginated engagements with filtering and sorting.
 
 **Example Request:**
 ```
-GET /engagements?page=1&page_size=50&period=1Y&departments=IAG&departments=Broker-Dealer&sort_column=date_started&sort_direction=desc
+GET /engagements?page=1&page_size=50&period=1Y&departments=Advisory&departments=Brokerage&sort_column=date_started&sort_direction=desc
 ```
 
 **Response (200 OK):**
@@ -238,14 +238,14 @@ GET /engagements?page=1&page_size=50&period=1Y&departments=IAG&departments=Broke
       "id": 1234,
       "external_client": "Vanguard Advisors",
       "internal_client": {
-        "name": "Jennifer Martinez",
-        "gcg_department": "IAG"
+        "name": "Avery Bennett",
+        "client_department": "Advisory"
       },
-      "intake_type": "GCG Ad-Hoc",
+      "intake_type": "Ad-Hoc",
       "ad_hoc_channel": "In-Person",
       "type": "Meeting",
-      "team_members": ["Eli F.", "Sarah K."],
-      "department": "IAG",
+      "team_members": ["Alex M.", "Blake N."],
+      "department": "Advisory",
       "date_started": "Jan 15, 2025",
       "date_finished": "Jan 20, 2025",
       "status": "Completed",
@@ -288,7 +288,7 @@ Fetch dashboard metrics only. Use for refreshing metrics without full reload.
       "portfolios_percent": 81
     }
   },
-  "gcg_ad_hoc": {
+  "ad_hoc": {
     "count": 87,
     "change_percent": 18,
     "period_label": "YoY",
@@ -333,8 +333,8 @@ Fetch department breakdown for the chart.
 ```json
 {
   "departments": [
-    { "name": "IAG", "value": 55, "count": 135, "color": "#a5f3fc" },
-    { "name": "Broker-Dealer", "value": 33, "count": 81, "color": "#22d3ee" },
+    { "name": "Advisory", "value": 55, "count": 135, "color": "#a5f3fc" },
+    { "name": "Brokerage", "value": 33, "count": 81, "color": "#22d3ee" },
     { "name": "Institutional", "value": 12, "count": 29, "color": "#0e7490" }
   ],
   "total": 245
@@ -391,15 +391,15 @@ Create a new engagement.
 
 ```json
 {
-  "external_client": "Vanguard Advisors",
+  "client_crn": "CRN-000123",
   "internal_client": {
-    "name": "Jennifer Martinez",
-    "gcg_department": "IAG"
+    "name": "Avery Bennett",
+    "client_department": "Advisory"
   },
-  "intake_type": "GCG Ad-Hoc",
+  "intake_type": "Ad-Hoc",
   "ad_hoc_channel": "In-Person",
   "type": "Meeting",
-  "team_members": ["Eli F.", "Sarah K."],
+  "team_members": ["Alex M.", "Blake N."],
   "date_started": "Jan 28, 2025",
   "date_finished": "—",
   "status": "In Progress",
@@ -413,11 +413,11 @@ Create a new engagement.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `external_client` | string \| null | No | External client company name |
-| `internal_client` | object | **Yes** | `{ name: string, gcg_department: string }` |
-| `intake_type` | string | **Yes** | `IRQ`, `SERF`, or `GCG Ad-Hoc` |
-| `ad_hoc_channel` | string \| null | Conditional | Required if `intake_type` is `GCG Ad-Hoc`: `In-Person`, `Email`, `Teams` |
-| `type` | string | **Yes** | `Meeting`, `Discovery Meeting`, `Data Request`, `PCR`, `Other` |
+| `client_crn` | string | **Yes** | CRN of a registered external client (see the Clients registry endpoints). The canonical client name is resolved from the registry; `external_client` is returned (read-only) on responses. |
+| `internal_client` | object | **Yes** | `{ name: string, client_department: string }` |
+| `intake_type` | string | **Yes** | `IRQ`, `SERF`, or `Ad-Hoc` |
+| `ad_hoc_channel` | string \| null | Conditional | Required if `intake_type` is `Ad-Hoc`: `In-Person`, `Email`, `Teams` |
+| `type` | string | **Yes** | `Meeting`, `Discovery Meeting`, `Data Request`, `Data Update`, `PCR`, `Other` |
 | `team_members` | string[] | **Yes** | Array of team member names |
 | `date_started` | string | **Yes** | Formatted date: `"Jan 28, 2025"` |
 | `date_finished` | string | **Yes** | Formatted date or `"—"` if not finished |
@@ -426,7 +426,7 @@ Create a new engagement.
 | `portfolio` | array \| null | No | Portfolio holdings array |
 | `nna` | number \| null | No | Net New Assets in dollars |
 | `notes` | string \| null | No | Optional notes |
-| `tickers_mentioned` | string[] \| null | No | Tickers discussed (GCG Ad-Hoc only, used for Ticker Trends) |
+| `tickers_mentioned` | string[] \| null | No | Tickers discussed (Ad-Hoc only, used for Ticker Trends) |
 
 **Response (201 Created):**
 
@@ -435,14 +435,14 @@ Create a new engagement.
   "id": 1234,
   "external_client": "Vanguard Advisors",
   "internal_client": {
-    "name": "Jennifer Martinez",
-    "gcg_department": "IAG"
+    "name": "Avery Bennett",
+    "client_department": "Advisory"
   },
-  "intake_type": "GCG Ad-Hoc",
+  "intake_type": "Ad-Hoc",
   "ad_hoc_channel": "In-Person",
   "type": "Meeting",
-  "team_members": ["Eli F.", "Sarah K."],
-  "department": "IAG",
+  "team_members": ["Alex M.", "Blake N."],
+  "department": "Advisory",
   "date_started": "Jan 28, 2025",
   "date_finished": "—",
   "status": "In Progress",
@@ -453,7 +453,7 @@ Create a new engagement.
 }
 ```
 
-**Note:** The `department` field is derived from `internal_client.gcg_department` on the backend.
+**Note:** The `department` field is derived from `internal_client.client_department` on the backend.
 
 ---
 
@@ -482,14 +482,14 @@ Update an existing engagement with partial data.
   "id": 1234,
   "external_client": "Vanguard Advisors",
   "internal_client": {
-    "name": "Jennifer Martinez",
-    "gcg_department": "IAG"
+    "name": "Avery Bennett",
+    "client_department": "Advisory"
   },
   "intake_type": "IRQ",
   "ad_hoc_channel": null,
   "type": "Meeting",
-  "team_members": ["Eli F.", "Sarah K."],
-  "department": "IAG",
+  "team_members": ["Alex M.", "Blake N."],
+  "department": "Advisory",
   "date_started": "Jan 28, 2025",
   "date_finished": "Jan 31, 2025",
   "status": "Completed",
@@ -631,7 +631,7 @@ Content-Disposition: attachment; filename="client-interactions-export.csv"
 **Response Body (CSV):**
 ```csv
 ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Team Members,Date Started,Date Finished,Status,Portfolio Logged,NNA,Notes,Tickers Mentioned
-1234,"Vanguard Advisors","Jennifer Martinez","IAG","GCG Ad-Hoc","In-Person","Meeting","Eli F., Sarah K.","Jan 15, 2025","Jan 20, 2025","Completed",true,25000000,"Client notes here","AAPL, MSFT, GOOGL"
+1234,"Vanguard Advisors","Avery Bennett","Advisory","Ad-Hoc","In-Person","Meeting","Alex M., Blake N.","Jan 15, 2025","Jan 20, 2025","Completed",true,25000000,"Client notes here","AAPL, MSFT, GOOGL"
 ```
 
 ---
@@ -644,12 +644,12 @@ ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Te
 |-------|------|-------------|
 | `id` | number | Unique identifier (auto-generated) |
 | `external_client` | string \| null | External client company name (optional) |
-| `internal_client` | InternalClient | GCG contact/relationship owner |
-| `intake_type` | string | `IRQ`, `SERF`, or `GCG Ad-Hoc` |
-| `ad_hoc_channel` | string \| null | `In-Person`, `Email`, or `Teams` (only for GCG Ad-Hoc) |
-| `type` | string | Project type: `Meeting`, `Discovery Meeting`, `Data Request`, `PCR`, `Other` |
+| `internal_client` | InternalClient | Internal contact/relationship owner |
+| `intake_type` | string | `IRQ`, `SERF`, or `Ad-Hoc` |
+| `ad_hoc_channel` | string \| null | `In-Person`, `Email`, or `Teams` (only for Ad-Hoc) |
+| `type` | string | Project type: `Meeting`, `Discovery Meeting`, `Data Request`, `Data Update`, `PCR`, `Other` |
 | `team_members` | string[] | Array of team member names |
-| `department` | string | Derived from `internal_client.gcg_department` |
+| `department` | string | Derived from `internal_client.client_department` |
 | `date_started` | string | Formatted date (e.g., `"Jan 15, 2025"`) |
 | `date_finished` | string | Formatted date or `"—"` if not finished |
 | `status` | string | `In Progress`, `Completed`, or `On Hold` |
@@ -657,14 +657,14 @@ ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Te
 | `portfolio` | PortfolioHolding[] \| null | Optional portfolio holdings |
 | `nna` | number \| null | Net New Assets in dollars |
 | `notes` | string \| null | Optional notes |
-| `tickers_mentioned` | string[] \| null | Tickers discussed (GCG Ad-Hoc only, for Ticker Trends) |
+| `tickers_mentioned` | string[] \| null | Tickers discussed (Ad-Hoc only, for Ticker Trends) |
 
 ### InternalClient
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Contact name |
-| `gcg_department` | string | `IAG`, `Broker-Dealer`, or `Institutional` |
+| `client_department` | string | `Advisory`, `Brokerage`, or `Institutional` |
 
 ### PortfolioHolding
 
@@ -682,7 +682,7 @@ ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Te
 | `level` | number | Activity level 0-4 for heatmap coloring |
 | `count` | number | Total engagements on this day |
 | `project_count` | number | Project engagements (IRQ/SERF) |
-| `ad_hoc_count` | number | GCG Ad-Hoc engagements |
+| `ad_hoc_count` | number | Ad-Hoc engagements |
 
 ### IntakeBreakdown
 
@@ -762,9 +762,9 @@ The team member filter supports these values:
 | Value | Description |
 |-------|-------------|
 | `"All Team Members"` | No team member filter |
-| `"Austin Office"` | Filter to Austin office members |
-| `"Charlotte Office"` | Filter to Charlotte office members |
-| `"Eli F."` | Filter to specific team member |
+| `"Office B"` | Filter to Office B office members |
+| `"Office A"` | Filter to Office A office members |
+| `"Alex M."` | Filter to specific team member |
 
 **Privacy Note**: The frontend only shows "All Team Members" and the current user. Users cannot filter by other team members' individual activity.
 

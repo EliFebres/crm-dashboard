@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { ChevronDown } from 'lucide-react';
 import LoginModal from '@/app/components/auth/LoginModal';
 import SignupModal from '@/app/components/auth/SignupModal';
 import HeroSection from '@/app/components/landing-page/HeroSection';
@@ -54,11 +55,26 @@ export default function Home() {
       {/* ── Hero product image ──────────────────────────────────── */}
       <DashboardPreview className="fade-in-d4" />
 
+      {/* ── Scroll cue — hints that there's more content below the fold ── */}
+      <div className="flex justify-center pb-10 -mt-2">
+        <button
+          type="button"
+          onClick={() => window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' })}
+          aria-label="Scroll down to see more"
+          className="scroll-cue group flex flex-col items-center gap-1.5 cursor-pointer fade-in-d5"
+        >
+          <span className="text-[11px] uppercase tracking-[0.2em] text-[#6b6b76] transition-colors group-hover:text-[#b4b4bc]">
+            Scroll
+          </span>
+          <ChevronDown size={22} strokeWidth={2.5} className="scroll-cue-arrow text-cyan-400" />
+        </button>
+      </div>
+
       {/* ── Feature sections ───────────────────────────────────── */}
       <FeatureSections
         className="scroll-fade-in"
         dashboardHeading={<>Every insight,<br />one dashboard</>}
-        dashboardDescription="Track client interactions, analyze portfolio characteristics, and identify competitive opportunities all from a single platform, built specifically for ISG."
+        dashboardDescription="Track client interactions, analyze portfolio characteristics, and identify competitive opportunities all from a single platform."
         cards={[
           {
             title: 'Client Interaction Tracking',
@@ -183,7 +199,7 @@ export default function Home() {
               <path d="M50 24A26 26 0 1 0 72 66" stroke="url(#logoGrad)" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.4"/>
               <circle cx="50" cy="50" r="7" fill="url(#logoGrad)"/>
             </svg>
-            <span className="text-[12px] text-[#6b6b76]">ISG Insights &copy; {new Date().getFullYear()} Portfolio Consulting Group</span>
+            <span className="text-[12px] text-[#6b6b76]">Insights &copy; {new Date().getFullYear()}</span>
           </div>
           <span className="text-[12px] text-[#6b6b76]">Developed by Eli Febres</span>
         </div>
