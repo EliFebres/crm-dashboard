@@ -6,7 +6,7 @@ A Next.js CRM and insights dashboard application. The **Client Interactions** da
 
 ### Authentication
 - Login/signup with email and password (scrypt-hashed via Node.js crypto)
-- JWT session cookies (24-hour expiration, httpOnly, sameSite: lax)
+- JWT session cookies (30-day expiration, httpOnly, sameSite: lax)
 - First registered user is automatically granted admin status
 - Subsequent users start as **pending** and must be approved by an admin before they can log in
 
