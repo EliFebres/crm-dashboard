@@ -316,7 +316,8 @@ export async function updateEngagement(
 
 /**
  * Optimized endpoint for quick status changes.
- * Auto-sets dateFinished to today when status becomes "Completed".
+ * Defaults dateFinished to today when status becomes "Completed" and no finish date
+ * is set yet; an existing finish date is preserved. Returns the resulting dateFinished.
  * Endpoint: PATCH /api/client-interactions/engagements/:id/status
  */
 export async function updateEngagementStatus(

@@ -379,12 +379,17 @@ export default function EngagementsDashboard() {
   const handleStatusChange = (engagementId: number, newStatus: string) => {
     const target = engagements.find(e => e.id === engagementId);
     if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
+    // Completing an interaction with no finish date defaults it to today (mirrors the
+    // server). Optimistically show today now, then reconcile with the server's value.
+    const autoFinish = newStatus === 'Completed' && (!target.dateFinished || target.dateFinished === '—');
     patchEngagements(e => ({
       ...e,
       status: newStatus,
-      dateFinished: e.dateFinished,
+      dateFinished: autoFinish ? formatDisplayDate(parseISODate('—')) : e.dateFinished,
     }), engagementId);
-    updateEngagementStatus(engagementId, newStatus).catch(console.error);
+    updateEngagementStatus(engagementId, newStatus)
+      .then(res => patchEngagements(e => ({ ...e, dateFinished: res.dateFinished }), engagementId))
+      .catch(console.error);
   };
 
   const handleNoteAdded = (engagementId: number) => {
