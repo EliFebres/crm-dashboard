@@ -10,6 +10,7 @@ import {
   getDepartmentNames,
   getIntakeTypeNames,
   getProjectTypeNames,
+  getOfficeNames,
 } from '@/app/lib/db/aggregations';
 import { getMockFilterOptions } from '@/app/lib/api/mock-computations';
 import { hasDb } from '@/app/lib/db';
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   try {
     const filters: EngagementFilters = await req.json();
 
-    const [metrics, departments, contributionData, engagements, deptNames, intakeNames, projectNames] = await Promise.all([
+    const [metrics, departments, contributionData, engagements, deptNames, intakeNames, projectNames, officeNames] = await Promise.all([
       computeMetrics(filters, sc),
       computeDepartmentBreakdown(filters, sc),
       computeContributionData(filters, sc),
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       hasDb() ? getDepartmentNames() : Promise.resolve<string[] | null>(null),
       hasDb() ? getIntakeTypeNames() : Promise.resolve<string[] | null>(null),
       hasDb() ? getProjectTypeNames() : Promise.resolve<string[] | null>(null),
+      hasDb() ? getOfficeNames() : Promise.resolve<string[] | null>(null),
     ]);
 
     return NextResponse.json({
@@ -45,6 +47,11 @@ export async function POST(req: NextRequest) {
       filterOptions: hasDb()
         ? {
             ...STATIC_FILTER_OPTIONS,
+            // Team Member filter reflects the actual managed Offices (admin order).
+            teamMembers: ['All Team Members', ...(officeNames ?? [])],
+            teamMemberGroups: officeNames && officeNames.length > 0
+              ? [{ label: 'Office', options: officeNames }]
+              : [],
             departments: deptNames ?? STATIC_FILTER_OPTIONS.departments,
             intakeTypes: intakeNames ?? STATIC_FILTER_OPTIONS.intakeTypes,
             projectTypes: projectNames ?? STATIC_FILTER_OPTIONS.projectTypes,

@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Check, X, Loader2, Trash2, FolderKanban, Inbox, Lock } from 'lucide-react';
 import { DeleteOrgModal } from '@/app/admin/settings/_components/OrgSection';
+import { SortableList, SortableRow } from '@/app/admin/settings/_components/sortable';
 import {
-  getProjectTypes, createProjectType, updateProjectType, deleteProjectType,
-  getIntakeTypes, createIntakeType, updateIntakeType, deleteIntakeType,
+  getProjectTypes, createProjectType, updateProjectType, deleteProjectType, reorderProjectTypes,
+  getIntakeTypes, createIntakeType, updateIntakeType, deleteIntakeType, reorderIntakeTypes,
   RegistryConflictError,
   type ProjectTypeItem, type IntakeTypeItem,
 } from '@/app/lib/api/types';
@@ -30,6 +31,7 @@ interface TypeApi<T extends TypeItem> {
   create: (name: string, color?: string) => Promise<T>;
   update: (id: string, patch: { name?: string; color?: string }) => Promise<T>;
   remove: (id: string) => Promise<void>;
+  reorder: (ids: string[]) => Promise<void>;
 }
 
 /**
@@ -103,6 +105,19 @@ function TypeSection<T extends TypeItem>({
     }
   };
 
+  // Optimistically apply the new order, then persist; revert on failure.
+  const handleReorder = async (nextIds: string[]) => {
+    const byId = new Map(items.map(i => [i.id, i]));
+    const next = nextIds.map(id => byId.get(id)).filter((x): x is T => Boolean(x));
+    const prev = items;
+    setItems(next);
+    try {
+      await api.reorder(nextIds);
+    } catch {
+      setItems(prev);
+    }
+  };
+
   return (
     <section className="space-y-4">
       <div className="flex items-end justify-between gap-4">
@@ -159,6 +174,7 @@ function TypeSection<T extends TypeItem>({
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
+              <th className="w-8" />
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">{title.replace(/s$/, '')}</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
               <th className="px-4 py-3 w-20" />
@@ -166,11 +182,12 @@ function TypeSection<T extends TypeItem>({
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={3} className="px-4 py-10 text-center text-muted"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>
+              <tr><td colSpan={4} className="px-4 py-10 text-center text-muted"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={3} className="px-4 py-10 text-center text-muted text-sm">No {title.toLowerCase()} yet.</td></tr>
+              <tr><td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">No {title.toLowerCase()} yet.</td></tr>
             ) : (
-              items.map(item => {
+              <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
+                {items.map(item => {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 const isBuiltIn = item.role !== null;
@@ -182,7 +199,7 @@ function TypeSection<T extends TypeItem>({
                     ? `Can't delete — ${item.assignedCount} engagement(s) still use this ${singular}.`
                     : `Delete ${singular}`;
                 return (
-                  <tr key={item.id} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -239,9 +256,10 @@ function TypeSection<T extends TypeItem>({
                         </div>
                       )}
                     </td>
-                  </tr>
+                  </SortableRow>
                 );
-              })
+                })}
+              </SortableList>
             )}
           </tbody>
         </table>
@@ -264,6 +282,7 @@ const projectTypeApi: TypeApi<ProjectTypeItem> = {
   create: createProjectType,
   update: updateProjectType,
   remove: deleteProjectType,
+  reorder: reorderProjectTypes,
 };
 
 const intakeTypeApi: TypeApi<IntakeTypeItem> = {
@@ -271,6 +290,7 @@ const intakeTypeApi: TypeApi<IntakeTypeItem> = {
   create: createIntakeType,
   update: updateIntakeType,
   remove: deleteIntakeType,
+  reorder: reorderIntakeTypes,
 };
 
 /** Types tab — manage the project types and intake types used across client engagements. */

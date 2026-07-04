@@ -146,6 +146,19 @@ export async function updateIntakeType(
 }
 
 /**
+ * Persist a new display order. `orderedIds` lists the intake-type ids in the
+ * desired order; each row's `sort_order` is set to its index. Ids not present
+ * are left untouched. Atomic — no name change, so no engagement cascade.
+ */
+export async function reorderIntakeTypes(orderedIds: string[]): Promise<void> {
+  await executeTransaction((tx) => {
+    orderedIds.forEach((id, index) => {
+      tx.run(`UPDATE intake_types SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [index, id]);
+    });
+  });
+}
+
+/**
  * Delete an intake type. Refuses (409) for a built-in (role != NULL) — its
  * behavior is hardwired — or while any engagement still uses it. Returns the name.
  */

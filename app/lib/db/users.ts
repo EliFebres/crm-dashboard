@@ -1,4 +1,4 @@
-import { openSqlite, dbAll, dbRun, type DB } from './connection';
+import { openSqlite, dbAll, dbRun, columnExists, type DB } from './connection';
 import { randomUUID } from 'crypto';
 
 // Cached on `global` so the connection survives Next.js hot reloads in dev mode.
@@ -61,6 +61,19 @@ function bootstrap(db: DB): void {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Migration: teams/offices are admin-orderable, so each carries a sort_order.
+  // The ALTER runs once (guarded by columnExists); inside that guard we backfill
+  // existing rows by their current alphabetical order so they don't all sit at 0.
+  for (const table of ['teams', 'offices'] as const) {
+    if (!columnExists(db, table, 'sort_order')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
+      const rows = db.prepare(`SELECT id FROM ${table} ORDER BY name COLLATE NOCASE`).all() as Array<{ id: string }>;
+      const setOrder = db.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`);
+      rows.forEach((r, i) => setOrder.run(i, r.id));
+    }
+  }
+
   seedOrgLists(db);
 }
 

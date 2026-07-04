@@ -70,6 +70,16 @@ export async function deleteProjectType(id: string): Promise<void> {
   if (!res.ok) await readError(res, 'Failed to delete project type.');
 }
 
+/** Persist a new display order — `ids` in the desired order. */
+export async function reorderProjectTypes(ids: string[]): Promise<void> {
+  const res = await fetch('/api/project-types/reorder', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) await readError(res, 'Failed to reorder project types.');
+}
+
 // ── Intake Types ──────────────────────────────────────────────────────────────
 
 export async function getIntakeTypes(): Promise<IntakeTypeItem[]> {
@@ -105,4 +115,14 @@ export async function updateIntakeType(
 export async function deleteIntakeType(id: string): Promise<void> {
   const res = await fetch(`/api/intake-types/${id}`, { method: 'DELETE' });
   if (!res.ok) await readError(res, 'Failed to delete intake type.');
+}
+
+/** Persist a new display order — `ids` in the desired order. */
+export async function reorderIntakeTypes(ids: string[]): Promise<void> {
+  const res = await fetch('/api/intake-types/reorder', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) await readError(res, 'Failed to reorder intake types.');
 }

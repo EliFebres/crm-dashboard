@@ -3,15 +3,15 @@
 import React from 'react';
 import { Users, Building2 } from 'lucide-react';
 import {
-  getTeams, createTeam, renameTeam, deleteTeam,
-  getOffices, createOffice, renameOffice, deleteOffice,
+  getTeams, createTeam, renameTeam, deleteTeam, reorderTeams,
+  getOffices, createOffice, renameOffice, deleteOffice, reorderOffices,
 } from '@/app/lib/api/org';
 import { OrgSection } from '@/app/admin/settings/_components/OrgSection';
 import TeamMembersManager from '@/app/admin/settings/_components/TeamMembersManager';
 
 // Stable, module-level API bundles so <OrgSection>'s effects don't re-run each render.
-const TEAM_API = { list: getTeams, create: createTeam, rename: renameTeam, remove: deleteTeam };
-const OFFICE_API = { list: getOffices, create: createOffice, rename: renameOffice, remove: deleteOffice };
+const TEAM_API = { list: getTeams, create: createTeam, rename: renameTeam, remove: deleteTeam, reorder: reorderTeams };
+const OFFICE_API = { list: getOffices, create: createOffice, rename: renameOffice, remove: deleteOffice, reorder: reorderOffices };
 
 /** Team & Office tab — Teams, Offices, and the Team Members roster. */
 export default function TeamOfficeTab() {

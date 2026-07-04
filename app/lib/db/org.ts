@@ -13,6 +13,8 @@ export type OrgKind = 'team' | 'office';
 export interface OrgItem {
   id: string;
   name: string;
+  /** Admin-defined display order; drives sign-up / team-member dropdowns. */
+  sortOrder: number;
   /** Number of users + team_members currently assigned this team/office. */
   assignedCount: number;
 }
@@ -39,14 +41,14 @@ const CONFIG: Record<OrgKind, OrgConfig> = {
 /** List all teams/offices with how many users + members are assigned to each. */
 export async function listOrg(kind: OrgKind): Promise<OrgItem[]> {
   const { table, column } = CONFIG[kind];
-  const rows = await queryUsers<{ id: string; name: string; assigned_count: number }>(
-    `SELECT t.id, t.name,
+  const rows = await queryUsers<{ id: string; name: string; sort_order: number; assigned_count: number }>(
+    `SELECT t.id, t.name, t.sort_order,
             (SELECT COUNT(*) FROM users u        WHERE u.${column}  = t.name)
           + (SELECT COUNT(*) FROM team_members m WHERE m.${column}  = t.name) AS assigned_count
        FROM ${table} t
-      ORDER BY t.name COLLATE NOCASE`
+      ORDER BY t.sort_order, t.name COLLATE NOCASE`
   );
-  return rows.map(r => ({ id: r.id, name: r.name, assignedCount: Number(r.assigned_count) }));
+  return rows.map(r => ({ id: r.id, name: r.name, sortOrder: Number(r.sort_order), assignedCount: Number(r.assigned_count) }));
 }
 
 /** Create a new team/office. Throws OrgError(409) on a case-insensitive duplicate. */
@@ -59,8 +61,10 @@ export async function createOrg(kind: OrgKind, rawName: string): Promise<OrgItem
   if (dupe.length > 0) throw new OrgError(409, `A ${label} named "${name}" already exists.`);
 
   const id = randomUUID();
-  await executeUsers(`INSERT INTO ${table} (id, name) VALUES (?, ?)`, [id, name]);
-  return { id, name, assignedCount: 0 };
+  const maxRow = await queryUsers<{ m: number }>(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM ${table}`);
+  const sortOrder = Number(maxRow[0]?.m ?? -1) + 1;
+  await executeUsers(`INSERT INTO ${table} (id, name, sort_order) VALUES (?, ?, ?)`, [id, name, sortOrder]);
+  return { id, name, sortOrder, assignedCount: 0 };
 }
 
 /**
@@ -73,7 +77,7 @@ export async function renameOrg(kind: OrgKind, id: string, rawName: string): Pro
   if (!name) throw new OrgError(400, `A ${label} name is required.`);
 
   return usersTransaction<OrgItem>((tx) => {
-    const current = tx.get<{ name: string }>(`SELECT name FROM ${table} WHERE id = ?`, [id]);
+    const current = tx.get<{ name: string; sort_order: number }>(`SELECT name, sort_order FROM ${table} WHERE id = ?`, [id]);
     if (!current) throw new OrgError(404, `That ${label} no longer exists.`);
 
     if (current.name !== name) {
@@ -89,7 +93,7 @@ export async function renameOrg(kind: OrgKind, id: string, rawName: string): Pro
       (tx.get<{ c: number }>(`SELECT COUNT(*) AS c FROM users        WHERE ${column} = ?`, [name])?.c ?? 0) +
       (tx.get<{ c: number }>(`SELECT COUNT(*) AS c FROM team_members WHERE ${column} = ?`, [name])?.c ?? 0);
 
-    return { id, name, assignedCount: Number(assigned) };
+    return { id, name, sortOrder: Number(current.sort_order), assignedCount: Number(assigned) };
   });
 }
 
@@ -116,6 +120,19 @@ export async function deleteOrg(kind: OrgKind, id: string): Promise<string> {
 
     tx.run(`DELETE FROM ${table} WHERE id = ?`, [id]);
     return current.name;
+  });
+}
+
+/**
+ * Persist a new display order. `orderedIds` lists the team/office ids in the
+ * desired order; each row's `sort_order` is set to its index. Atomic.
+ */
+export async function reorderOrg(kind: OrgKind, orderedIds: string[]): Promise<void> {
+  const { table } = CONFIG[kind];
+  await usersTransaction<void>((tx) => {
+    orderedIds.forEach((id, index) => {
+      tx.run(`UPDATE ${table} SET sort_order = ? WHERE id = ?`, [index, id]);
+    });
   });
 }
 

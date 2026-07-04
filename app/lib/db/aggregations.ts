@@ -16,6 +16,7 @@ import {
 import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
 import { listDepartmentNames, departmentColorMap } from './departments';
+import { listOrg } from './org';
 import { listIntakeTypeNames, intakeNameForRole, intakeColorMap } from './intakeTypes';
 import { listProjectTypeNames, projectNameForRole } from './projectTypes';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
@@ -65,6 +66,17 @@ export async function getProjectTypeNames(): Promise<string[]> {
     return names.length > 0 ? names : STATIC_FILTER_OPTIONS.projectTypes;
   } catch {
     return STATIC_FILTER_OPTIONS.projectTypes;
+  }
+}
+
+// Live office names for the Team Member filter's Office group, in the admin-set
+// order (listOrg orders by sort_order). Returns [] on failure so the filter just
+// omits the Office group rather than breaking.
+export async function getOfficeNames(): Promise<string[]> {
+  try {
+    return (await listOrg('office')).map(o => o.name);
+  } catch {
+    return [];
   }
 }
 

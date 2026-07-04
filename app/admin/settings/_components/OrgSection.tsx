@@ -3,12 +3,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Check, X, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { type OrgItem, OrgConflictError } from '@/app/lib/api/org';
+import { SortableList, SortableRow } from '@/app/admin/settings/_components/sortable';
 
 export interface OrgApi {
   list: () => Promise<OrgItem[]>;
   create: (name: string) => Promise<OrgItem>;
   rename: (id: string, name: string) => Promise<OrgItem>;
   remove: (id: string) => Promise<void>;
+  reorder: (ids: string[]) => Promise<void>;
 }
 
 /** Modal requiring the admin to type the exact name before a delete is allowed. */
@@ -160,6 +162,19 @@ export function OrgSection({
     }
   };
 
+  // Optimistically apply the new order, then persist; revert on failure.
+  const handleReorder = async (nextIds: string[]) => {
+    const byId = new Map(items.map(i => [i.id, i]));
+    const next = nextIds.map(id => byId.get(id)).filter((x): x is OrgItem => Boolean(x));
+    const prev = items;
+    setItems(next);
+    try {
+      await api.reorder(nextIds);
+    } catch {
+      setItems(prev);
+    }
+  };
+
   return (
     <section className="space-y-4">
       <div className={`flex items-end justify-between gap-4 max-w-md ${alignCls}`}>
@@ -214,6 +229,7 @@ export function OrgSection({
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
+              <th className="w-8" />
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Name</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Assigned</th>
               <th className="px-4 py-3 w-20" />
@@ -222,20 +238,21 @@ export function OrgSection({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-muted">
+                <td colSpan={4} className="px-4 py-10 text-center text-muted">
                   <Loader2 className="w-5 h-5 animate-spin inline" />
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-muted text-sm">No {title.toLowerCase()} yet.</td>
+                <td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">No {title.toLowerCase()} yet.</td>
               </tr>
             ) : (
-              items.map(item => {
+              <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
+                {items.map(item => {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (
-                  <tr key={item.id} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -302,9 +319,10 @@ export function OrgSection({
                         </div>
                       )}
                     </td>
-                  </tr>
+                  </SortableRow>
                 );
-              })
+                })}
+              </SortableList>
             )}
           </tbody>
         </table>

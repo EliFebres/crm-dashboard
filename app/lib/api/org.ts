@@ -6,6 +6,8 @@
 export interface OrgItem {
   id: string;
   name: string;
+  /** Admin-defined display order. */
+  sortOrder: number;
   /** Users + team members currently assigned — drives the delete-button guard. */
   assignedCount: number;
 }
@@ -56,6 +58,16 @@ export async function deleteTeam(id: string): Promise<void> {
   if (!res.ok) await readError(res, 'Failed to delete team.');
 }
 
+/** Persist a new team order — `ids` in the desired order. */
+export async function reorderTeams(ids: string[]): Promise<void> {
+  const res = await fetch('/api/teams/reorder', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) await readError(res, 'Failed to reorder teams.');
+}
+
 // ── Offices ──────────────────────────────────────────────────────────────────
 
 export async function getOffices(): Promise<OrgItem[]> {
@@ -87,4 +99,14 @@ export async function renameOffice(id: string, name: string): Promise<OrgItem> {
 export async function deleteOffice(id: string): Promise<void> {
   const res = await fetch(`/api/offices/${id}`, { method: 'DELETE' });
   if (!res.ok) await readError(res, 'Failed to delete office.');
+}
+
+/** Persist a new office order — `ids` in the desired order. */
+export async function reorderOffices(ids: string[]): Promise<void> {
+  const res = await fetch('/api/offices/reorder', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) await readError(res, 'Failed to reorder offices.');
 }

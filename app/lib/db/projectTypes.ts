@@ -143,6 +143,19 @@ export async function updateProjectType(
 }
 
 /**
+ * Persist a new display order. `orderedIds` lists the project-type ids in the
+ * desired order; each row's `sort_order` is set to its index. Ids not present
+ * are left untouched. Atomic — no name change, so no engagement cascade.
+ */
+export async function reorderProjectTypes(orderedIds: string[]): Promise<void> {
+  await executeTransaction((tx) => {
+    orderedIds.forEach((id, index) => {
+      tx.run(`UPDATE project_types SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [index, id]);
+    });
+  });
+}
+
+/**
  * Delete a project type. Refuses (409) for a built-in (role != NULL) or while any
  * engagement still uses it, so nothing is orphaned. Returns the deleted name.
  */
