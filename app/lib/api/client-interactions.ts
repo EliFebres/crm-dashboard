@@ -15,6 +15,7 @@ import type {
   Engagement,
   EngagementLinkSummary,
   Client,
+  ClientModel,
   NoteEntry,
   DayData,
   DepartmentData,
@@ -515,6 +516,36 @@ export async function updateClient(crn: string, updates: { name?: string; crn?: 
     throw new Error(data.error || 'Failed to update client');
   }
   return response.json();
+}
+
+/**
+ * Lists a client's model portfolios (shared, canonical — keyed by CRN).
+ * Endpoint: GET /api/client-interactions/clients/:crn/models
+ */
+export async function getClientModels(crn: string): Promise<ClientModel[]> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/${encodeURIComponent(crn)}/models`);
+  if (!response.ok) throw new Error('Failed to fetch client models');
+  const data = await response.json();
+  return (data.models ?? []) as ClientModel[];
+}
+
+/**
+ * Atomically replaces a client's entire model set. The server enforces the
+ * single-main invariant and normalizes holding weights before persisting.
+ * Endpoint: PUT /api/client-interactions/clients/:crn/models
+ */
+export async function saveClientModels(crn: string, models: ClientModel[]): Promise<ClientModel[]> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/${encodeURIComponent(crn)}/models`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to save client models');
+  }
+  const data = await response.json();
+  return (data.models ?? []) as ClientModel[];
 }
 
 /**

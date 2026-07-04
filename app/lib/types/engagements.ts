@@ -82,6 +82,19 @@ export interface PortfolioHolding {
   weight: number; // Normalized weight (0-1, sums to 1)
 }
 
+// A model portfolio belonging to an external client (keyed by CRN). A client can
+// run several (e.g. large- vs small-client models, per-office models, 60/40 vs
+// 100/0 splits); exactly one is flagged `isMain` (drives the Portfolio Trends
+// dashboard). Canonical + shared across all of that client's interactions.
+export interface ClientModel {
+  id: string;                   // stable UUID
+  name: string;                 // free-text label, e.g. "60/40 Model"
+  isMain: boolean;              // exactly one main per client
+  aum?: number;                 // optional dollars (often unknown/empty)
+  holdings: PortfolioHolding[]; // weights normalized to sum to 1
+  sortOrder: number;
+}
+
 export interface NoteEntry {
   id: number;
   engagementId: number;

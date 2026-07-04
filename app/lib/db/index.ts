@@ -148,6 +148,58 @@ function bootstrap(db: DB): void {
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_client_crn ON engagements (client_crn)`);
 
+  // Client-level model portfolios. A client (CRN) can run several models (large- vs
+  // small-client, per-office, 60/40 vs 100/0); exactly one is flagged is_main. These
+  // are canonical + shared across the client's interactions (replaces the old single
+  // per-engagement portfolio as the source of truth). ON DELETE CASCADE ties them to
+  // the client; a CRN rename cascades manually (see clients/[crn]/route.ts).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS client_models (
+      id         TEXT PRIMARY KEY,
+      crn        TEXT NOT NULL REFERENCES clients(crn) ON DELETE CASCADE,
+      name       TEXT NOT NULL,
+      is_main    INTEGER NOT NULL DEFAULT 0,
+      aum        INTEGER,
+      holdings   TEXT NOT NULL DEFAULT '[]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_client_models_crn ON client_models (crn);
+  `);
+
+  // One-time seed: fold each client's most-recent non-empty legacy engagement
+  // portfolio into a single main model named "Logged Portfolio". Gated by a
+  // migration marker so it runs EXACTLY once — a per-crn guard would resurrect the
+  // legacy portfolio if a user later deletes all of a client's models and reboots.
+  // The legacy engagements.portfolio column is left in place (retired, not read by
+  // the new modal) — same approach as the old external_client column.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_migrations (
+      name       TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  const SEED_CLIENT_MODELS = 'seed_client_models_from_legacy_portfolio_v1';
+  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [SEED_CLIENT_MODELS])) {
+    db.exec(`
+      INSERT INTO client_models (id, crn, name, is_main, aum, holdings, sort_order)
+      SELECT lower(hex(randomblob(16))), t.client_crn, 'Logged Portfolio', 1, NULL, t.portfolio, 0
+      FROM (
+        SELECT e.client_crn, e.portfolio,
+               ROW_NUMBER() OVER (PARTITION BY e.client_crn
+                                  ORDER BY e.date_started DESC, e.id DESC) AS rn
+        FROM engagements e
+        WHERE e.client_crn IS NOT NULL
+          AND e.portfolio IS NOT NULL
+          AND e.portfolio != ''
+          AND e.portfolio != '[]'
+      ) t
+      WHERE t.rn = 1
+    `);
+    dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [SEED_CLIENT_MODELS]);
+  }
+
   // Managed internal-client departments. The department NAME lives denormalized on
   // engagements.internal_client_dept; this table makes the set editable (add/rename/
   // delete + a chart color) and a rename cascades into engagements + internal_clients

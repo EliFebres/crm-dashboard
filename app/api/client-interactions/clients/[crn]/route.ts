@@ -88,6 +88,7 @@ export async function PATCH(
         tx.run(`PRAGMA defer_foreign_keys = ON`);
         tx.run(`UPDATE clients SET crn = ?, name = ?, crn_pending = ?, updated_at = CURRENT_TIMESTAMP WHERE crn = ?`, [newCrn, name, newPending, crn]);
         tx.run(`UPDATE engagements SET client_crn = ? WHERE client_crn = ?`, [newCrn, crn]);
+        tx.run(`UPDATE client_models SET crn = ? WHERE crn = ?`, [newCrn, crn]);
       } else {
         tx.run(`UPDATE clients SET name = ?, crn_pending = ?, updated_at = CURRENT_TIMESTAMP WHERE crn = ?`, [name, newPending, crn]);
       }

@@ -129,6 +129,10 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
+  // Summary of the selected client's models, refreshed after a save in the modal.
+  const [modelSummary, setModelSummary] = useState<{ count: number; mainName?: string } | null>(null);
+  // Models are client-level; switching clients invalidates the cached summary.
+  useEffect(() => { setModelSummary(null); }, [formData.clientCrn]);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [localNoteCount, setLocalNoteCount] = useState(initialNoteCount ?? 0);
@@ -1038,21 +1042,27 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
 
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
-                    Client Portfolio <span className="text-muted font-normal text-xs">(Optional)</span>
+                    Client Models <span className="text-muted font-normal text-xs">(Optional)</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsPortfolioModalOpen(true)}
+                    disabled={!formData.clientCrn}
+                    title={!formData.clientCrn ? 'Select a client first' : undefined}
                     className={`w-full h-[38px] px-3 bg-zinc-800/50 border rounded-lg text-sm text-left transition-colors flex items-center gap-2 ${
-                      formData.portfolio && formData.portfolio.length > 0
-                        ? 'border-cyan-500/50 text-cyan-400 hover:border-cyan-500/70'
-                        : 'border-zinc-700 text-muted hover:border-cyan-500/50'
+                      !formData.clientCrn
+                        ? 'border-zinc-800 text-zinc-600 cursor-not-allowed'
+                        : modelSummary && modelSummary.count > 0
+                          ? 'border-cyan-500/50 text-cyan-400 hover:border-cyan-500/70'
+                          : 'border-zinc-700 text-muted hover:border-cyan-500/50'
                     }`}
                   >
                     <Briefcase className="w-4 h-4" />
-                    {formData.portfolio && formData.portfolio.length > 0
-                      ? `${formData.portfolio.length} holding${formData.portfolio.length > 1 ? 's' : ''}`
-                      : '+ Add Portfolio'}
+                    {!formData.clientCrn
+                      ? 'Select a client first'
+                      : modelSummary && modelSummary.count > 0
+                        ? `${modelSummary.count} model${modelSummary.count > 1 ? 's' : ''}${modelSummary.mainName ? ` · ${modelSummary.mainName}` : ''}`
+                        : 'Manage Models'}
                   </button>
                 </div>
               </div>
@@ -1143,19 +1153,19 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         }}
       />
 
-      {/* Portfolio Modal */}
-      <PortfolioModal
-        isOpen={isPortfolioModalOpen}
-        onClose={() => setIsPortfolioModalOpen(false)}
-        currentPortfolio={formData.portfolio}
-        onSave={(portfolio) => {
-          setFormData(prev => ({
-            ...prev,
-            portfolio,
-            portfolioLogged: portfolio !== undefined && portfolio.length > 0,
-          }));
-        }}
-      />
+      {/* Client Models Modal (shared, client-level) */}
+      {formData.clientCrn && (
+        <PortfolioModal
+          isOpen={isPortfolioModalOpen}
+          onClose={() => setIsPortfolioModalOpen(false)}
+          clientCrn={formData.clientCrn}
+          clientName={formData.externalClient}
+          onSaved={(models) => {
+            setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name });
+            setFormData(prev => ({ ...prev, portfolioLogged: models.length > 0 }));
+          }}
+        />
+      )}
 
       {/* Link Previous Interaction Modal */}
       <LinkInteractionModal

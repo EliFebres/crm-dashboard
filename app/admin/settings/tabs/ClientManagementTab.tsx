@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building2, Search, Plus, Pencil, Check, X, Loader2, AlertTriangle } from 'lucide-react';
+import { Building2, Search, Plus, Pencil, Check, X, Loader2, AlertTriangle, Briefcase } from 'lucide-react';
 import {
   getClients, registerClient, updateClient, getCrnConfig,
   CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
+import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/PortfolioModal';
 import type { Client } from '@/app/lib/types/engagements';
 
 /** Client Management tab — the canonical external-client registry (identified by CRN). */
@@ -28,6 +29,9 @@ export default function ClientManagementTab() {
   const [editCrnValue, setEditCrnValue] = useState('');
   const [editError, setEditError] = useState('');
   const [editBusy, setEditBusy] = useState(false);
+
+  // Client whose model portfolios are being managed (opens the shared editor modal).
+  const [modelsClient, setModelsClient] = useState<Client | null>(null);
 
   const load = useCallback((q: string) => {
     setLoading(true);
@@ -260,13 +264,22 @@ export default function ClientManagementTab() {
                         </button>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => startEdit(c)}
-                        className="p-1.5 rounded text-muted hover:text-cyan-400 hover:bg-white/[0.05] transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setModelsClient(c)}
+                          className="p-1.5 rounded text-muted hover:text-cyan-400 hover:bg-white/[0.05] transition-colors"
+                          title="Manage models"
+                        >
+                          <Briefcase className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => startEdit(c)}
+                          className="p-1.5 rounded text-muted hover:text-cyan-400 hover:bg-white/[0.05] transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -276,6 +289,16 @@ export default function ClientManagementTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Model portfolios editor (shared, client-level) */}
+      {modelsClient && (
+        <PortfolioModal
+          isOpen={!!modelsClient}
+          onClose={() => setModelsClient(null)}
+          clientCrn={modelsClient.crn}
+          clientName={modelsClient.name}
+        />
+      )}
     </section>
   );
 }
