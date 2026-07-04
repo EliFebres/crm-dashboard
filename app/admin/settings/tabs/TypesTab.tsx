@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Check, X, Loader2, Trash2, FolderKanban, Inbox, Lock } from 'lucide-react';
 import { DeleteOrgModal } from '@/app/admin/settings/_components/OrgSection';
-import { SortableList, SortableRow } from '@/app/admin/settings/_components/sortable';
+import { SortableList, SortableBody, SortableRow } from '@/app/admin/settings/_components/sortable';
 import {
   getProjectTypes, createProjectType, updateProjectType, deleteProjectType, reorderProjectTypes,
   getIntakeTypes, createIntakeType, updateIntakeType, deleteIntakeType, reorderIntakeTypes,
@@ -170,13 +170,14 @@ function TypeSection<T extends TypeItem>({
         </div>
       )}
 
+      <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
       <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-x-auto scrollbar-thin">
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
               <th className="w-8" />
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">{title.replace(/s$/, '')}</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
               <th className="px-4 py-3 w-20" />
             </tr>
           </thead>
@@ -186,7 +187,7 @@ function TypeSection<T extends TypeItem>({
             ) : items.length === 0 ? (
               <tr><td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">No {title.toLowerCase()} yet.</td></tr>
             ) : (
-              <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
+              <SortableBody ids={items.map(i => i.id)}>
                 {items.map(item => {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
@@ -199,7 +200,7 @@ function TypeSection<T extends TypeItem>({
                     ? `Can't delete — ${item.assignedCount} engagement(s) still use this ${singular}.`
                     : `Delete ${singular}`;
                 return (
-                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -235,7 +236,7 @@ function TypeSection<T extends TypeItem>({
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted">{item.assignedCount}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted">{item.assignedCount}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {editing ? (
                         <div className="flex items-center justify-end gap-1">
@@ -259,11 +260,12 @@ function TypeSection<T extends TypeItem>({
                   </SortableRow>
                 );
                 })}
-              </SortableList>
+              </SortableBody>
             )}
           </tbody>
         </table>
       </div>
+      </SortableList>
 
       {deleting && (
         <DeleteOrgModal

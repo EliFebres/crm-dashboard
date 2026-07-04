@@ -135,7 +135,7 @@ function DepartmentSection({ onChanged }: { onChanged: () => void }) {
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Department</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
               <th className="px-4 py-3 w-20" />
             </tr>
           </thead>
@@ -149,7 +149,7 @@ function DepartmentSection({ onChanged }: { onChanged: () => void }) {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (
-                  <tr key={item.id} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                  <tr key={item.id} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -180,7 +180,7 @@ function DepartmentSection({ onChanged }: { onChanged: () => void }) {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted">{item.assignedCount}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted">{item.assignedCount}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {editing ? (
                         <div className="flex items-center justify-end gap-1">
@@ -358,7 +358,7 @@ function InternalClientSection({ departments }: { departments: string[] }) {
             <tr className="border-b border-zinc-800/50 text-left">
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Name</th>
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Department</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-muted uppercase tracking-wider">In use</th>
               <th className="px-4 py-3 w-20" />
             </tr>
           </thead>
@@ -372,7 +372,7 @@ function InternalClientSection({ departments }: { departments: string[] }) {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (
-                  <tr key={item.id} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                  <tr key={item.id} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -400,7 +400,7 @@ function InternalClientSection({ departments }: { departments: string[] }) {
                         <span className="text-sm text-muted">{item.department}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted">{item.assignedCount}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted">{item.assignedCount}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {editing ? (
                         <div className="flex items-center justify-end gap-1">

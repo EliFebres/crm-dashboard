@@ -200,7 +200,7 @@ export default function ClientManagementTab() {
               clients.map(c => {
                 const editing = editingCrn === c.crn;
                 return (
-                <tr key={c.crn} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                <tr key={c.crn} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
                   <td className="px-4 py-3">
                     {editing ? (
                       <input

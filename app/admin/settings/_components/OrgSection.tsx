@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Check, X, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { type OrgItem, OrgConflictError } from '@/app/lib/api/org';
-import { SortableList, SortableRow } from '@/app/admin/settings/_components/sortable';
+import { SortableList, SortableBody, SortableRow } from '@/app/admin/settings/_components/sortable';
 
 export interface OrgApi {
   list: () => Promise<OrgItem[]>;
@@ -225,13 +225,14 @@ export function OrgSection({
         </div>
       )}
 
+      <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
       <div className={`bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-hidden max-w-md ${alignCls}`}>
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
               <th className="w-8" />
               <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Name</th>
-              <th className="px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Assigned</th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-muted uppercase tracking-wider">Assigned</th>
               <th className="px-4 py-3 w-20" />
             </tr>
           </thead>
@@ -247,12 +248,12 @@ export function OrgSection({
                 <td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">No {title.toLowerCase()} yet.</td>
               </tr>
             ) : (
-              <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
+              <SortableBody ids={items.map(i => i.id)}>
                 {items.map(item => {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (
-                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-top">
+                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -271,7 +272,7 @@ export function OrgSection({
                         <span className="text-sm text-zinc-200">{item.name}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-muted">{item.assignedCount}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted">{item.assignedCount}</td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {editing ? (
                         <div className="flex items-center justify-end gap-1">
@@ -322,11 +323,12 @@ export function OrgSection({
                   </SortableRow>
                 );
                 })}
-              </SortableList>
+              </SortableBody>
             )}
           </tbody>
         </table>
       </div>
+      </SortableList>
 
       {deleting && (
         <DeleteOrgModal

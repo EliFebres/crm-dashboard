@@ -364,7 +364,7 @@ export default function TeamMembersManager() {
                     {teamMembers.map(m => {
                       const busy = actionLoading === m.id;
                       return (
-                        <tr key={m.id} className="hover:bg-zinc-800/20 transition-colors">
+                        <tr key={m.id} className="hover:bg-zinc-800/20 transition-colors align-middle">
                           <td className="px-4 py-3 text-zinc-200 font-medium">{m.firstName} {m.lastName}</td>
                           <td className="px-4 py-3">
                             <span className="font-mono text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-cyan-400">{m.displayName}</span>

@@ -4,9 +4,11 @@
  * Small drag-to-reorder helpers shared by the Settings registry tables
  * (Project Types, Intake Types, Teams, Offices).
  *
- * Both `DndContext` and `SortableContext` render context providers only — no DOM
- * wrapper — so they can sit directly inside a `<tbody>` around `<tr>` rows without
- * producing invalid table markup. Each row gets a leading drag-handle cell.
+ * `DndContext` renders an inline hidden accessibility `<div>`, so it must wrap the
+ * whole table (NOT sit inside `<tbody>`, which would be invalid HTML). Use
+ * {@link SortableList} around the table/card and {@link SortableBody} inside the
+ * `<tbody>` around the rows — `SortableContext` emits no DOM, so it's safe there.
+ * Each row ({@link SortableRow}) gets a leading drag-handle cell.
  */
 import React from 'react';
 import { GripVertical } from 'lucide-react';
@@ -29,8 +31,10 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 /**
- * Wraps a set of {@link SortableRow}s. `ids` is the current row order; `onReorder`
- * fires with the next order (already run through `arrayMove`) on drop.
+ * Provides the drag context for a reorderable table. Wrap the table (or its
+ * card) with this — never place it inside `<tbody>`. `ids` is the current row
+ * order; `onReorder` fires with the next order (already run through `arrayMove`)
+ * on drop.
  */
 export function SortableList({
   ids,
@@ -58,10 +62,20 @@ export function SortableList({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        {children}
-      </SortableContext>
+      {children}
     </DndContext>
+  );
+}
+
+/**
+ * Groups the sortable rows. Place directly inside `<tbody>` around the
+ * {@link SortableRow}s — it renders a context provider only, no DOM.
+ */
+export function SortableBody({ ids, children }: { ids: string[]; children: React.ReactNode }) {
+  return (
+    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+      {children}
+    </SortableContext>
   );
 }
 
