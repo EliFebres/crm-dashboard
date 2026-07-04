@@ -2,7 +2,7 @@
 
 ![CRM Dashboard](docs/assets/crm-dashboard-banner.png)
 
-### A real-time CRM & insights dashboard for tracking client interactions across teams.
+# A Real-Time CRM & Insights Dashboard
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org/)
