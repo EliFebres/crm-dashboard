@@ -14,9 +14,22 @@ import PlatformRoadmap from '@/app/components/landing-page/PlatformRoadmap';
    typography, and visual design. Swap content to make it your own.
    ──────────────────────────────────────────────────────────────── */
 
+const DASHBOARD_HOME = '/dashboard/interactions-and-trends/client-interactions';
+
 export default function Home() {
   const [authModal, setAuthModal] = useState<'login' | 'signup' | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Detect an existing session so signed-in visitors get a single "Go to
+  // Dashboard" CTA instead of Sign Up / Log In.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then(res => { if (!cancelled) setIsAuthenticated(res.ok); })
+      .catch(() => { if (!cancelled) setIsAuthenticated(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -50,6 +63,9 @@ export default function Home() {
         onAnnouncementClick={() => setAuthModal('login')}
         onSignUp={() => setAuthModal('signup')}
         onLogIn={() => setAuthModal('login')}
+        isAuthenticated={isAuthenticated}
+        dashboardLabel="Go to Dashboard"
+        onGoToDashboard={() => { window.location.href = DASHBOARD_HOME; }}
       />
 
       {/* ── Hero product image ──────────────────────────────────── */}
@@ -199,7 +215,7 @@ export default function Home() {
               <path d="M50 24A26 26 0 1 0 72 66" stroke="url(#logoGrad)" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.4"/>
               <circle cx="50" cy="50" r="7" fill="url(#logoGrad)"/>
             </svg>
-            <span className="text-[12px] text-[#6b6b76]">Insights &copy; {new Date().getFullYear()}</span>
+            <span className="text-[12px] text-[#6b6b76]">CRM &amp; Insights &copy; {new Date().getFullYear()}</span>
           </div>
           <span className="text-[12px] text-[#6b6b76]">Developed by Eli Febres</span>
         </div>

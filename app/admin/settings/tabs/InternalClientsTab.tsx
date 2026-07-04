@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, Check, X, Loader2, Trash2, Layers, Contact } from 'lucide-react';
+import { Plus, Pencil, Check, X, Loader2, Trash2, Layers, Contact, Search } from 'lucide-react';
 import { Select } from '@/app/components/ui/Select';
 import { DeleteOrgModal } from '@/app/admin/settings/_components/OrgSection';
 import {
@@ -130,7 +130,7 @@ function DepartmentSection({ onChanged }: { onChanged: () => void }) {
         </div>
       )}
 
-      <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-hidden max-w-md">
+      <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-x-auto scrollbar-thin">
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
@@ -240,6 +240,7 @@ function InternalClientSection({ departments }: { departments: string[] }) {
   const [editBusy, setEditBusy] = useState(false);
 
   const [deleting, setDeleting] = useState<InternalClientItem | null>(null);
+  const [search, setSearch] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -247,6 +248,11 @@ function InternalClientSection({ departments }: { departments: string[] }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? items.filter(c => c.name.toLowerCase().includes(q) || c.department.toLowerCase().includes(q))
+    : items;
 
   const handleAdd = async () => {
     const name = addName.trim();
@@ -305,6 +311,18 @@ function InternalClientSection({ departments }: { departments: string[] }) {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or department..."
+          className="w-full pl-9 pr-3 py-2 bg-zinc-900/60 border border-zinc-800/50 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/30 transition-colors"
+        />
+      </div>
+
       {showAdd && (
         <div className="max-w-lg space-y-2 p-4 bg-zinc-900/60 border border-zinc-800/50 rounded-lg">
           <p className="text-sm font-medium text-zinc-200">Add a new internal client</p>
@@ -334,7 +352,7 @@ function InternalClientSection({ departments }: { departments: string[] }) {
         </div>
       )}
 
-      <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-hidden max-w-lg">
+      <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-x-auto scrollbar-thin">
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">
@@ -347,10 +365,10 @@ function InternalClientSection({ departments }: { departments: string[] }) {
           <tbody>
             {loading ? (
               <tr><td colSpan={4} className="px-4 py-10 text-center text-muted"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">No internal clients yet.</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">{q ? 'No matching internal clients.' : 'No internal clients yet.'}</td></tr>
             ) : (
-              items.map(item => {
+              filtered.map(item => {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (

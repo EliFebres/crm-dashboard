@@ -137,7 +137,12 @@ export default function Sidebar({ className = '' }: SidebarProps) {
       {/* Header: brand (left) + collapse toggle (right) */}
       <div className={`px-2 pt-6 pb-3 flex items-center flex-shrink-0 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
         {!isCollapsed && (
-          <span className="ml-2 text-[1.05rem] font-semibold tracking-wide text-white">Insights</span>
+          <Link
+            href="/?home=1"
+            className="ml-2 text-[1.05rem] font-semibold tracking-wide text-white hover:text-cyan-400 transition-colors"
+          >
+            CRM &amp; Insights
+          </Link>
         )}
         <div className="flex items-center gap-0.5 flex-shrink-0">
           {!isCollapsed && (
