@@ -209,6 +209,80 @@ function bootstrap(db: DB): void {
     FROM (SELECT DISTINCT internal_client_name, internal_client_dept FROM engagements)
     WHERE internal_client_name IS NOT NULL AND trim(internal_client_name) != ''
   `);
+
+  // Managed intake types. The NAME is denormalized on engagements.intake_type; this
+  // table makes the set editable (add/rename/delete + a chart color) and a rename
+  // cascades into engagements atomically (see app/lib/db/intakeTypes.ts). The three
+  // built-ins carry a stable `role` so business logic (Ad-Hoc channel, KPI buckets)
+  // survives a rename — role-bearing rows can be renamed but not deleted.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intake_types (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#71717a',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      role       TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_intake_types_name_nocase ON intake_types (name COLLATE NOCASE);
+  `);
+
+  // Seed the three canonical intake types with the exact colors the KPI charts used
+  // when they were hardcoded (INTAKE_COLOR in app/components/dashboard/kpis/utils.ts).
+  db.exec(`
+    INSERT OR IGNORE INTO intake_types (id, name, color, sort_order, role) VALUES
+      (lower(hex(randomblob(16))), 'IRQ',    '#3b82f6', 0, 'irq'),
+      (lower(hex(randomblob(16))), 'SERF',   '#10b981', 1, 'serf'),
+      (lower(hex(randomblob(16))), 'Ad-Hoc', '#ec4899', 2, 'ad_hoc');
+  `);
+
+  // Backfill any other intake type already present in real engagement data as a
+  // managed (custom) option, so it isn't an orphan value.
+  db.exec(`
+    INSERT OR IGNORE INTO intake_types (id, name, color, sort_order, role)
+    SELECT lower(hex(randomblob(16))), intake_type, '#71717a', 100, NULL
+    FROM (SELECT DISTINCT intake_type FROM engagements)
+    WHERE intake_type IS NOT NULL AND trim(intake_type) != ''
+  `);
+
+  // Managed project types (flat global list). The NAME is denormalized on
+  // engagements.type; a rename cascades into engagements (see projectTypes.ts). The
+  // 'PCR' built-in carries role 'pcr' so PCR-excluding KPI SQL survives a rename.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_types (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#71717a',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      role       TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_project_types_name_nocase ON project_types (name COLLATE NOCASE);
+  `);
+
+  // Seed the canonical project types with the exact colors the KPI charts used when
+  // they were hardcoded (PROJECT_TYPE_COLOR in app/components/dashboard/kpis/utils.ts).
+  db.exec(`
+    INSERT OR IGNORE INTO project_types (id, name, color, sort_order, role) VALUES
+      (lower(hex(randomblob(16))), 'Meeting',            '#8b5cf6', 0, NULL),
+      (lower(hex(randomblob(16))), 'Discovery Meeting',  '#22d3ee', 1, NULL),
+      (lower(hex(randomblob(16))), 'Data Request',       '#a5f3fc', 2, NULL),
+      (lower(hex(randomblob(16))), 'Data Update',        '#f97316', 3, NULL),
+      (lower(hex(randomblob(16))), 'PCR',                '#f43f5e', 4, 'pcr'),
+      (lower(hex(randomblob(16))), 'Follow-up Material', '#f59e0b', 5, NULL),
+      (lower(hex(randomblob(16))), 'Follow-up Meeting',  '#10b981', 6, NULL),
+      (lower(hex(randomblob(16))), 'Other',              '#71717a', 7, NULL);
+  `);
+
+  // Backfill any other project type already present in real engagement data.
+  db.exec(`
+    INSERT OR IGNORE INTO project_types (id, name, color, sort_order, role)
+    SELECT lower(hex(randomblob(16))), type, '#71717a', 100, NULL
+    FROM (SELECT DISTINCT type FROM engagements)
+    WHERE type IS NOT NULL AND trim(type) != ''
+  `);
 }
 
 function getDb(): DB {

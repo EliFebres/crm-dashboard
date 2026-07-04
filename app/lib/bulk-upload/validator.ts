@@ -48,10 +48,13 @@ const INTAKE_TYPE_ALIASES: Record<string, string> = {
   'grrf': 'SERF', // old name alias
 };
 
-function normalizeIntakeType(value: string): string | null {
+// Aliases are honored only when they resolve to a currently-valid intake type, so a
+// renamed/removed built-in doesn't smuggle a stale value past validation.
+function normalizeIntakeType(value: string, list: string[] = VALID_INTAKE_TYPES): string | null {
   const norm = normalize(value);
-  if (INTAKE_TYPE_ALIASES[norm]) return INTAKE_TYPE_ALIASES[norm];
-  return matchEnum(value, VALID_INTAKE_TYPES);
+  const aliased = INTAKE_TYPE_ALIASES[norm];
+  if (aliased && matchEnum(aliased, list)) return aliased;
+  return matchEnum(value, list);
 }
 
 // Alias map for ad-hoc channel
@@ -104,43 +107,53 @@ const DEPT_ALIASES: Record<string, string> = {
   'retirement': 'Retirement',
 };
 
-function normalizeProjectType(value: string): string | null {
+// Common aliases for project-type normalization.
+const PROJECT_TYPE_ALIASES: Record<string, string> = {
+  'meeting': 'Meeting',
+  'discoverymeet': 'Discovery Meeting',
+  'discoverym': 'Discovery Meeting',
+  'discovery': 'Discovery Meeting',
+  'datarequest': 'Data Request',
+  'data': 'Data Request',
+  'dataupdate': 'Data Update',
+  'pcr': 'PCR',
+  'other': 'Other',
+  'followupmaterial': 'Follow-up Material',
+  'followupmaterials': 'Follow-up Material',
+  'followupmat': 'Follow-up Material',
+  'fumaterial': 'Follow-up Material',
+  'followupmeeting': 'Follow-up Meeting',
+  'followupmtg': 'Follow-up Meeting',
+  'fumeeting': 'Follow-up Meeting',
+};
+
+// Aliases are honored only when they resolve to a currently-valid project type.
+function normalizeProjectType(value: string, list: string[] = VALID_PROJECT_TYPES): string | null {
   const norm = normalize(value);
-  // Common aliases
-  const aliases: Record<string, string> = {
-    'meeting': 'Meeting',
-    'discoverymeet': 'Discovery Meeting',
-    'discoverym': 'Discovery Meeting',
-    'discovery': 'Discovery Meeting',
-    'datarequest': 'Data Request',
-    'data': 'Data Request',
-    'dataupdate': 'Data Update',
-    'pcr': 'PCR',
-    'other': 'Other',
-    'followupmaterial': 'Follow-up Material',
-    'followupmaterials': 'Follow-up Material',
-    'followupmat': 'Follow-up Material',
-    'fumaterial': 'Follow-up Material',
-    'followupmeeting': 'Follow-up Meeting',
-    'followupmtg': 'Follow-up Meeting',
-    'fumeeting': 'Follow-up Meeting',
-  };
-  if (aliases[norm]) return aliases[norm];
-  return matchEnum(value, VALID_PROJECT_TYPES);
+  const aliased = PROJECT_TYPE_ALIASES[norm];
+  if (aliased && matchEnum(aliased, list)) return aliased;
+  return matchEnum(value, list);
 }
 
 export function validateRows(
   rows: ParsedRow[],
-  validDepartments: string[] = VALID_DEPARTMENTS
+  validDepartments: string[] = VALID_DEPARTMENTS,
+  validIntakeTypes: string[] = VALID_INTAKE_TYPES,
+  validProjectTypes: string[] = VALID_PROJECT_TYPES,
+  // Current display name of the built-in Ad-Hoc intake type (may be renamed). Drives
+  // the "channel required" rule regardless of what Ad-Hoc is now called.
+  adHocIntakeName: string = 'Ad-Hoc'
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
   const validRows: ParsedRow[] = [];
 
-  // Departments are managed at runtime, so validate against the live list (falling
-  // back to the canonical four). Aliases are still honored, but only when they
-  // resolve to a currently-valid department.
+  // Departments, intake types and project types are all managed at runtime, so
+  // validate against the live lists (falling back to the canonical constants).
+  // Aliases are still honored, but only when they resolve to a currently-valid value.
   const deptList = validDepartments.length > 0 ? validDepartments : VALID_DEPARTMENTS;
+  const intakeList = validIntakeTypes.length > 0 ? validIntakeTypes : VALID_INTAKE_TYPES;
+  const projectList = validProjectTypes.length > 0 ? validProjectTypes : VALID_PROJECT_TYPES;
   const resolveDept = (value: string): string | null => {
     const norm = normalize(value);
     const aliased = DEPT_ALIASES[norm];
@@ -186,19 +199,19 @@ export function validateRows(
     }
 
     // Required: intakeType — normalize
-    const normIntake = normalizeIntakeType(row.intakeType);
+    const normIntake = normalizeIntakeType(row.intakeType, intakeList);
     if (!normIntake) {
       rowErrors.push({
         rowNumber: row.rowNumber,
         field: 'Intake Type',
-        message: `"${row.intakeType}" is not valid. Use: ${VALID_INTAKE_TYPES.join(', ')}.`,
+        message: `"${row.intakeType}" is not valid. Use: ${intakeList.join(', ')}.`,
       });
     } else {
       row.intakeType = normIntake;
     }
 
-    // Conditional: adHocChannel required for Ad-Hoc
-    if (normIntake === 'Ad-Hoc') {
+    // Conditional: adHocChannel required for the Ad-Hoc intake type (by current name)
+    if (normIntake === adHocIntakeName) {
       if (!row.adHocChannel) {
         rowErrors.push({
           rowNumber: row.rowNumber,
@@ -220,12 +233,12 @@ export function validateRows(
     }
 
     // Required: type (project type) — normalize
-    const normType = normalizeProjectType(row.type);
+    const normType = normalizeProjectType(row.type, projectList);
     if (!normType) {
       rowErrors.push({
         rowNumber: row.rowNumber,
         field: 'Project Type',
-        message: `"${row.type}" is not valid. Use: ${VALID_PROJECT_TYPES.join(', ')}.`,
+        message: `"${row.type}" is not valid. Use: ${projectList.join(', ')}.`,
       });
     } else {
       row.type = normType;

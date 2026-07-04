@@ -2,22 +2,24 @@
 
 import React, { Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, Building2, Users, Contact, Loader2 } from 'lucide-react';
+import { Settings, Building2, Users, Contact, Tags, Loader2 } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { TabBar, type TabDef } from '@/app/components/ui/Tabs';
 import ClientManagementTab from '@/app/admin/settings/tabs/ClientManagementTab';
 import TeamOfficeTab from '@/app/admin/settings/tabs/TeamOfficeTab';
 import InternalClientsTab from '@/app/admin/settings/tabs/InternalClientsTab';
+import TypesTab from '@/app/admin/settings/tabs/TypesTab';
 
-type TabKey = 'client' | 'team-office' | 'internal-clients';
+type TabKey = 'client' | 'team-office' | 'internal-clients' | 'types';
 
 const TABS: TabDef<TabKey>[] = [
   { key: 'team-office', label: 'Team & Office', icon: <Users className="w-4 h-4" /> },
   { key: 'internal-clients', label: 'Internal Clients', icon: <Contact className="w-4 h-4" /> },
   { key: 'client', label: 'Client Management', icon: <Building2 className="w-4 h-4" /> },
+  { key: 'types', label: 'Types', icon: <Tags className="w-4 h-4" /> },
 ];
 
-const TAB_KEYS = new Set<TabKey>(['client', 'team-office', 'internal-clients']);
+const TAB_KEYS = new Set<TabKey>(['client', 'team-office', 'internal-clients', 'types']);
 
 /** Sticky page header. `right` renders across from the title (e.g. the tab bar). */
 function SettingsHeader({ right }: { right?: React.ReactNode }) {
@@ -58,6 +60,7 @@ function SettingsTabs() {
         {active === 'client' && <ClientManagementTab />}
         {active === 'team-office' && <TeamOfficeTab />}
         {active === 'internal-clients' && <InternalClientsTab />}
+        {active === 'types' && <TypesTab />}
       </div>
     </>
   );

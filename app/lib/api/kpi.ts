@@ -64,7 +64,9 @@ export interface HeroKpis {
 }
 
 export interface JourneySankeyData {
-  nodes: { name: string; kind: 'intake' | 'project' | 'outcome' }[];
+  // `color` is the managed chart color for intake/project nodes (from the intake/
+  // project-type registries); undefined for outcome nodes, which use static colors.
+  nodes: { name: string; kind: 'intake' | 'project' | 'outcome'; color?: string }[];
   links: { source: number; target: number; value: number }[];
 }
 

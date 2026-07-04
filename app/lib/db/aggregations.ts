@@ -16,6 +16,8 @@ import {
 import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
 import { listDepartmentNames, departmentColorMap } from './departments';
+import { listIntakeTypeNames, intakeNameForRole } from './intakeTypes';
+import { listProjectTypeNames, projectNameForRole } from './projectTypes';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
 import type { DayData } from '../types/engagements';
@@ -44,6 +46,33 @@ export async function getDepartmentNames(): Promise<string[]> {
   } catch {
     return STATIC_FILTER_OPTIONS.departments;
   }
+}
+
+// Live intake-type names for filter options (falls back to the static list).
+export async function getIntakeTypeNames(): Promise<string[]> {
+  try {
+    const names = await listIntakeTypeNames();
+    return names.length > 0 ? names : STATIC_FILTER_OPTIONS.intakeTypes;
+  } catch {
+    return STATIC_FILTER_OPTIONS.intakeTypes;
+  }
+}
+
+// Live project-type names for filter options (falls back to the static list).
+export async function getProjectTypeNames(): Promise<string[]> {
+  try {
+    const names = await listProjectTypeNames();
+    return names.length > 0 ? names : STATIC_FILTER_OPTIONS.projectTypes;
+  } catch {
+    return STATIC_FILTER_OPTIONS.projectTypes;
+  }
+}
+
+// Escapes a managed type name as a SQLite string literal. Metric SQL references
+// built-in intake/project types by their CURRENT name (resolved from a stable role)
+// so a rename never breaks a KPI; values are admin-managed and quote-escaped here.
+function sqlLiteral(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`;
 }
 
 // =============================================================================
@@ -75,21 +104,34 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
     ? `${ipWhere} AND date_started >= date('now', '-56 days')`
     : `WHERE date_started >= date('now', '-56 days')`;
 
+  // Resolve built-in intake/project types by their stable role to their CURRENT
+  // display name, so the metric SQL below keeps working after an admin rename.
+  const [irqName, serfName, adHocName, pcrName] = await Promise.all([
+    intakeNameForRole('irq'),
+    intakeNameForRole('serf'),
+    intakeNameForRole('ad_hoc'),
+    projectNameForRole('pcr'),
+  ]);
+  const IRQ = sqlLiteral(irqName);
+  const SERF = sqlLiteral(serfName);
+  const ADHOC = sqlLiteral(adHocName);
+  const PCR = sqlLiteral(pcrName);
+
   // ---- Fire all 4 queries in parallel — none depends on another's result ----
   const [projectRows, prevRows, inProgressRows, sparklineRows] = await Promise.all([
     // Current period: client projects (IRQ/SERF non-PCR) + Ad-Hoc
     query<Record<string, unknown>>(`
       SELECT
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS project_count,
-        COUNT(*) FILTER (WHERE intake_type = 'IRQ'  AND type != 'PCR')            AS irq_count,
-        COUNT(*) FILTER (WHERE intake_type = 'SERF' AND type != 'PCR')            AS serf_count,
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS eligible_count,
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR'
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR})  AS project_count,
+        COUNT(*) FILTER (WHERE intake_type = ${IRQ}  AND type != ${PCR})            AS irq_count,
+        COUNT(*) FILTER (WHERE intake_type = ${SERF} AND type != ${PCR})            AS serf_count,
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR})  AS eligible_count,
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR}
                            AND portfolio_logged = TRUE)                            AS portfolios_logged,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                        AS adhoc_count,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Email')     AS adhoc_email,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC})                        AS adhoc_count,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC} AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC} AND ad_hoc_channel = 'Email')     AS adhoc_email,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC} AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
         COALESCE(SUM(nna), 0)                                                     AS total_nna,
         COUNT(*) FILTER (WHERE nna > 0)                                           AS nna_project_count,
         COUNT(*) FILTER (WHERE nna > 0 AND nna < 50000000)                        AS nna_tier1,
@@ -100,8 +142,8 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
     // Previous period: for change% calculations
     query<Record<string, unknown>>(`
       SELECT
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR') AS prev_projects,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                       AS prev_adhoc,
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR}) AS prev_projects,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC})                       AS prev_adhoc,
         COALESCE(SUM(nna), 0)                                                    AS prev_nna
       FROM engagements e ${CLIENT_JOIN} ${prevAndClause}
     `, prevParams),
@@ -280,11 +322,12 @@ export async function computeContributionData(filters: EngagementFilters, server
     ? `${whereClause} AND date_finished IS NOT NULL AND date_finished >= ?`
     : `WHERE date_finished IS NOT NULL AND date_finished >= ?`;
 
+  const ADHOC = sqlLiteral(await intakeNameForRole('ad_hoc'));
   const rows = await query<Record<string, unknown>>(`
     SELECT
       CAST(date_finished AS VARCHAR) AS finish_date,
-      COUNT(*) FILTER (WHERE intake_type != 'Ad-Hoc') AS project_count,
-      COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')  AS ad_hoc_count
+      COUNT(*) FILTER (WHERE intake_type != ${ADHOC}) AS project_count,
+      COUNT(*) FILTER (WHERE intake_type = ${ADHOC})  AS ad_hoc_count
     FROM engagements e ${CLIENT_JOIN} ${dateFilter}
     GROUP BY CAST(date_finished AS VARCHAR)
     ORDER BY finish_date

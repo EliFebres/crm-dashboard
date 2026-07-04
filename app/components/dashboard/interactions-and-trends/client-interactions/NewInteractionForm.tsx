@@ -13,6 +13,7 @@ import {
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
 import { getDepartments } from '@/app/lib/api/internal-clients';
+import { getIntakeTypes, getProjectTypes, type IntakeTypeItem, type ProjectTypeItem } from '@/app/lib/api/types';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { canUserEditEngagement, type TeamMember } from '@/app/lib/auth/types';
 
@@ -22,7 +23,7 @@ export interface InteractionFormData {
   externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
   internalClientDept: string; // A managed department name, or '' when unset
-  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc' | '';
+  intakeType: string;          // A managed intake-type name, or '' when unset
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
   teamMembers: string[];
@@ -61,13 +62,6 @@ interface NewInteractionFormProps {
   onFilepathSaved?: (engagementId: number, filepath: string | null) => void;
   onBulkUploadClick?: () => void;
 }
-
-// Project types by intake
-const projectTypesByIntake = {
-  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
-};
 
 // Format NNA for display
 const formatNNADisplay = (value: number | null): string => {
@@ -112,6 +106,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [internalClients, setInternalClients] = useState<InternalClientOption[]>([]);
   const [internalClientsLoading, setInternalClientsLoading] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
+  const [intakeTypes, setIntakeTypes] = useState<IntakeTypeItem[]>([]);
+  const [projectTypes, setProjectTypes] = useState<ProjectTypeItem[]>([]);
   const [internalClientSearch, setInternalClientSearch] = useState('');
   const [showInternalClientDropdown, setShowInternalClientDropdown] = useState(false);
   // External client registry (keyed by CRN)
@@ -208,6 +204,12 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     getDepartments()
       .then(items => setDepartments(items.map(d => d.name)))
       .catch(() => setDepartments([]));
+    getIntakeTypes()
+      .then(setIntakeTypes)
+      .catch(() => setIntakeTypes([]));
+    getProjectTypes()
+      .then(setProjectTypes)
+      .catch(() => setProjectTypes([]));
   }, [isOpen]);
 
   // Reset form when opened (or populate with editing data)
@@ -275,18 +277,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const isNewClient = trimmedSearch.length > 0 &&
     !internalClients.some(c => c.name.toLowerCase() === trimmedSearch.toLowerCase());
 
-  // Get available project types based on intake type
-  const availableProjectTypes = formData.intakeType
-    ? (projectTypesByIntake[formData.intakeType as keyof typeof projectTypesByIntake] || [])
-    : [];
+  // Project types are a flat managed list (not scoped per intake type).
+  const availableProjectTypes = projectTypes.map(t => t.name);
 
-  // Reset project type when intake type changes (only if current project type is invalid)
-  useEffect(() => {
-    if (formData.intakeType && formData.projectType && !availableProjectTypes.includes(formData.projectType)) {
-      setFormData(prev => ({ ...prev, projectType: '' }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.intakeType]);
+  // The Ad-Hoc channel field is gated on the selected intake type's *role*, not its
+  // display name, so it keeps working even if an admin renames the "Ad-Hoc" type.
+  const selectedIntake = intakeTypes.find(t => t.name === formData.intakeType);
+  const isAdHoc = selectedIntake?.role === 'ad_hoc';
 
   // Register a brand-new external client, then select it.
   const handleRegisterClient = async () => {
@@ -385,7 +382,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       newErrors.dateStarted = 'Start date is required';
     }
 
-    if (formData.intakeType === 'Ad-Hoc' && !formData.adHocChannel) {
+    if (isAdHoc && !formData.adHocChannel) {
       newErrors.adHocChannel = 'Channel is required for Ad-Hoc';
     }
 
@@ -502,7 +499,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6 space-y-4">
               {/* Row 1: Intake Type + Project Type + Interaction Type for Ad-Hoc */}
-              <div className={`grid gap-4 ${formData.intakeType === 'Ad-Hoc' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-4 ${isAdHoc ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Intake Type <span className="text-red-400">*</span>
@@ -510,13 +507,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   <div className="relative">
                     <select
                       value={formData.intakeType}
-                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value as 'IRQ' | 'SERF' | 'Ad-Hoc' | '', adHocChannel: undefined }))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value, adHocChannel: undefined }))}
                       className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50 transition-colors appearance-none cursor-pointer"
                     >
                       <option value="" className="bg-zinc-800">Select...</option>
-                      <option value="IRQ" className="bg-zinc-800">IRQ</option>
-                      <option value="SERF" className="bg-zinc-800">SERF</option>
-                      <option value="Ad-Hoc" className="bg-zinc-800">Ad-Hoc</option>
+                      {intakeTypes.map(t => (
+                        <option key={t.id} value={t.name} className="bg-zinc-800">{t.name}</option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                   </div>
@@ -541,7 +538,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   </div>
                   {errors.projectType && <p className="mt-1 text-xs text-red-400">{errors.projectType}</p>}
                 </div>
-                {formData.intakeType === 'Ad-Hoc' && (
+                {isAdHoc && (
                   <div>
                     <label className="block text-sm font-medium text-muted mb-1.5">
                       Interaction Type <span className="text-red-400">*</span>
@@ -617,7 +614,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               </div>
 
               {/* Tickers Mentioned - Only for Ad-Hoc */}
-              {formData.intakeType === 'Ad-Hoc' && (
+              {isAdHoc && (
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Tickers Mentioned <span className="text-muted font-normal text-xs">(Optional - for Ticker Trends)</span>

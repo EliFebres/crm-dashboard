@@ -181,7 +181,7 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
       name: row.internal_client_name as string,
       clientDept: row.internal_client_dept as string,
     },
-    intakeType: row.intake_type as 'IRQ' | 'SERF' | 'Ad-Hoc',
+    intakeType: row.intake_type as string,
     adHocChannel: (row.ad_hoc_channel as string | undefined) as import('../types/engagements').AdHocChannel | undefined,
     type: row.type as string,
     teamMembers: JSON.parse((row.team_members as string) || '[]') as string[],

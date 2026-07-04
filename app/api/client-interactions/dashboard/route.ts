@@ -8,6 +8,8 @@ import {
   computeEngagementsList,
   STATIC_FILTER_OPTIONS,
   getDepartmentNames,
+  getIntakeTypeNames,
+  getProjectTypeNames,
 } from '@/app/lib/db/aggregations';
 import { getMockFilterOptions } from '@/app/lib/api/mock-computations';
 import { hasDb } from '@/app/lib/db';
@@ -25,12 +27,14 @@ export async function POST(req: NextRequest) {
   try {
     const filters: EngagementFilters = await req.json();
 
-    const [metrics, departments, contributionData, engagements, deptNames] = await Promise.all([
+    const [metrics, departments, contributionData, engagements, deptNames, intakeNames, projectNames] = await Promise.all([
       computeMetrics(filters, sc),
       computeDepartmentBreakdown(filters, sc),
       computeContributionData(filters, sc),
       computeEngagementsList(filters, sc),
       hasDb() ? getDepartmentNames() : Promise.resolve<string[] | null>(null),
+      hasDb() ? getIntakeTypeNames() : Promise.resolve<string[] | null>(null),
+      hasDb() ? getProjectTypeNames() : Promise.resolve<string[] | null>(null),
     ]);
 
     return NextResponse.json({
@@ -39,7 +43,12 @@ export async function POST(req: NextRequest) {
       contributionData,
       engagements,
       filterOptions: hasDb()
-        ? { ...STATIC_FILTER_OPTIONS, departments: deptNames ?? STATIC_FILTER_OPTIONS.departments }
+        ? {
+            ...STATIC_FILTER_OPTIONS,
+            departments: deptNames ?? STATIC_FILTER_OPTIONS.departments,
+            intakeTypes: intakeNames ?? STATIC_FILTER_OPTIONS.intakeTypes,
+            projectTypes: projectNames ?? STATIC_FILTER_OPTIONS.projectTypes,
+          }
         : getMockFilterOptions(),
     });
   } catch (err) {

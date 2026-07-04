@@ -95,8 +95,8 @@ export interface Engagement {
   crnPending?: boolean; // true when clientCrn is a placeholder awaiting the real value
   externalClient: string; // Canonical external-client name, resolved from the registry via JOIN
   internalClient: InternalClient; // Contact/relationship owner/salesperson
-  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc';
-  adHocChannel?: AdHocChannel; // Only applicable when intakeType is 'Ad-Hoc'
+  intakeType: string; // A managed intake-type name (IRQ/SERF/Ad-Hoc are built-in; admins can add more)
+  adHocChannel?: AdHocChannel; // Only applicable when the intake type has the 'ad_hoc' role
   type: string; // Project Type
   teamMembers: string[];
   department: string;

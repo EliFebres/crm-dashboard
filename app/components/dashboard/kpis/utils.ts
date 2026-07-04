@@ -69,7 +69,10 @@ export function deltaClass(pct: number, invert = false): string {
   return positive ? 'text-[#39FF14]' : 'text-[#FF3131]';
 }
 
-export function nodeColor(node: { name: string; kind: 'intake' | 'project' | 'outcome' }): string {
+export function nodeColor(node: { name: string; kind: 'intake' | 'project' | 'outcome'; color?: string }): string {
+  // Prefer the managed color from the intake/project-type registry; fall back to the
+  // static maps (kept in sync with the seed) so a renamed type still colors sensibly.
+  if (node.color) return node.color;
   if (node.kind === 'intake') return INTAKE_COLOR[node.name] ?? KPI_COLORS.zinc;
   if (node.kind === 'project') return PROJECT_TYPE_COLOR[node.name] ?? KPI_COLORS.zinc;
   return OUTCOME_COLOR[node.name] ?? KPI_COLORS.zinc;

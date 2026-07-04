@@ -3,8 +3,12 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { listDepartmentNames } from '@/app/lib/db/departments';
+import { listIntakeTypeNames } from '@/app/lib/db/intakeTypes';
+import { listProjectTypeNames } from '@/app/lib/db/projectTypes';
 
 const FALLBACK_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
+const FALLBACK_INTAKE_TYPES = ['IRQ', 'SERF', 'Ad-Hoc'];
+const FALLBACK_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting', 'Other'];
 
 // GET /api/client-interactions/engagements/template
 // Returns a downloadable .xlsx template for bulk engagement upload
@@ -13,14 +17,26 @@ export async function GET() {
   // canonical set if the DB is unavailable). Excel list-validation formulae are
   // length-limited, so only wire the dropdown when it comfortably fits.
   let departments = FALLBACK_DEPARTMENTS;
+  let intakeTypes = FALLBACK_INTAKE_TYPES;
+  let projectTypes = FALLBACK_PROJECT_TYPES;
   try {
-    const live = await listDepartmentNames();
-    if (live.length > 0) departments = live;
+    const [liveDepts, liveIntake, liveProject] = await Promise.all([
+      listDepartmentNames(),
+      listIntakeTypeNames(),
+      listProjectTypeNames(),
+    ]);
+    if (liveDepts.length > 0) departments = liveDepts;
+    if (liveIntake.length > 0) intakeTypes = liveIntake;
+    if (liveProject.length > 0) projectTypes = liveProject;
   } catch {
-    // keep fallback
+    // keep fallbacks
   }
   const deptFormula = `"${departments.join(',')}"`;
   const deptHint = departments.join(' | ');
+  const intakeFormula = `"${intakeTypes.join(',')}"`;
+  const intakeHint = intakeTypes.join(' | ');
+  const projectFormula = `"${projectTypes.join(',')}"`;
+  const projectHint = projectTypes.join(' | ');
 
   const workbook = new ExcelJS.Workbook();
 
@@ -99,9 +115,9 @@ export async function GET() {
   // Excel caps list-validation formula strings near 255 chars; only add the dropdown
   // when it fits, otherwise leave the column free-text (still validated on upload).
   if (deptFormula.length <= 255) addValidation('D', deptFormula);
-  addValidation('E', '"IRQ,SERF,Ad-Hoc"');
+  if (intakeFormula.length <= 255) addValidation('E', intakeFormula);
   addValidation('F', '"In-Person,Email,Teams"');
-  addValidation('G', '"Meeting,Discovery Meeting,Data Request,Data Update,PCR,Other"');
+  if (projectFormula.length <= 255) addValidation('G', projectFormula);
   addValidation('K', '"In Progress,Awaiting Meeting,Follow Up,Completed"');
   addValidation('O', '"Yes,No"');
 
@@ -197,9 +213,9 @@ export async function GET() {
     ['External Client', 'Required. Name of the external client/fund. Used to register a new client when no CRN is given.'],
     ['Internal Client Name', 'Required. Name of the internal contact (e.g. "Blake N.")'],
     ['Internal Client Dept', `Required. ${deptHint}`],
-    ['Intake Type', 'Required. IRQ | SERF | Ad-Hoc'],
+    ['Intake Type', `Required. ${intakeHint}`],
     ['Ad-Hoc Channel', 'Required only for Ad-Hoc rows. In-Person | Email | Teams'],
-    ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | Data Update | PCR | Other'],
+    ['Project Type', `Required. ${projectHint}`],
     ['Team Members', 'Optional. Comma-separated names, e.g. "Alex M., Blake N."'],
     ['Date Started', 'Required. Format: YYYY-MM-DD or M/D/YYYY'],
     ['Date Finished', 'Leave blank for In Progress / Awaiting rows.'],

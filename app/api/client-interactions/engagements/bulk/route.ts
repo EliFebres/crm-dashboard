@@ -6,6 +6,8 @@ import { requireAuth, canModify, readOnlyError } from '@/app/lib/auth/require-au
 import { parseUploadedFile } from '@/app/lib/bulk-upload/parser';
 import { validateRows } from '@/app/lib/bulk-upload/validator';
 import { listDepartmentNames } from '@/app/lib/db/departments';
+import { listIntakeTypeNames, intakeNameForRole } from '@/app/lib/db/intakeTypes';
+import { listProjectTypeNames } from '@/app/lib/db/projectTypes';
 import type { ParsedRow } from '@/app/lib/bulk-upload/parser';
 import { crnConfig, normalizeCrn, generateNextCrn } from '@/app/lib/config/crn';
 import { emitEngagementChange } from '@/app/lib/events';
@@ -62,9 +64,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ parseErrors: parseResult.parseErrors, errors: [], warnings: [], preview: [] }, { status: 422 });
   }
 
-  // Validate — against the live managed department list
-  const validDepartments = await listDepartmentNames();
-  const { errors, warnings, validRows } = validateRows(parseResult.rows, validDepartments);
+  // Validate — against the live managed department / intake-type / project-type lists
+  const [validDepartments, validIntakeTypes, validProjectTypes, adHocIntakeName] = await Promise.all([
+    listDepartmentNames(),
+    listIntakeTypeNames(),
+    listProjectTypeNames(),
+    intakeNameForRole('ad_hoc'),
+  ]);
+  const { errors, warnings, validRows } = validateRows(
+    parseResult.rows, validDepartments, validIntakeTypes, validProjectTypes, adHocIntakeName
+  );
 
   if (errors.length > 0) {
     // Return all errors so the user can fix and re-upload
