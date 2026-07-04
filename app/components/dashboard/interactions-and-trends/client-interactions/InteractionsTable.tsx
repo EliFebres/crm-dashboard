@@ -267,10 +267,10 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
           </span>
           {engagement.crnPending ? (
             <span
-              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded bg-red-500/15 text-red-400 border border-red-500/30"
+              className="mt-1 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-semibold uppercase tracking-wide rounded bg-red-500/15 text-red-400 border border-red-500/30"
               title="This client has no CRN yet. Open the interaction to add the real CRN."
             >
-              <AlertTriangle className="w-3 h-3" />
+              <AlertTriangle className="w-2.5 h-2.5" />
               CRN Pending
             </span>
           ) : (
