@@ -35,6 +35,36 @@ export function normalizeCrn(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
+/**
+ * Placeholder CRN prefix. A client can be registered before its real CRN is known;
+ * the system assigns it a `PENDING-000001`-style CRN and flags `crn_pending` so the
+ * UI can highlight it and prompt for the real value later.
+ */
+export const PENDING_CRN_PREFIX = 'PENDING-';
+
+/** True when `crn` is a system-generated placeholder awaiting a real value. */
+export function isPendingCrn(crn: string): boolean {
+  return crn.toUpperCase().startsWith(PENDING_CRN_PREFIX);
+}
+
+/**
+ * Reserve and return the next placeholder CRN (`PENDING-000001`, …). Like
+ * generateNextCrn, MUST run inside an executeTransaction callback so the max-scan
+ * and insert are atomic. Loops past the rare case where the candidate already exists.
+ */
+export function generatePendingCrn(tx: Tx): string {
+  const pad = 6;
+  for (;;) {
+    const row = tx.get<{ maxn: number | null }>(
+      `SELECT MAX(CAST(substr(crn, ?) AS INTEGER)) AS maxn FROM clients WHERE crn LIKE ?`,
+      [PENDING_CRN_PREFIX.length + 1, `${PENDING_CRN_PREFIX}%`]
+    );
+    const n = (row?.maxn ?? 0) + 1;
+    const candidate = `${PENDING_CRN_PREFIX}${String(n).padStart(pad, '0')}`;
+    if (!tx.get(`SELECT 1 FROM clients WHERE crn = ?`, [candidate])) return candidate;
+  }
+}
+
 /** True when `crn` (already normalized) is a syntactically valid CRN. */
 export function isValidCrn(crn: string): boolean {
   return crnConfig().pattern.test(crn);

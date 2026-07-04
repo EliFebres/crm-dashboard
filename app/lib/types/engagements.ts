@@ -68,6 +68,7 @@ export interface Client {
   name: string;
   createdByName?: string;
   createdAt?: string;
+  crnPending?: boolean; // true when `crn` is a placeholder awaiting the real value
 }
 
 export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds';
@@ -92,6 +93,7 @@ export interface NoteEntry {
 export interface Engagement {
   id: number;
   clientCrn: string; // CRN of the registered external client (required)
+  crnPending?: boolean; // true when clientCrn is a placeholder awaiting the real value
   externalClient: string; // Canonical external-client name, resolved from the registry via JOIN
   internalClient: InternalClient; // Contact/relationship owner/salesperson
   intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc';

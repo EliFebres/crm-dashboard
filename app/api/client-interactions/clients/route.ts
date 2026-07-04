@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { query, executeTransaction, hasDb } from '@/app/lib/db';
 import { requireAuth, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
-import { crnConfig, normalizeCrn, isValidCrn, generateNextCrn } from '@/app/lib/config/crn';
+import { crnConfig, normalizeCrn, isValidCrn, generateNextCrn, generatePendingCrn } from '@/app/lib/config/crn';
 import { logActivity } from '@/app/lib/activity/log';
 import { clients as mockEngagementClients } from '@/app/lib/data/engagements';
 import type { Client } from '@/app/lib/types/engagements';
@@ -35,8 +35,8 @@ export async function GET(req: NextRequest) {
     }
 
     const like = `%${q}%`;
-    const rows = await query<{ crn: string; name: string; created_by_name: string | null }>(
-      `SELECT crn, name, created_by_name
+    const rows = await query<{ crn: string; name: string; created_by_name: string | null; crn_pending: number }>(
+      `SELECT crn, name, created_by_name, crn_pending
        FROM clients
        WHERE (? = '' OR lower(name) LIKE ? OR lower(crn) LIKE ?)
        ORDER BY name COLLATE NOCASE ASC
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       crn: r.crn,
       name: r.name,
       createdByName: r.created_by_name ?? undefined,
+      crnPending: Boolean(r.crn_pending),
     }));
     return NextResponse.json({ clients });
   } catch (err) {
@@ -73,8 +74,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { autoGenerate } = crnConfig();
+    // Pending registration: the user has the client but not its CRN yet. Only
+    // meaningful in manual mode (auto mode always has a CRN). The system assigns a
+    // placeholder CRN and flags it so the interaction can be created and the real
+    // CRN filled in later.
+    const pending = body.pending === true && !autoGenerate;
+
     let manualCrn = '';
-    if (!autoGenerate) {
+    if (!autoGenerate && !pending) {
       manualCrn = normalizeCrn(typeof body.crn === 'string' ? body.crn : '');
       if (!manualCrn) {
         return NextResponse.json({ error: 'CRN is required.' }, { status: 400 });
@@ -86,7 +93,7 @@ export async function POST(req: NextRequest) {
 
     let crn = '';
     await executeTransaction((tx) => {
-      crn = autoGenerate ? generateNextCrn(tx) : manualCrn;
+      crn = pending ? generatePendingCrn(tx) : autoGenerate ? generateNextCrn(tx) : manualCrn;
 
       if (tx.get(`SELECT 1 FROM clients WHERE crn = ?`, [crn])) {
         throw new HttpError(409, 'A client with that CRN already exists.');
@@ -96,8 +103,8 @@ export async function POST(req: NextRequest) {
       }
 
       tx.run(
-        `INSERT INTO clients (crn, name, created_by_id, created_by_name) VALUES (?, ?, ?, ?)`,
-        [crn, name, auth.payload.sub, `${auth.payload.firstName} ${auth.payload.lastName}`]
+        `INSERT INTO clients (crn, name, crn_pending, created_by_id, created_by_name) VALUES (?, ?, ?, ?, ?)`,
+        [crn, name, pending ? 1 : 0, auth.payload.sub, `${auth.payload.firstName} ${auth.payload.lastName}`]
       );
     });
 
@@ -105,9 +112,9 @@ export async function POST(req: NextRequest) {
       action: 'client.create',
       entityType: 'client',
       entityId: crn,
-      details: { name },
+      details: { name, ...(pending ? { crnPending: true } : {}) },
     });
-    const client: Client = { crn, name };
+    const client: Client = { crn, name, crnPending: pending };
     return NextResponse.json(client, { status: 201 });
   } catch (err) {
     if (err instanceof HttpError) {

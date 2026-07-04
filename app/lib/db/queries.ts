@@ -173,6 +173,7 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
   return {
     id: Number(row.id),
     clientCrn: (row.client_crn as string | null) ?? '',
+    crnPending: Boolean(row.client_crn_pending),
     // Canonical name resolved via CLIENT_JOIN (aliased client_name); never the
     // retired free-text external_client column.
     externalClient: (row.client_name as string | null) ?? '',

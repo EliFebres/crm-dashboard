@@ -372,7 +372,7 @@ export async function computeEngagementsList(filters: EngagementFilters, serverC
       params
     ),
     query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending,
          (SELECT COUNT(*) FROM engagement_notes WHERE engagement_id = e.id) AS note_count
        FROM engagements e ${CLIENT_JOIN} ${whereClause}
        ORDER BY ${orderBy}

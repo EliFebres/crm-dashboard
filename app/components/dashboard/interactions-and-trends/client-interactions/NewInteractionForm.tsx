@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, ChevronDown, Check, DollarSign, Briefcase, FileText, Link2 } from 'lucide-react';
+import { X, ChevronDown, Check, DollarSign, Briefcase, FileText, Link2, AlertTriangle } from 'lucide-react';
 import NNAModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NNAModal';
 import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/PortfolioModal';
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
@@ -10,13 +10,14 @@ import { Select } from '@/app/components/ui/Select';
 import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
 import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
-  getClients, registerClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+  getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import type { TeamMember } from '@/app/lib/auth/types';
 
 export interface InteractionFormData {
   clientCrn: string;          // CRN of the selected registered external client (required)
+  clientCrnPending?: boolean; // true when clientCrn is a placeholder awaiting the real value
   externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
   internalClientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement' | '';
@@ -87,6 +88,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
 
   const getDefaultFormData = (): InteractionFormData => ({
     clientCrn: '',
+    clientCrnPending: false,
     externalClient: '',
     internalClient: '',
     internalClientDept: '',
@@ -119,8 +121,14 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [registeringClient, setRegisteringClient] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newClientCrn, setNewClientCrn] = useState('');
+  const [registerPending, setRegisterPending] = useState(false); // "I don't have the CRN yet"
   const [registerError, setRegisterError] = useState('');
   const [registerBusy, setRegisterBusy] = useState(false);
+  // Inline flow for filling in a selected pending client's real CRN.
+  const [resolvingCrn, setResolvingCrn] = useState(false);
+  const [resolveCrnInput, setResolveCrnInput] = useState('');
+  const [resolveError, setResolveError] = useState('');
+  const [resolveBusy, setResolveBusy] = useState(false);
   const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
@@ -213,7 +221,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       setRegisteringClient(false);
       setNewClientName('');
       setNewClientCrn('');
+      setRegisterPending(false);
       setRegisterError('');
+      setResolvingCrn(false);
+      setResolveCrnInput('');
+      setResolveError('');
       setTickerInput('');
       setLocalNoteCount(initialNoteCount ?? 0);
       setDeleteConfirm(false);
@@ -276,20 +288,24 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       return;
     }
     const manual = !crnConfig?.autoGenerate;
+    // In manual mode the user can register without a CRN ("add it later") — the
+    // server assigns a highlighted placeholder CRN.
+    const wantPending = manual && registerPending;
     const crn = newClientCrn.trim();
-    if (manual && !crn) {
+    if (manual && !wantPending && !crn) {
       setRegisterError('CRN is required.');
       return;
     }
     setRegisterBusy(true);
     setRegisterError('');
     try {
-      const client = await registerClient(name, manual ? crn : undefined);
-      setFormData(prev => ({ ...prev, clientCrn: client.crn, externalClient: client.name }));
+      const client = await registerClient(name, manual && !wantPending ? crn : undefined, { pending: wantPending });
+      setFormData(prev => ({ ...prev, clientCrn: client.crn, externalClient: client.name, clientCrnPending: client.crnPending ?? false }));
       setClients(prev => (prev.some(c => c.crn === client.crn) ? prev : [client, ...prev]));
       setRegisteringClient(false);
       setNewClientName('');
       setNewClientCrn('');
+      setRegisterPending(false);
       setClientSearch('');
       setShowClientDropdown(false);
       setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
@@ -301,6 +317,34 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       );
     } finally {
       setRegisterBusy(false);
+    }
+  };
+
+  // Replace a selected pending client's placeholder CRN with the real value. This
+  // cascades to every interaction referencing the placeholder, and updates this form.
+  const handleResolveCrn = async () => {
+    const real = resolveCrnInput.trim();
+    if (!real) {
+      setResolveError('Enter the real CRN.');
+      return;
+    }
+    setResolveBusy(true);
+    setResolveError('');
+    try {
+      const updated = await updateClient(formData.clientCrn, { crn: real, name: formData.externalClient });
+      const prevCrn = formData.clientCrn;
+      setFormData(prev => ({ ...prev, clientCrn: updated.crn, externalClient: updated.name, clientCrnPending: updated.crnPending ?? false }));
+      setClients(prev => prev.map(c => (c.crn === prevCrn ? { ...c, crn: updated.crn, name: updated.name, crnPending: updated.crnPending ?? false } : c)));
+      setResolvingCrn(false);
+      setResolveCrnInput('');
+    } catch (err) {
+      setResolveError(
+        err instanceof ClientConflictError ? err.message
+          : err instanceof Error ? err.message
+          : 'Failed to update CRN.'
+      );
+    } finally {
+      setResolveBusy(false);
     }
   };
 
@@ -614,8 +658,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                           value={formData.externalClient || clientSearch}
                           onChange={(e) => {
                             setClientSearch(e.target.value);
-                            setFormData(prev => ({ ...prev, clientCrn: '', externalClient: '' }));
+                            setFormData(prev => ({ ...prev, clientCrn: '', externalClient: '', clientCrnPending: false }));
                             setShowClientDropdown(true);
+                            setResolvingCrn(false);
                           }}
                           onFocus={() => setShowClientDropdown(true)}
                           placeholder="Search by name or CRN..."
@@ -623,8 +668,54 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         />
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                       </div>
-                      {formData.clientCrn && (
+                      {formData.clientCrn && !formData.clientCrnPending && (
                         <p className="mt-1 text-xs text-muted">CRN: <span className="text-cyan-400">{formData.clientCrn}</span></p>
+                      )}
+                      {formData.clientCrn && formData.clientCrnPending && (
+                        <div className="mt-1.5 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
+                          {!resolvingCrn ? (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-red-400">
+                                <AlertTriangle className="w-3 h-3" /> CRN Pending
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => { setResolvingCrn(true); setResolveCrnInput(''); setResolveError(''); }}
+                                className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                              >
+                                + Add real CRN
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <input
+                                type="text"
+                                value={resolveCrnInput}
+                                onChange={(e) => setResolveCrnInput(e.target.value)}
+                                placeholder={`Real CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
+                                className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                              />
+                              {resolveError && <p className="text-xs text-red-400">{resolveError}</p>}
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleResolveCrn}
+                                  disabled={resolveBusy}
+                                  className="px-3 py-1 text-xs rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 transition-colors"
+                                >
+                                  {resolveBusy ? 'Saving…' : 'Save CRN'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setResolvingCrn(false); setResolveError(''); }}
+                                  className="px-3 py-1 text-xs rounded-lg bg-zinc-700/50 text-muted hover:bg-zinc-700 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                       {showClientDropdown && (
                         <div className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
@@ -634,9 +725,10 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 key={c.crn}
                                 type="button"
                                 onClick={() => {
-                                  setFormData(prev => ({ ...prev, clientCrn: c.crn, externalClient: c.name }));
+                                  setFormData(prev => ({ ...prev, clientCrn: c.crn, externalClient: c.name, clientCrnPending: c.crnPending ?? false }));
                                   setClientSearch('');
                                   setShowClientDropdown(false);
+                                  setResolvingCrn(false);
                                   setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
                                 }}
                                 className={`w-full px-3 py-2 text-left text-sm transition-colors ${
@@ -646,7 +738,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 }`}
                               >
                                 <span className="block text-white">{c.name}</span>
-                                <span className="block text-xs text-muted">{c.crn}</span>
+                                {c.crnPending ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-red-400">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide">CRN Pending</span>
+                                  </span>
+                                ) : (
+                                  <span className="block text-xs text-muted">{c.crn}</span>
+                                )}
                               </button>
                             ))
                           ) : (
@@ -658,6 +756,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                               setRegisteringClient(true);
                               setNewClientName(clientSearch.trim());
                               setNewClientCrn('');
+                              setRegisterPending(false);
                               setRegisterError('');
                               setShowClientDropdown(false);
                             }}
@@ -681,13 +780,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                       {crnConfig?.autoGenerate ? (
                         <p className="text-xs text-muted">A CRN will be generated automatically.</p>
                       ) : (
-                        <input
-                          type="text"
-                          value={newClientCrn}
-                          onChange={(e) => setNewClientCrn(e.target.value)}
-                          placeholder={`CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
-                          className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-                        />
+                        <>
+                          {!registerPending && (
+                            <input
+                              type="text"
+                              value={newClientCrn}
+                              onChange={(e) => setNewClientCrn(e.target.value)}
+                              placeholder={`CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
+                              className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                            />
+                          )}
+                          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={registerPending}
+                              onChange={(e) => { setRegisterPending(e.target.checked); setRegisterError(''); }}
+                              className="accent-cyan-500"
+                            />
+                            I don&apos;t have the CRN yet — add it later
+                          </label>
+                          {registerPending && (
+                            <p className="inline-flex items-center gap-1 text-xs text-red-400">
+                              <AlertTriangle className="w-3 h-3" />
+                              A placeholder CRN will be used and highlighted until you add the real one.
+                            </p>
+                          )}
+                        </>
                       )}
                       {registerError && <p className="text-xs text-red-400">{registerError}</p>}
                       <div className="flex gap-2">
@@ -701,7 +819,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setRegisteringClient(false); setRegisterError(''); }}
+                          onClick={() => { setRegisteringClient(false); setRegisterPending(false); setRegisterError(''); }}
                           className="px-3 py-1.5 text-sm rounded-lg bg-zinc-700/50 text-muted hover:bg-zinc-700 transition-colors"
                         >
                           Cancel

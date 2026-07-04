@@ -23,7 +23,7 @@ export async function GET(
     const teamClause = sc.team ? 'AND e.team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
       [Number(id), ...teamParams]
     );
     if (rows.length === 0) {
@@ -198,7 +198,7 @@ export async function PATCH(
     }
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [engagementId]
     );
     emitEngagementChange('updated');

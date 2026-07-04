@@ -412,6 +412,7 @@ export default function EngagementsDashboard() {
       id: engagement.id,
       data: {
         clientCrn: engagement.clientCrn,
+        clientCrnPending: engagement.crnPending ?? false,
         externalClient: engagement.externalClient,
         internalClient: engagement.internalClient.name,
         internalClientDept: engagement.internalClient.clientDept,

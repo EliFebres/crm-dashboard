@@ -472,13 +472,15 @@ export async function getClients(q?: string, limit = 50): Promise<Client[]> {
 
 /**
  * Registers a new client. In manual mode `crn` is required; in auto mode it is ignored.
+ * Pass `{ pending: true }` (manual mode only) to register without a CRN — the server
+ * assigns a placeholder CRN that can be resolved to the real value later.
  * Endpoint: POST /api/client-interactions/clients
  */
-export async function registerClient(name: string, crn?: string): Promise<Client> {
+export async function registerClient(name: string, crn?: string, opts?: { pending?: boolean }): Promise<Client> {
   const response = await fetch(`${API_BASE_URL}/client-interactions/clients`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, crn }),
+    body: JSON.stringify({ name, crn, pending: opts?.pending === true }),
   });
   if (response.status === 409) {
     const data = await response.json().catch(() => ({}));

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FileText, Download, Check, X, ChevronUp, ChevronDown, ChevronsUpDown, Maximize2, Minimize2, Plus, Loader2, Link2 } from 'lucide-react';
+import { FileText, Download, Check, X, ChevronUp, ChevronDown, ChevronsUpDown, Maximize2, Minimize2, Plus, Loader2, Link2, AlertTriangle } from 'lucide-react';
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import NNAModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NNAModal';
 import { Select } from '@/app/components/ui/Select';
@@ -265,7 +265,17 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
           <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
             {engagement.externalClient || '—'}
           </span>
-          {engagement.clientCrn && <p className="text-xs text-muted">{engagement.clientCrn}</p>}
+          {engagement.crnPending ? (
+            <span
+              className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded bg-red-500/15 text-red-400 border border-red-500/30"
+              title="This client has no CRN yet. Open the interaction to add the real CRN."
+            >
+              <AlertTriangle className="w-3 h-3" />
+              CRN Pending
+            </span>
+          ) : (
+            engagement.clientCrn && <p className="text-xs text-muted">{engagement.clientCrn}</p>
+          )}
         </div>
       </td>
       <td className="px-4 py-3">

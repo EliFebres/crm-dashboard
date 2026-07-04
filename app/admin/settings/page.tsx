@@ -415,7 +415,7 @@ export default function SettingsPage() {
     setEditError('');
     try {
       const updated = await updateClient(currentCrn, { name, crn });
-      setClients(prev => prev.map(c => (c.crn === currentCrn ? { crn: updated.crn, name: updated.name, createdByName: c.createdByName } : c)));
+      setClients(prev => prev.map(c => (c.crn === currentCrn ? { crn: updated.crn, name: updated.name, createdByName: c.createdByName, crnPending: updated.crnPending ?? false } : c)));
       setEditingCrn(null);
     } catch (err) {
       setEditError(
@@ -573,6 +573,14 @@ export default function SettingsPage() {
                             className="w-36 px-2 py-1 bg-zinc-800/50 border border-zinc-700 rounded text-cyan-400 font-mono text-sm focus:outline-none focus:border-cyan-500/50"
                             title="CRN"
                           />
+                        ) : c.crnPending ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded bg-red-500/15 text-red-400 border border-red-500/30"
+                            title="No CRN yet — edit this client to set the real CRN."
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            CRN Pending
+                          </span>
                         ) : (
                           <span className="text-sm font-mono text-cyan-400">{c.crn}</span>
                         )}

@@ -64,6 +64,13 @@ function bootstrap(db: DB): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_name_nocase ON clients (name COLLATE NOCASE);
   `);
 
+  // One-time migration: crn_pending flags clients registered before their real CRN
+  // is known. Such clients carry a system-generated placeholder CRN (PENDING-000001,
+  // …) so interactions can be created now and the real CRN filled in later.
+  if (!columnExists(db, 'clients', 'crn_pending')) {
+    db.exec(`ALTER TABLE clients ADD COLUMN crn_pending INTEGER NOT NULL DEFAULT 0`);
+  }
+
   // Monotonic counter backing CRN auto-generation (appConfig.crn.autoGenerate). The
   // single-row CHECK keeps it a singleton; INSERT OR IGNORE seeds it once.
   db.exec(`
