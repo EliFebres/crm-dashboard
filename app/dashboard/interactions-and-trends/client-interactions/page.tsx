@@ -442,6 +442,7 @@ export default function EngagementsDashboard() {
       originalDateFinished: engagement.dateFinished,
       version: engagement.version,
       createdById: engagement.createdById,
+      filepath: engagement.filepath,
     });
     setEditingEngagementNoteCount(engagement.noteCount ?? 0);
     setIsNewInteractionOpen(true);
@@ -515,6 +516,7 @@ export default function EngagementsDashboard() {
         initialNoteCount={editingEngagementNoteCount}
         onNoteAdded={handleNoteAdded}
         onNoteDeleted={handleNoteDeleted}
+        onFilepathSaved={handleFilepathSaved}
         onBulkUploadClick={() => setIsBulkUploadOpen(true)}
       />
       <BulkUploadModal

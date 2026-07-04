@@ -13,7 +13,7 @@ import {
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import type { TeamMember } from '@/app/lib/auth/types';
+import { canUserEditEngagement, type TeamMember } from '@/app/lib/auth/types';
 
 export interface InteractionFormData {
   clientCrn: string;          // CRN of the selected registered external client (required)
@@ -44,6 +44,7 @@ export interface EditingEngagement {
   originalDateFinished?: string; // Preserve exact original string to avoid roundtrip changes
   version?: number; // Optimistic locking — sent back on save to detect concurrent edits
   createdById?: string; // User ID of the creator — used to determine delete permission
+  filepath?: string | null; // Project folder path — shown/edited in the Notes modal
 }
 
 interface NewInteractionFormProps {
@@ -56,6 +57,7 @@ interface NewInteractionFormProps {
   initialNoteCount?: number;
   onNoteAdded?: (engagementId: number) => void;
   onNoteDeleted?: (engagementId: number) => void;
+  onFilepathSaved?: (engagementId: number, filepath: string | null) => void;
   onBulkUploadClick?: () => void;
 }
 
@@ -82,7 +84,7 @@ const formatNNADisplay = (value: number | null): string => {
   return `$${value.toLocaleString()}`;
 };
 
-export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onBulkUploadClick }: NewInteractionFormProps) {
+export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onFilepathSaved, onBulkUploadClick }: NewInteractionFormProps) {
   const isEditMode = !!editingEngagement;
   const { user: currentUser } = useCurrentUser();
 
@@ -135,6 +137,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [localNoteCount, setLocalNoteCount] = useState(initialNoteCount ?? 0);
+  // Filepath for the Notes modal — kept in local state so a save there updates the
+  // displayed value live without reopening. Synced from editingEngagement on open.
+  const [notesFilepath, setNotesFilepath] = useState<string | null>(null);
   const [tickerInput, setTickerInput] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const internalClientRef = useRef<HTMLDivElement>(null);
@@ -228,6 +233,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       setResolveError('');
       setTickerInput('');
       setLocalNoteCount(initialNoteCount ?? 0);
+      setNotesFilepath(editingEngagement?.filepath ?? null);
       setDeleteConfirm(false);
     }
   }, [isOpen, editingEngagement, initialNoteCount]);
@@ -1168,9 +1174,16 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         <NotesModal
           isOpen={isNotesModalOpen}
           onClose={() => setIsNotesModalOpen(false)}
-          title="Engagement Notes"
-          subtitle={`${formData.externalClient || formData.internalClient || 'Engagement'} · ${formData.projectType}`}
+          title="Notes"
+          subtitle={formData.externalClient || formData.internalClient || ''}
           engagementId={editingEngagement.id}
+          readOnly={!canUserEditEngagement(currentUser, formData.teamMembers)}
+          filepath={notesFilepath}
+          canEditFilepath={canUserEditEngagement(currentUser, formData.teamMembers)}
+          onFilepathSaved={(next) => {
+            setNotesFilepath(next);
+            onFilepathSaved?.(editingEngagement.id, next);
+          }}
           onNoteAdded={() => {
             setLocalNoteCount(prev => prev + 1);
             onNoteAdded?.(editingEngagement.id);
