@@ -82,6 +82,7 @@ export interface ClientDeptRow {
   interactions: number;
   nna: number;
   nnaPerInteraction: number;
+  color: string; // Chart color, resolved from the managed departments table
 }
 
 export interface NnaConcentrationPoint {

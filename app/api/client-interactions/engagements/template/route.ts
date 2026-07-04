@@ -2,10 +2,26 @@ export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
+import { listDepartmentNames } from '@/app/lib/db/departments';
+
+const FALLBACK_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 
 // GET /api/client-interactions/engagements/template
 // Returns a downloadable .xlsx template for bulk engagement upload
 export async function GET() {
+  // The department dropdown reflects the live managed list (falls back to the
+  // canonical set if the DB is unavailable). Excel list-validation formulae are
+  // length-limited, so only wire the dropdown when it comfortably fits.
+  let departments = FALLBACK_DEPARTMENTS;
+  try {
+    const live = await listDepartmentNames();
+    if (live.length > 0) departments = live;
+  } catch {
+    // keep fallback
+  }
+  const deptFormula = `"${departments.join(',')}"`;
+  const deptHint = departments.join(' | ');
+
   const workbook = new ExcelJS.Workbook();
 
   // ── Data sheet ─────────────────────────────────────────────────────────────
@@ -80,7 +96,9 @@ export async function GET() {
     }
   };
 
-  addValidation('D', '"Advisory,Brokerage,Institutional"');
+  // Excel caps list-validation formula strings near 255 chars; only add the dropdown
+  // when it fits, otherwise leave the column free-text (still validated on upload).
+  if (deptFormula.length <= 255) addValidation('D', deptFormula);
   addValidation('E', '"IRQ,SERF,Ad-Hoc"');
   addValidation('F', '"In-Person,Email,Teams"');
   addValidation('G', '"Meeting,Discovery Meeting,Data Request,Data Update,PCR,Other"');
@@ -178,7 +196,7 @@ export async function GET() {
     ['CRN', 'Client Reference Number — the unique ID of the external client. Provide an existing CRN, or leave blank to look up/register by External Client name (auto-generate mode assigns one).'],
     ['External Client', 'Required. Name of the external client/fund. Used to register a new client when no CRN is given.'],
     ['Internal Client Name', 'Required. Name of the internal contact (e.g. "Blake N.")'],
-    ['Internal Client Dept', 'Required. Advisory | Brokerage | Institutional'],
+    ['Internal Client Dept', `Required. ${deptHint}`],
     ['Intake Type', 'Required. IRQ | SERF | Ad-Hoc'],
     ['Ad-Hoc Channel', 'Required only for Ad-Hoc rows. In-Person | Email | Teams'],
     ['Project Type', 'Required. Meeting | Discovery Meeting | Data Request | Data Update | PCR | Other'],

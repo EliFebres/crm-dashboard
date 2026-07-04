@@ -25,7 +25,6 @@ const VALID_AD_HOC_CHANNELS = ['In-Person', 'Email', 'Teams'];
 const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
 const VALID_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_STATUSES: string[] = [...STATUS_ENUM];
-const VALID_INTERNAL_CLIENT_DEPTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
 const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds'];
 
@@ -105,12 +104,6 @@ const DEPT_ALIASES: Record<string, string> = {
   'retirement': 'Retirement',
 };
 
-function normalizeDept(value: string): string | null {
-  const norm = normalize(value);
-  if (DEPT_ALIASES[norm]) return DEPT_ALIASES[norm];
-  return matchEnum(value, VALID_DEPARTMENTS);
-}
-
 function normalizeProjectType(value: string): string | null {
   const norm = normalize(value);
   // Common aliases
@@ -136,10 +129,25 @@ function normalizeProjectType(value: string): string | null {
   return matchEnum(value, VALID_PROJECT_TYPES);
 }
 
-export function validateRows(rows: ParsedRow[]): ValidationResult {
+export function validateRows(
+  rows: ParsedRow[],
+  validDepartments: string[] = VALID_DEPARTMENTS
+): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
   const validRows: ParsedRow[] = [];
+
+  // Departments are managed at runtime, so validate against the live list (falling
+  // back to the canonical four). Aliases are still honored, but only when they
+  // resolve to a currently-valid department.
+  const deptList = validDepartments.length > 0 ? validDepartments : VALID_DEPARTMENTS;
+  const resolveDept = (value: string): string | null => {
+    const norm = normalize(value);
+    const aliased = DEPT_ALIASES[norm];
+    if (aliased && matchEnum(aliased, deptList)) return aliased;
+    return matchEnum(value, deptList);
+  };
+  const deptHint = deptList.join(', ');
 
   for (const row of rows) {
     const rowErrors: ValidationError[] = [];
@@ -166,12 +174,12 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
     }
 
     // Required: internalClientDept — normalize
-    const normDept = normalizeDept(row.internalClientDept);
+    const normDept = resolveDept(row.internalClientDept);
     if (!normDept) {
       rowErrors.push({
         rowNumber: row.rowNumber,
         field: 'Internal Client Dept',
-        message: `"${row.internalClientDept}" is not valid. Use: ${VALID_INTERNAL_CLIENT_DEPTS.join(', ')}.`,
+        message: `"${row.internalClientDept}" is not valid. Use: ${deptHint}.`,
       });
     } else {
       row.internalClientDept = normDept;
@@ -224,12 +232,12 @@ export function validateRows(rows: ParsedRow[]): ValidationResult {
     }
 
     // Required: department — normalize (already resolved from internalClientDept if blank)
-    const normResolvedDept = normalizeDept(row.department);
+    const normResolvedDept = resolveDept(row.department);
     if (!normResolvedDept) {
       rowErrors.push({
         rowNumber: row.rowNumber,
         field: 'Department',
-        message: `"${row.department}" is not valid. Use: ${VALID_DEPARTMENTS.join(', ')}.`,
+        message: `"${row.department}" is not valid. Use: ${deptHint}.`,
       });
     } else {
       row.department = normResolvedDept;

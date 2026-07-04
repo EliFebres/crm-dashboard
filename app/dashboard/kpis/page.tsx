@@ -12,8 +12,8 @@ import NnaConcentrationCard from '@/app/components/dashboard/kpis/NnaConcentrati
 import StaleEngagementsTable from '@/app/components/dashboard/kpis/StaleEngagementsTable';
 import DormantClientsTable from '@/app/components/dashboard/kpis/DormantClientsTable';
 import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
+import { getDepartments } from '@/app/lib/api/internal-clients';
 
-const CLIENT_DEPT_OPTIONS = ['All Departments', 'Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const INTAKE_OPTIONS = ['All Intake Types', 'IRQ', 'SERF', 'Ad-Hoc'];
 
 export default function KpiDashboard() {
@@ -24,6 +24,14 @@ export default function KpiDashboard() {
   const [clientDepts, setClientDepts] = useState<string[]>([]);
   const [intakeTypes, setIntakeTypes] = useState<string[]>([]);
   const [staleThreshold, setStaleThreshold] = useState('3w');
+  const [clientDeptOptions, setClientDeptOptions] = useState<string[]>(['All Departments']);
+
+  // The Client Department filter reflects the live managed department list.
+  useEffect(() => {
+    getDepartments()
+      .then(items => setClientDeptOptions(['All Departments', ...items.map(d => d.name)]))
+      .catch(() => setClientDeptOptions(['All Departments']));
+  }, []);
 
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,7 +97,7 @@ export default function KpiDashboard() {
             id: 'client-dept',
             icon: Building2,
             label: 'Client Department',
-            options: CLIENT_DEPT_OPTIONS,
+            options: clientDeptOptions,
             value: clientDepts,
             onChange: (v) => setClientDepts(Array.isArray(v) ? v : []),
             multiSelect: true,

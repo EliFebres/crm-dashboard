@@ -2,13 +2,16 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, hasDb } from '@/app/lib/db';
-import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
+import { requireAuth } from '@/app/lib/auth/require-auth';
 import { engagements as mockEngagements } from '@/app/lib/data/engagements';
 
+// GET /api/client-interactions/internal-clients
+// The New Interaction form's internal-client combobox source. Reads from the managed
+// `internal_clients` registry (global, not team-scoped) so newly-added clients appear
+// immediately — even before any engagement uses them.
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
-  const sc = teamConstraint(auth.payload);
 
   try {
     if (!hasDb()) {
@@ -23,14 +26,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ clients });
     }
 
-    const teamClause = sc.team ? 'WHERE team = ?' : '';
-    const teamParams = sc.team ? [sc.team] : [];
     const rows = await query<{ name: string; dept: string }>(
-      `SELECT DISTINCT internal_client_name AS name, internal_client_dept AS dept
-       FROM engagements
-       ${teamClause}
-       ORDER BY internal_client_name ASC`,
-      teamParams
+      `SELECT name, department AS dept
+       FROM internal_clients
+       ORDER BY name COLLATE NOCASE ASC`
     );
     return NextResponse.json({ clients: rows });
   } catch (err) {

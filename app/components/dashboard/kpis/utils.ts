@@ -43,13 +43,6 @@ export const OUTCOME_COLOR: Record<string, string> = {
   'Stalled': KPI_COLORS.orange,
 };
 
-export const CLIENT_DEPT_COLOR: Record<string, string> = {
-  'Advisory': KPI_COLORS.cyanLight,
-  'Brokerage': KPI_COLORS.cyan,
-  'Institutional': KPI_COLORS.cyanDark,
-  'Retirement': '#67e8f9',
-};
-
 export function formatCurrency(value: number): string {
   if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
   if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;

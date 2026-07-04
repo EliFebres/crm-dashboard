@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, LabelList, Tooltip } from 'recharts';
 import ClientOnlyChart from '@/app/components/dashboard/shared/ClientOnlyChart';
 import type { ClientDeptRow } from '@/app/lib/api/kpi';
-import { CLIENT_DEPT_COLOR, formatCurrency, formatNumber, KPI_COLORS } from './utils';
+import { formatCurrency, formatNumber, KPI_COLORS } from './utils';
 
 type Metric = 'interactions' | 'nna' | 'nnaPerInteraction';
 
@@ -20,7 +20,7 @@ export default function ClientDeptChart({ data }: { data: ClientDeptRow[] }) {
   const chartData = data.map(r => ({
     name: r.dept,
     value: r[metric],
-    color: CLIENT_DEPT_COLOR[r.dept] ?? KPI_COLORS.zinc,
+    color: r.color || KPI_COLORS.zinc,
   }));
 
   const formatValue = (v: number | undefined) =>

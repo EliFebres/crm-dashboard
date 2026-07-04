@@ -147,6 +147,68 @@ function bootstrap(db: DB): void {
     db.exec(`ALTER TABLE engagements ADD COLUMN client_crn TEXT REFERENCES clients(crn)`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_client_crn ON engagements (client_crn)`);
+
+  // Managed internal-client departments. The department NAME lives denormalized on
+  // engagements.internal_client_dept; this table makes the set editable (add/rename/
+  // delete + a chart color) and a rename cascades into engagements + internal_clients
+  // atomically (see app/lib/db/departments.ts). Kept in this DB — not users.sqlite —
+  // precisely so that cascade can share one transaction with engagements.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS departments (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#71717a',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_name_nocase ON departments (name COLLATE NOCASE);
+  `);
+
+  // Seed the canonical four departments FIRST, with the exact colors the department
+  // breakdown chart used when they were hardcoded — so charts render identically
+  // after this migration. INSERT OR IGNORE keeps this idempotent.
+  db.exec(`
+    INSERT OR IGNORE INTO departments (id, name, color, sort_order) VALUES
+      (lower(hex(randomblob(16))), 'Advisory',      '#a5f3fc', 0),
+      (lower(hex(randomblob(16))), 'Brokerage',     '#22d3ee', 1),
+      (lower(hex(randomblob(16))), 'Institutional', '#0e7490', 2),
+      (lower(hex(randomblob(16))), 'Retirement',    '#67e8f9', 3);
+  `);
+
+  // Backfill any other department already present in real engagement data with a
+  // neutral color, so it becomes a managed option instead of an orphan value.
+  db.exec(`
+    INSERT OR IGNORE INTO departments (id, name, color, sort_order)
+    SELECT lower(hex(randomblob(16))), internal_client_dept, '#71717a', 100
+    FROM (SELECT DISTINCT internal_client_dept FROM engagements)
+    WHERE internal_client_dept IS NOT NULL AND trim(internal_client_dept) != ''
+  `);
+
+  // Managed internal-client registry. The name + department live denormalized on
+  // engagements; this table makes the pick-list editable and lets a client exist
+  // before any engagement uses it. Global (not team-scoped), like `clients`.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS internal_clients (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      department      TEXT NOT NULL,
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_by_id   TEXT,
+      created_by_name TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_internal_clients_name_nocase ON internal_clients (name COLLATE NOCASE);
+  `);
+
+  // Seed the registry from the distinct internal clients already in engagement data.
+  // A name that appears under two departments keeps the first seen (unique-name index).
+  db.exec(`
+    INSERT OR IGNORE INTO internal_clients (id, name, department)
+    SELECT lower(hex(randomblob(16))), internal_client_name, internal_client_dept
+    FROM (SELECT DISTINCT internal_client_name, internal_client_dept FROM engagements)
+    WHERE internal_client_name IS NOT NULL AND trim(internal_client_name) != ''
+  `);
 }
 
 function getDb(): DB {
@@ -179,10 +241,11 @@ function makeTx(db: DB): Tx {
 }
 
 // Wraps a callback in a single atomic transaction. Replaces the old manual
-// BEGIN/COMMIT/ROLLBACK + write-queue serialization.
-export async function executeTransaction(fn: (tx: Tx) => void): Promise<void> {
+// BEGIN/COMMIT/ROLLBACK + write-queue serialization. The callback's return value
+// (if any) is passed through, so callers can compute a result inside the tx.
+export async function executeTransaction<T = void>(fn: (tx: Tx) => T): Promise<T> {
   const db = getDb();
-  db.transaction(() => fn(makeTx(db)))();
+  return db.transaction(() => fn(makeTx(db)))();
 }
 
 export async function query<T = Record<string, unknown>>(

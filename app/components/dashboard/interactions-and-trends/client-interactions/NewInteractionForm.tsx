@@ -12,6 +12,7 @@ import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
+import { getDepartments } from '@/app/lib/api/internal-clients';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { canUserEditEngagement, type TeamMember } from '@/app/lib/auth/types';
 
@@ -20,7 +21,7 @@ export interface InteractionFormData {
   clientCrnPending?: boolean; // true when clientCrn is a placeholder awaiting the real value
   externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
-  internalClientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement' | '';
+  internalClientDept: string; // A managed department name, or '' when unset
   intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc' | '';
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
@@ -60,9 +61,6 @@ interface NewInteractionFormProps {
   onFilepathSaved?: (engagementId: number, filepath: string | null) => void;
   onBulkUploadClick?: () => void;
 }
-
-const CLIENT_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'] as const;
-
 
 // Project types by intake
 const projectTypesByIntake = {
@@ -113,6 +111,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [internalClients, setInternalClients] = useState<InternalClientOption[]>([]);
   const [internalClientsLoading, setInternalClientsLoading] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [internalClientSearch, setInternalClientSearch] = useState('');
   const [showInternalClientDropdown, setShowInternalClientDropdown] = useState(false);
   // External client registry (keyed by CRN)
@@ -198,7 +197,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       .catch(() => setTeamMembersByOffice({}));
   }, [currentUser]);
 
-  // Fetch internal clients fresh each time the form opens
+  // Fetch internal clients + the managed department list fresh each time the form opens
   useEffect(() => {
     if (!isOpen) return;
     setInternalClientsLoading(true);
@@ -206,6 +205,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       .then(setInternalClients)
       .catch(() => setInternalClients([]))
       .finally(() => setInternalClientsLoading(false));
+    getDepartments()
+      .then(items => setDepartments(items.map(d => d.name)))
+      .catch(() => setDepartments([]));
   }, [isOpen]);
 
   // Reset form when opened (or populate with editing data)
@@ -869,7 +871,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 type="button"
                                 onClick={() => {
                                   const client = internalClients.find(c => c.name === name)!;
-                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept as 'Advisory' | 'Brokerage' | 'Institutional' }));
+                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept }));
                                   setInternalClientSearch('');
                                   setShowInternalClientDropdown(false);
                                 }}
@@ -929,8 +931,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         </label>
                         <Select
                           value={formData.internalClientDept}
-                          onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v as typeof prev.internalClientDept }))}
-                          options={CLIENT_DEPARTMENTS}
+                          onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v }))}
+                          options={departments}
                           placeholder="Select department..."
                         />
                       </div>

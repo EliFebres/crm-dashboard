@@ -2,7 +2,7 @@
 
 import React, { useSyncExternalStore } from 'react';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie, Tooltip } from 'recharts';
+import { ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie, Tooltip } from 'recharts';
 import ClientOnlyChart from '@/app/components/dashboard/shared/ClientOnlyChart';
 import type { EngagementMetric } from '@/app/lib/types/engagements';
 import type { ChangeFlash, MetricKey } from '@/app/lib/hooks/useDashboardChanges';
@@ -84,7 +84,7 @@ export default function MetricCards({ metrics, flippedCard, onCardEnter, onCardL
                           : '0 0 4px rgba(255, 49, 49, 0.3)'
                       }}
                     >
-                      {metric.percent === undefined && !metric.sparklineData && !metric.pieData && !metric.stackedBarData && (metric.isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />)}
+                      {metric.percent === undefined && !metric.sparklineData && !metric.pieData && (metric.isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />)}
                       {metric.change}
                     </span>
                     <span className="text-xs text-muted">{metric.sublabel}</span>
@@ -175,44 +175,6 @@ export default function MetricCards({ metrics, flippedCard, onCardEnter, onCardL
                           />
                         </PieChart>
                       </ResponsiveContainer>
-                    </ClientOnlyChart>
-                  </div>
-                )}
-
-                {/* Mini stacked bar chart for metrics with stacked bar data */}
-                {metric.stackedBarData && metric.stackedBarData.length > 0 && showCharts && (
-                  <div className="absolute bottom-3 right-3 w-[50%] h-14 overflow-visible">
-                    <ClientOnlyChart>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={metric.stackedBarData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }} barCategoryGap="20%">
-                        <XAxis dataKey="month" hide />
-                        <YAxis hide domain={[0, 'auto']} />
-                        <Tooltip
-                          cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                          wrapperStyle={{ zIndex: 1000 }}
-                          content={({ active, payload, label }) => {
-                            if (active && payload && payload.length) {
-                              return (
-                                <div className="bg-zinc-800 border border-zinc-700 px-2 py-1 rounded text-xs">
-                                  <p className="text-muted font-medium mb-1">{label}</p>
-                                  {payload.map((entry, i) => (
-                                    <div key={i} className="flex items-center gap-1">
-                                      <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: entry.color }} />
-                                      <span className="text-muted">{entry.name}:</span>
-                                      <span className="text-zinc-200">{entry.value}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar dataKey="Advisory" stackId="a" fill="#a5f3fc" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={700} />
-                        <Bar dataKey="Brokerage" stackId="a" fill="#22d3ee" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={700} />
-                        <Bar dataKey="Institutional" stackId="a" fill="#0e7490" radius={[2, 2, 0, 0]} isAnimationActive={true} animationDuration={700} />
-                      </BarChart>
-                    </ResponsiveContainer>
                     </ClientOnlyChart>
                   </div>
                 )}

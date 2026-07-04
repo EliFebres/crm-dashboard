@@ -43,7 +43,6 @@ export interface EngagementMetric {
   percent?: number; // Optional percentage for progress bar visualization
   sparklineData?: { value: number }[]; // Optional sparkline data for trend visualization
   pieData?: { name: string; value: number; color: string }[]; // Optional pie chart data for breakdown visualization
-  stackedBarData?: { month: string; Advisory: number; 'Brokerage': number; Institutional: number; 'Retirement': number }[]; // Optional stacked bar data
   intakeBreakdown?: IntakeBreakdown[]; // Optional intake breakdown for Ad-Hoc
   intakeSourceBreakdown?: IntakeSourceBreakdown; // Optional intake source breakdown for Client Projects
   nnaTiers?: NNATier[]; // Optional NNA distribution tiers
@@ -58,7 +57,7 @@ export interface DepartmentData {
 
 export interface InternalClient {
   name: string;
-  clientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement';
+  clientDept: string; // A managed department name (see the departments table)
 }
 
 // A registered external client. The CRN is the canonical, unique identifier; the

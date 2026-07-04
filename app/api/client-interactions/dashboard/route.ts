@@ -7,6 +7,7 @@ import {
   computeContributionData,
   computeEngagementsList,
   STATIC_FILTER_OPTIONS,
+  getDepartmentNames,
 } from '@/app/lib/db/aggregations';
 import { getMockFilterOptions } from '@/app/lib/api/mock-computations';
 import { hasDb } from '@/app/lib/db';
@@ -24,11 +25,12 @@ export async function POST(req: NextRequest) {
   try {
     const filters: EngagementFilters = await req.json();
 
-    const [metrics, departments, contributionData, engagements] = await Promise.all([
+    const [metrics, departments, contributionData, engagements, deptNames] = await Promise.all([
       computeMetrics(filters, sc),
       computeDepartmentBreakdown(filters, sc),
       computeContributionData(filters, sc),
       computeEngagementsList(filters, sc),
+      hasDb() ? getDepartmentNames() : Promise.resolve<string[] | null>(null),
     ]);
 
     return NextResponse.json({
@@ -36,7 +38,9 @@ export async function POST(req: NextRequest) {
       departments,
       contributionData,
       engagements,
-      filterOptions: hasDb() ? STATIC_FILTER_OPTIONS : getMockFilterOptions(),
+      filterOptions: hasDb()
+        ? { ...STATIC_FILTER_OPTIONS, departments: deptNames ?? STATIC_FILTER_OPTIONS.departments }
+        : getMockFilterOptions(),
     });
   } catch (err) {
     console.error('POST /api/client-interactions/dashboard error:', err);

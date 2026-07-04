@@ -179,7 +179,7 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
     externalClient: (row.client_name as string | null) ?? '',
     internalClient: {
       name: row.internal_client_name as string,
-      clientDept: row.internal_client_dept as 'Advisory' | 'Brokerage' | 'Institutional',
+      clientDept: row.internal_client_dept as string,
     },
     intakeType: row.intake_type as 'IRQ' | 'SERF' | 'Ad-Hoc',
     adHocChannel: (row.ad_hoc_channel as string | undefined) as import('../types/engagements').AdHocChannel | undefined,

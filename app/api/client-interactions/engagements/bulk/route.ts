@@ -5,6 +5,7 @@ import { query, executeTransaction, hasDb } from '@/app/lib/db';
 import { requireAuth, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
 import { parseUploadedFile } from '@/app/lib/bulk-upload/parser';
 import { validateRows } from '@/app/lib/bulk-upload/validator';
+import { listDepartmentNames } from '@/app/lib/db/departments';
 import type { ParsedRow } from '@/app/lib/bulk-upload/parser';
 import { crnConfig, normalizeCrn, generateNextCrn } from '@/app/lib/config/crn';
 import { emitEngagementChange } from '@/app/lib/events';
@@ -61,8 +62,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ parseErrors: parseResult.parseErrors, errors: [], warnings: [], preview: [] }, { status: 422 });
   }
 
-  // Validate
-  const { errors, warnings, validRows } = validateRows(parseResult.rows);
+  // Validate — against the live managed department list
+  const validDepartments = await listDepartmentNames();
+  const { errors, warnings, validRows } = validateRows(parseResult.rows, validDepartments);
 
   if (errors.length > 0) {
     // Return all errors so the user can fix and re-upload

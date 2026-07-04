@@ -15,12 +15,15 @@ import {
 } from '../api/mock-computations';
 import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
+import { listDepartmentNames, departmentColorMap } from './departments';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
 import type { DayData } from '../types/engagements';
 import { VALID_STATUSES } from '../statusHelpers';
 
-// Static filter options — these don't change dynamically in this application
+// Static filter options — these don't change dynamically in this application.
+// NOTE: `departments` is a fallback default only; the live list is fetched from the
+// `departments` table via getDepartmentNames() (see the dashboard route).
 export const STATIC_FILTER_OPTIONS: FilterOptions = {
   teamMembers: ['All Team Members', 'Office B', 'Office A'],
   teamMemberGroups: [
@@ -31,6 +34,17 @@ export const STATIC_FILTER_OPTIONS: FilterOptions = {
   projectTypes: ['Data Request', 'Data Update', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
   statuses: [...VALID_STATUSES],
 };
+
+// Live department names for filter options. Falls back to the static list if the
+// (real) DB read fails for any reason, so the dashboard filter never breaks.
+export async function getDepartmentNames(): Promise<string[]> {
+  try {
+    const names = await listDepartmentNames();
+    return names.length > 0 ? names : STATIC_FILTER_OPTIONS.departments;
+  } catch {
+    return STATIC_FILTER_OPTIONS.departments;
+  }
+}
 
 // =============================================================================
 // METRICS
@@ -214,24 +228,22 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
   const resolved = await resolveOfficeMembers(filters);
   const { whereClause, params } = buildFilterClause(resolved, 'e', serverConstraints);
 
-  const rows = await query<Record<string, unknown>>(`
-    SELECT internal_client_dept AS dept, COUNT(*) AS cnt
-    FROM engagements e ${CLIENT_JOIN} ${whereClause}
-    GROUP BY internal_client_dept
-  `, params);
-
-  const DEPT_COLORS: Record<string, string> = {
-    Advisory: '#a5f3fc',
-    'Brokerage': '#22d3ee',
-    Institutional: '#0e7490',
-    'Retirement': '#67e8f9',
-  };
+  const [rows, deptColors] = await Promise.all([
+    query<Record<string, unknown>>(`
+      SELECT internal_client_dept AS dept, COUNT(*) AS cnt
+      FROM engagements e ${CLIENT_JOIN} ${whereClause}
+      GROUP BY internal_client_dept
+    `, params),
+    departmentColorMap(),
+  ]);
 
   const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
   const safeTotal = total || 1;
 
-  // Ensure all three departments appear even if count is 0
-  const deptMap: Record<string, number> = { Advisory: 0, 'Brokerage': 0, Institutional: 0, 'Retirement': 0 };
+  // Zero-fill every managed department (in their configured order) so each appears
+  // even at count 0. Any department present in data but not managed is appended.
+  const deptMap: Record<string, number> = {};
+  Object.keys(deptColors).forEach(name => { deptMap[name] = 0; });
   rows.forEach(r => {
     const dept = r.dept as string;
     deptMap[dept] = Number(r.cnt);
@@ -242,7 +254,7 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
       name,
       value: Math.round((count / safeTotal) * 100),
       count,
-      color: DEPT_COLORS[name] || '#71717a',
+      color: deptColors[name] || '#71717a',
     })),
     total,
   };
