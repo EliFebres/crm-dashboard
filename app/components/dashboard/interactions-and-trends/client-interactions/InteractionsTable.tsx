@@ -11,6 +11,7 @@ import type { ChangeFlash, EngagementField } from '@/app/lib/hooks/useDashboardC
 import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChanges';
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
 import { canUserEditEngagement, type User } from '@/app/lib/auth/types';
+import { getIntakeTypes, getProjectTypes } from '@/app/lib/api/types';
 
 type SortColumn =
   | 'externalClient'
@@ -100,6 +101,18 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notesModalEngagement, setNotesModalEngagement] = useState<Engagement | null>(null);
   const [nnaModalEngagement, setNnaModalEngagement] = useState<Engagement | null>(null);
+  // Live intake/project-type chart colors from the managed registries, so a badge
+  // reflects the color set in Settings (and keeps working after a type is renamed).
+  const [intakeColors, setIntakeColors] = useState<Record<string, string>>({});
+  const [projectColors, setProjectColors] = useState<Record<string, string>>({});
+  useEffect(() => {
+    getIntakeTypes()
+      .then(items => setIntakeColors(Object.fromEntries(items.map(t => [t.name, t.color]))))
+      .catch(() => setIntakeColors({}));
+    getProjectTypes()
+      .then(items => setProjectColors(Object.fromEntries(items.map(t => [t.name, t.color]))))
+      .catch(() => setProjectColors({}));
+  }, []);
   const pageSize = 10;
 
   // Ghost-row tracking: keep just-removed rows around briefly so they can fade out red.
@@ -222,6 +235,12 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     }
   };
 
+  // Inline badge styling from a managed hex color — mirrors the BADGE_COLORS look
+  // (~15% bg tint, solid text, ~30% border) but for any admin-chosen color. The
+  // 8-digit-hex alpha suffixes (26 ≈ 15%, 4d ≈ 30%) match the Tailwind /15 and /30.
+  const managedBadgeStyle = (hex?: string): React.CSSProperties | undefined =>
+    hex ? { color: hex, backgroundColor: `${hex}26`, borderColor: `${hex}4d`, borderWidth: 1, borderStyle: 'solid' } : undefined;
+
   const getInitials = (name: string): string => {
     return name.split(' ').map(n => n[0]).join('');
   };
@@ -285,13 +304,19 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         </div>
       </td>
       <td className="px-4 py-3">
-        <span className={`inline-flex px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${getIntakeTypeStyle(engagement.intakeType)} ${flashTextFor(engagement.id, 'intakeType')}`}>
+        <span
+          className={`inline-flex px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${intakeColors[engagement.intakeType] ? '' : getIntakeTypeStyle(engagement.intakeType)} ${flashTextFor(engagement.id, 'intakeType')}`}
+          style={managedBadgeStyle(intakeColors[engagement.intakeType])}
+        >
           {engagement.intakeType}
         </span>
       </td>
       <td className="px-4 py-3">
         <div className="inline-flex items-center gap-1.5">
-          <span className={`inline-flex px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${getTypeStyle(engagement.type)} ${flashTextFor(engagement.id, 'type')}`}>
+          <span
+            className={`inline-flex px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${projectColors[engagement.type] ? '' : getTypeStyle(engagement.type)} ${flashTextFor(engagement.id, 'type')}`}
+            style={managedBadgeStyle(projectColors[engagement.type])}
+          >
             {engagement.type}
           </span>
           {engagement.linkedFromId ? (

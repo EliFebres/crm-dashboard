@@ -20,8 +20,10 @@ export interface IntakeBreakdown {
 export interface IntakeSourceBreakdown {
   irqCount: number;
   irqPercent: number;
+  irqColor: string;  // Managed chart color of the IRQ intake type (from the registry)
   serfCount: number;
   serfPercent: number;
+  serfColor: string; // Managed chart color of the SERF intake type (from the registry)
   portfoliosLogged: number;
   portfoliosTotal: number;
   portfoliosPercent: number;

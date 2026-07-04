@@ -16,7 +16,7 @@ import {
 import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
 import { listDepartmentNames, departmentColorMap } from './departments';
-import { listIntakeTypeNames, intakeNameForRole } from './intakeTypes';
+import { listIntakeTypeNames, intakeNameForRole, intakeColorMap } from './intakeTypes';
 import { listProjectTypeNames, projectNameForRole } from './projectTypes';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
@@ -106,16 +106,21 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
 
   // Resolve built-in intake/project types by their stable role to their CURRENT
   // display name, so the metric SQL below keeps working after an admin rename.
-  const [irqName, serfName, adHocName, pcrName] = await Promise.all([
+  const [irqName, serfName, adHocName, pcrName, intakeColors] = await Promise.all([
     intakeNameForRole('irq'),
     intakeNameForRole('serf'),
     intakeNameForRole('ad_hoc'),
     projectNameForRole('pcr'),
+    intakeColorMap(),
   ]);
   const IRQ = sqlLiteral(irqName);
   const SERF = sqlLiteral(serfName);
   const ADHOC = sqlLiteral(adHocName);
   const PCR = sqlLiteral(pcrName);
+  // Managed chart colors for the IRQ/SERF bars on the Client Projects card, keyed by
+  // their current names so a Settings color (or rename) is reflected. Seed-value fallbacks.
+  const irqColor = intakeColors[irqName] ?? '#3b82f6';
+  const serfColor = intakeColors[serfName] ?? '#10b981';
 
   // ---- Fire all 4 queries in parallel — none depends on another's result ----
   const [projectRows, prevRows, inProgressRows, sparklineRows] = await Promise.all([
@@ -225,8 +230,10 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
       intakeSourceBreakdown: {
         irqCount,
         irqPercent: totalProjects > 0 ? Math.round((irqCount / totalProjects) * 100) : 0,
+        irqColor,
         serfCount,
         serfPercent: totalProjects > 0 ? Math.round((serfCount / totalProjects) * 100) : 0,
+        serfColor,
         portfoliosLogged,
         portfoliosTotal: eligibleCount,
         portfoliosPercent: eligibleCount > 0 ? Math.round((portfoliosLogged / eligibleCount) * 100) : 0,

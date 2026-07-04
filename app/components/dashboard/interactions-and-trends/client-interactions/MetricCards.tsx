@@ -277,8 +277,8 @@ export default function MetricCards({ metrics, flippedCard, onCardEnter, onCardL
                           className="h-full rounded-full transition-all duration-500"
                           style={{
                             width: `${metric.intakeSourceBreakdown!.irqPercent}%`,
-                            backgroundColor: '#22d3ee',
-                            boxShadow: '0 0 6px #22d3ee40'
+                            backgroundColor: metric.intakeSourceBreakdown!.irqColor,
+                            boxShadow: `0 0 6px ${metric.intakeSourceBreakdown!.irqColor}40`
                           }}
                         />
                       </div>
@@ -295,8 +295,8 @@ export default function MetricCards({ metrics, flippedCard, onCardEnter, onCardL
                           className="h-full rounded-full transition-all duration-500"
                           style={{
                             width: `${metric.intakeSourceBreakdown!.serfPercent}%`,
-                            backgroundColor: '#a5f3fc',
-                            boxShadow: '0 0 6px #a5f3fc40'
+                            backgroundColor: metric.intakeSourceBreakdown!.serfColor,
+                            boxShadow: `0 0 6px ${metric.intakeSourceBreakdown!.serfColor}40`
                           }}
                         />
                       </div>

@@ -210,8 +210,10 @@ export function getMockMetrics(filters: EngagementFilters): DashboardMetrics {
       intakeSourceBreakdown: {
         irqCount,
         irqPercent: totalProjects > 0 ? Math.round((irqCount / totalProjects) * 100) : 0,
+        irqColor: '#3b82f6',
         serfCount,
         serfPercent: totalProjects > 0 ? Math.round((serfCount / totalProjects) * 100) : 0,
+        serfColor: '#10b981',
         portfoliosLogged,
         portfoliosTotal: eligibleForPortfolio.length,
         portfoliosPercent: eligibleForPortfolio.length > 0 ? Math.round((portfoliosLogged / eligibleForPortfolio.length) * 100) : 0,
