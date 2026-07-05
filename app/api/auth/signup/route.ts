@@ -52,8 +52,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 });
     }
 
-    // Determine if this is the first user (auto-admin + active)
-    const countResult = await queryUsers<{ count: number }>('SELECT COUNT(*) AS count FROM users');
+    // Determine if this is the first user (auto-admin + active). Seeded demo
+    // accounts (is_seed = 1, set only by scripts/seed-db.ts) don't count, so the
+    // first REAL person to sign up still becomes the admin even on a seeded DB.
+    const countResult = await queryUsers<{ count: number }>('SELECT COUNT(*) AS count FROM users WHERE is_seed = 0');
     const isFirstUser = Number(countResult[0]?.count ?? 0) === 0;
 
     const id = randomUUID();

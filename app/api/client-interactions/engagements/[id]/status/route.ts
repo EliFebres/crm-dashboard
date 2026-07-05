@@ -3,14 +3,15 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, query, hasDb } from '@/app/lib/db';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
-import { toDisplayDate } from '@/app/lib/db/dateUtils';
+import { toDisplayDate, localTodayISO } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
 
 // PATCH /api/client-interactions/engagements/:id/status
 // Body: { status: string }
-// Updates status only; date_finished is never modified here.
+// Updates status. When an engagement is marked "Completed" and has no finish date
+// yet, date_finished is defaulted to today; an existing finish date is never changed.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,8 +33,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
     }
 
-    const teamRows = await query<{ team_members: string }>(
-      `SELECT team_members FROM engagements WHERE id = ?`,
+    const teamRows = await query<{ team_members: string; date_finished: string | null }>(
+      `SELECT team_members, date_finished FROM engagements WHERE id = ?`,
       [engagementId]
     );
     if (teamRows.length === 0) {
@@ -45,10 +46,21 @@ export async function PATCH(
     const teamClause = sc.team ? 'AND team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];
 
-    await execute(
-      `UPDATE engagements SET status = ? WHERE id = ? ${teamClause}`,
-      [status, engagementId, ...teamParams]
-    );
+    // Completing an interaction with no finish date defaults it to today. An existing
+    // finish date is left untouched, and non-Completed statuses never set a date.
+    const setFinishToToday = status === 'Completed' && !teamRows[0].date_finished;
+
+    if (setFinishToToday) {
+      await execute(
+        `UPDATE engagements SET status = ?, date_finished = ? WHERE id = ? ${teamClause}`,
+        [status, localTodayISO(), engagementId, ...teamParams]
+      );
+    } else {
+      await execute(
+        `UPDATE engagements SET status = ? WHERE id = ? ${teamClause}`,
+        [status, engagementId, ...teamParams]
+      );
+    }
 
     // Verify the row exists
     const rows = await query<Record<string, unknown>>(

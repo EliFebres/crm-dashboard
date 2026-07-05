@@ -12,11 +12,11 @@ import {
 } from '@/app/lib/data/portfolioTrends';
 import type { BenchmarkComparison } from '@/app/lib/types/trends';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
+import { getDepartments } from '@/app/lib/api/internal-clients';
 
 // Static filter options. Filter selection is purely cosmetic on this dashboard
 // for now; the underlying portfolio data is dummy and not yet wired up.
 const TEAMS = ['Portfolio Consulting', 'Equity Specialists', 'Fixed Income Specialists'];
-const DEPARTMENTS = ['Brokerage', 'Advisory', 'Institutional', 'Retirement'];
 
 // Portfolios selector — drives which series render on the cards. Avg. Client is the
 // default; Core+ Model is a firm-defined model portfolio.
@@ -182,6 +182,14 @@ export default function PortfolioTrendsDashboard() {
   // Filter state
   const [teamFilter, setTeamFilter] = useState('All Teams');
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+
+  // The Department filter reflects the live managed department list.
+  useEffect(() => {
+    getDepartments()
+      .then(items => setDepartments(items.map(d => d.name)))
+      .catch(() => setDepartments([]));
+  }, []);
   const [portfolioFilter, setPortfolioFilterRaw] = useState<PortfolioName[]>(['Avg. Client']);
   const quarterEndOptions = useMemo(() => getRecentQuarterEnds(8), []);
   const [period, setPeriod] = useState(quarterEndOptions[0]);
@@ -744,7 +752,7 @@ export default function PortfolioTrendsDashboard() {
               id: 'department',
               icon: Building2,
               label: 'Department',
-              options: ['All Departments', ...DEPARTMENTS],
+              options: ['All Departments', ...departments],
               value: departmentFilter,
               onChange: (v: string | string[]) => setDepartmentFilter(v as string[]),
               multiSelect: true,

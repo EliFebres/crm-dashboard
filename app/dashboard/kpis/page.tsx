@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Building2, Inbox, Loader2 } from 'lucide-react';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
-import ScopeSelector, { KPI_DELIVERY_TEAMS } from '@/app/components/dashboard/kpis/ScopeSelector';
+import ScopeSelector from '@/app/components/dashboard/kpis/ScopeSelector';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import HeroKPICards from '@/app/components/dashboard/kpis/HeroKPICards';
 import JourneyExplorer from '@/app/components/dashboard/kpis/JourneyExplorer';
@@ -12,9 +12,8 @@ import NnaConcentrationCard from '@/app/components/dashboard/kpis/NnaConcentrati
 import StaleEngagementsTable from '@/app/components/dashboard/kpis/StaleEngagementsTable';
 import DormantClientsTable from '@/app/components/dashboard/kpis/DormantClientsTable';
 import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
-
-const CLIENT_DEPT_OPTIONS = ['All Departments', 'Advisory', 'Brokerage', 'Institutional', 'Retirement'];
-const INTAKE_OPTIONS = ['All Intake Types', 'IRQ', 'SERF', 'Ad-Hoc'];
+import { getDepartments } from '@/app/lib/api/internal-clients';
+import { getIntakeTypes } from '@/app/lib/api/types';
 
 export default function KpiDashboard() {
   const { user, isLoading: authLoading } = useCurrentUser();
@@ -24,20 +23,32 @@ export default function KpiDashboard() {
   const [clientDepts, setClientDepts] = useState<string[]>([]);
   const [intakeTypes, setIntakeTypes] = useState<string[]>([]);
   const [staleThreshold, setStaleThreshold] = useState('3w');
+  const [clientDeptOptions, setClientDeptOptions] = useState<string[]>(['All Departments']);
+  const [intakeOptions, setIntakeOptions] = useState<string[]>(['All Intake Types']);
+
+  // The Client Department and Intake Type filters reflect the live managed
+  // registries (in their admin-set order), including renames and reordering.
+  useEffect(() => {
+    getDepartments()
+      .then(items => setClientDeptOptions(['All Departments', ...items.map(d => d.name)]))
+      .catch(() => setClientDeptOptions(['All Departments']));
+    getIntakeTypes()
+      .then(items => setIntakeOptions(['All Intake Types', ...items.map(t => t.name)]))
+      .catch(() => setIntakeOptions(['All Intake Types']));
+  }, []);
 
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Apply the default scope once the auth context finishes loading: everyone
-  // (including admins) defaults to their own team if they're on a KPI
-  // delivery team, otherwise 'all'. Guarded by a ref so a later user refetch
+  // Apply the default scope once the auth context finishes loading: a team
+  // member lands on their own team's KPIs, while admins default to the
+  // cross-team aggregate ('all'). Guarded by a ref so a later user refetch
   // doesn't stomp on a manual selection.
   const defaultScopeAppliedRef = useRef(false);
   useEffect(() => {
     if (authLoading || !user || defaultScopeAppliedRef.current) return;
     defaultScopeAppliedRef.current = true;
-    const isKpiTeam = (KPI_DELIVERY_TEAMS as readonly string[]).includes(user.team);
-    if (isKpiTeam) setScope(`team:${user.team}`);
+    if (user.role !== 'admin' && user.team) setScope(`team:${user.team}`);
   }, [authLoading, user]);
 
   useEffect(() => {
@@ -89,7 +100,7 @@ export default function KpiDashboard() {
             id: 'client-dept',
             icon: Building2,
             label: 'Client Department',
-            options: CLIENT_DEPT_OPTIONS,
+            options: clientDeptOptions,
             value: clientDepts,
             onChange: (v) => setClientDepts(Array.isArray(v) ? v : []),
             multiSelect: true,
@@ -98,7 +109,7 @@ export default function KpiDashboard() {
             id: 'intake',
             icon: Inbox,
             label: 'Intake Type',
-            options: INTAKE_OPTIONS,
+            options: intakeOptions,
             value: intakeTypes,
             onChange: (v) => setIntakeTypes(Array.isArray(v) ? v : []),
             multiSelect: true,

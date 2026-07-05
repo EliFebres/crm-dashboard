@@ -12,6 +12,11 @@ interface HeroSectionProps {
   onAnnouncementClick: () => void;
   onSignUp: () => void;
   onLogIn: () => void;
+  // When the visitor is already signed in, show a single "Go to Dashboard" CTA
+  // instead of the Sign Up / Log In pair.
+  isAuthenticated?: boolean;
+  dashboardLabel?: string;
+  onGoToDashboard?: () => void;
 }
 
 export default function HeroSection({
@@ -24,6 +29,9 @@ export default function HeroSection({
   onAnnouncementClick,
   onSignUp,
   onLogIn,
+  isAuthenticated = false,
+  dashboardLabel = 'Go to Dashboard',
+  onGoToDashboard,
 }: HeroSectionProps) {
   return (
     <section className="relative pt-[72px] pb-12 px-6">
@@ -45,19 +53,31 @@ export default function HeroSection({
         </p>
 
         <div className="flex items-center justify-center gap-4 fade-in-d3">
-          <button
-            onClick={onSignUp}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-[10px] text-[14px] font-medium transition-colors"
-          >
-            {signUpLabel}
-            <ArrowRight size={15} />
-          </button>
-          <button
-            onClick={onLogIn}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[10px] border border-white/[0.1] text-[14px] font-medium text-[#b4b4bc] hover:text-white hover:border-white/[0.2] transition-colors"
-          >
-            {logInLabel}
-          </button>
+          {isAuthenticated ? (
+            <button
+              onClick={onGoToDashboard}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-[10px] text-[14px] font-medium transition-colors"
+            >
+              {dashboardLabel}
+              <ArrowRight size={15} />
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={onSignUp}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-[10px] text-[14px] font-medium transition-colors"
+              >
+                {signUpLabel}
+                <ArrowRight size={15} />
+              </button>
+              <button
+                onClick={onLogIn}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[10px] border border-white/[0.1] text-[14px] font-medium text-[#b4b4bc] hover:text-white hover:border-white/[0.2] transition-colors"
+              >
+                {logInLabel}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </section>

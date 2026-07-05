@@ -11,6 +11,9 @@
  */
 import { query } from './index';
 import { hasDb } from './connection';
+import { departmentColorMap } from './departments';
+import { intakeColorMap } from './intakeTypes';
+import { projectTypeColorMap } from './projectTypes';
 import type { ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
@@ -209,7 +212,7 @@ export async function computeJourneySankey(
     END
   `;
 
-  const [intakeToType, typeToOutcome] = await Promise.all([
+  const [intakeToType, typeToOutcome, intakeColors, projectColors] = await Promise.all([
     query<Record<string, unknown>>(
       `
         SELECT intake_type AS src, type AS tgt, COUNT(*) AS cnt
@@ -228,9 +231,12 @@ export async function computeJourneySankey(
       `,
       params
     ),
+    intakeColorMap(),
+    projectTypeColorMap(),
   ]);
 
-  // Build dedup node index with stable kind labels for coloring
+  // Build dedup node index with stable kind labels for coloring. Intake/project
+  // nodes carry their managed chart color; outcome nodes fall back to static colors.
   const nodeIndex = new Map<string, number>();
   const nodes: JourneySankeyData['nodes'] = [];
   const addNode = (name: string, kind: 'intake' | 'project' | 'outcome'): number => {
@@ -238,7 +244,8 @@ export async function computeJourneySankey(
     const existing = nodeIndex.get(key);
     if (existing !== undefined) return existing;
     const idx = nodes.length;
-    nodes.push({ name, kind });
+    const color = kind === 'intake' ? intakeColors[name] : kind === 'project' ? projectColors[name] : undefined;
+    nodes.push({ name, kind, color });
     nodeIndex.set(key, idx);
     return idx;
   };
@@ -366,28 +373,33 @@ export async function computeClientDeptBreakdown(
   if (!hasDb()) return [];
   const { whereClause, params } = buildKpiWhere(filters, constraints);
 
-  const rows = await query<Record<string, unknown>>(
-    `
-      SELECT
-        internal_client_dept  AS dept,
-        COUNT(*)              AS interactions,
-        COALESCE(SUM(nna), 0) AS total_nna
-      FROM engagements
-      ${whereClause}
-      GROUP BY internal_client_dept
-      ORDER BY interactions DESC
-    `,
-    params
-  );
+  const [rows, deptColors] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+        SELECT
+          internal_client_dept  AS dept,
+          COUNT(*)              AS interactions,
+          COALESCE(SUM(nna), 0) AS total_nna
+        FROM engagements
+        ${whereClause}
+        GROUP BY internal_client_dept
+        ORDER BY interactions DESC
+      `,
+      params
+    ),
+    departmentColorMap(),
+  ]);
 
   return rows.map(r => {
     const interactions = Number(r.interactions ?? 0);
     const nna = Number(r.total_nna ?? 0);
+    const dept = String(r.dept ?? '');
     return {
-      dept: String(r.dept ?? ''),
+      dept,
       interactions,
       nna,
       nnaPerInteraction: interactions > 0 ? Math.round(nna / interactions) : 0,
+      color: deptColors[dept] || '#71717a',
     };
   });
 }

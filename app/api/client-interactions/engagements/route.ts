@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
     const id = Number(insertRows[0].id);
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [id]
     );
 

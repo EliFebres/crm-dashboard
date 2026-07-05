@@ -379,12 +379,17 @@ export default function EngagementsDashboard() {
   const handleStatusChange = (engagementId: number, newStatus: string) => {
     const target = engagements.find(e => e.id === engagementId);
     if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
+    // Completing an interaction with no finish date defaults it to today (mirrors the
+    // server). Optimistically show today now, then reconcile with the server's value.
+    const autoFinish = newStatus === 'Completed' && (!target.dateFinished || target.dateFinished === '—');
     patchEngagements(e => ({
       ...e,
       status: newStatus,
-      dateFinished: e.dateFinished,
+      dateFinished: autoFinish ? formatDisplayDate(parseISODate('—')) : e.dateFinished,
     }), engagementId);
-    updateEngagementStatus(engagementId, newStatus).catch(console.error);
+    updateEngagementStatus(engagementId, newStatus)
+      .then(res => patchEngagements(e => ({ ...e, dateFinished: res.dateFinished }), engagementId))
+      .catch(console.error);
   };
 
   const handleNoteAdded = (engagementId: number) => {
@@ -412,6 +417,7 @@ export default function EngagementsDashboard() {
       id: engagement.id,
       data: {
         clientCrn: engagement.clientCrn,
+        clientCrnPending: engagement.crnPending ?? false,
         externalClient: engagement.externalClient,
         internalClient: engagement.internalClient.name,
         internalClientDept: engagement.internalClient.clientDept,
@@ -436,6 +442,7 @@ export default function EngagementsDashboard() {
       originalDateFinished: engagement.dateFinished,
       version: engagement.version,
       createdById: engagement.createdById,
+      filepath: engagement.filepath,
     });
     setEditingEngagementNoteCount(engagement.noteCount ?? 0);
     setIsNewInteractionOpen(true);
@@ -509,6 +516,7 @@ export default function EngagementsDashboard() {
         initialNoteCount={editingEngagementNoteCount}
         onNoteAdded={handleNoteAdded}
         onNoteDeleted={handleNoteDeleted}
+        onFilepathSaved={handleFilepathSaved}
         onBulkUploadClick={() => setIsBulkUploadOpen(true)}
       />
       <BulkUploadModal

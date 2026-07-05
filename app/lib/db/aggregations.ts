@@ -15,12 +15,18 @@ import {
 } from '../api/mock-computations';
 import { buildFilterClause, resolveOfficeMembers, rowToEngagement, SORT_COLUMN_MAP, CLIENT_JOIN } from './queries';
 import type { ServerConstraints } from './queries';
+import { listDepartmentNames, departmentColorMap } from './departments';
+import { listOrg } from './org';
+import { listIntakeTypeNames, intakeNameForRole, intakeColorMap } from './intakeTypes';
+import { listProjectTypeNames, projectNameForRole } from './projectTypes';
 import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
 import type { DayData } from '../types/engagements';
 import { VALID_STATUSES } from '../statusHelpers';
 
-// Static filter options — these don't change dynamically in this application
+// Static filter options — these don't change dynamically in this application.
+// NOTE: `departments` is a fallback default only; the live list is fetched from the
+// `departments` table via getDepartmentNames() (see the dashboard route).
 export const STATIC_FILTER_OPTIONS: FilterOptions = {
   teamMembers: ['All Team Members', 'Office B', 'Office A'],
   teamMemberGroups: [
@@ -31,6 +37,55 @@ export const STATIC_FILTER_OPTIONS: FilterOptions = {
   projectTypes: ['Data Request', 'Data Update', 'Discovery Meeting', 'Follow-up Material', 'Follow-up Meeting', 'Meeting', 'Other', 'PCR'],
   statuses: [...VALID_STATUSES],
 };
+
+// Live department names for filter options. Falls back to the static list if the
+// (real) DB read fails for any reason, so the dashboard filter never breaks.
+export async function getDepartmentNames(): Promise<string[]> {
+  try {
+    const names = await listDepartmentNames();
+    return names.length > 0 ? names : STATIC_FILTER_OPTIONS.departments;
+  } catch {
+    return STATIC_FILTER_OPTIONS.departments;
+  }
+}
+
+// Live intake-type names for filter options (falls back to the static list).
+export async function getIntakeTypeNames(): Promise<string[]> {
+  try {
+    const names = await listIntakeTypeNames();
+    return names.length > 0 ? names : STATIC_FILTER_OPTIONS.intakeTypes;
+  } catch {
+    return STATIC_FILTER_OPTIONS.intakeTypes;
+  }
+}
+
+// Live project-type names for filter options (falls back to the static list).
+export async function getProjectTypeNames(): Promise<string[]> {
+  try {
+    const names = await listProjectTypeNames();
+    return names.length > 0 ? names : STATIC_FILTER_OPTIONS.projectTypes;
+  } catch {
+    return STATIC_FILTER_OPTIONS.projectTypes;
+  }
+}
+
+// Live office names for the Team Member filter's Office group, in the admin-set
+// order (listOrg orders by sort_order). Returns [] on failure so the filter just
+// omits the Office group rather than breaking.
+export async function getOfficeNames(): Promise<string[]> {
+  try {
+    return (await listOrg('office')).map(o => o.name);
+  } catch {
+    return [];
+  }
+}
+
+// Escapes a managed type name as a SQLite string literal. Metric SQL references
+// built-in intake/project types by their CURRENT name (resolved from a stable role)
+// so a rename never breaks a KPI; values are admin-managed and quote-escaped here.
+function sqlLiteral(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`;
+}
 
 // =============================================================================
 // METRICS
@@ -61,21 +116,39 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
     ? `${ipWhere} AND date_started >= date('now', '-56 days')`
     : `WHERE date_started >= date('now', '-56 days')`;
 
+  // Resolve built-in intake/project types by their stable role to their CURRENT
+  // display name, so the metric SQL below keeps working after an admin rename.
+  const [irqName, serfName, adHocName, pcrName, intakeColors] = await Promise.all([
+    intakeNameForRole('irq'),
+    intakeNameForRole('serf'),
+    intakeNameForRole('ad_hoc'),
+    projectNameForRole('pcr'),
+    intakeColorMap(),
+  ]);
+  const IRQ = sqlLiteral(irqName);
+  const SERF = sqlLiteral(serfName);
+  const ADHOC = sqlLiteral(adHocName);
+  const PCR = sqlLiteral(pcrName);
+  // Managed chart colors for the IRQ/SERF bars on the Client Projects card, keyed by
+  // their current names so a Settings color (or rename) is reflected. Seed-value fallbacks.
+  const irqColor = intakeColors[irqName] ?? '#3b82f6';
+  const serfColor = intakeColors[serfName] ?? '#10b981';
+
   // ---- Fire all 4 queries in parallel — none depends on another's result ----
   const [projectRows, prevRows, inProgressRows, sparklineRows] = await Promise.all([
     // Current period: client projects (IRQ/SERF non-PCR) + Ad-Hoc
     query<Record<string, unknown>>(`
       SELECT
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS project_count,
-        COUNT(*) FILTER (WHERE intake_type = 'IRQ'  AND type != 'PCR')            AS irq_count,
-        COUNT(*) FILTER (WHERE intake_type = 'SERF' AND type != 'PCR')            AS serf_count,
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR')  AS eligible_count,
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR'
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR})  AS project_count,
+        COUNT(*) FILTER (WHERE intake_type = ${IRQ}  AND type != ${PCR})            AS irq_count,
+        COUNT(*) FILTER (WHERE intake_type = ${SERF} AND type != ${PCR})            AS serf_count,
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR})  AS eligible_count,
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR}
                            AND portfolio_logged = TRUE)                            AS portfolios_logged,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                        AS adhoc_count,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Email')     AS adhoc_email,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc' AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC})                        AS adhoc_count,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC} AND ad_hoc_channel = 'In-Person') AS adhoc_in_person,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC} AND ad_hoc_channel = 'Email')     AS adhoc_email,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC} AND ad_hoc_channel = 'Teams')     AS adhoc_teams,
         COALESCE(SUM(nna), 0)                                                     AS total_nna,
         COUNT(*) FILTER (WHERE nna > 0)                                           AS nna_project_count,
         COUNT(*) FILTER (WHERE nna > 0 AND nna < 50000000)                        AS nna_tier1,
@@ -86,8 +159,8 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
     // Previous period: for change% calculations
     query<Record<string, unknown>>(`
       SELECT
-        COUNT(*) FILTER (WHERE intake_type IN ('IRQ', 'SERF') AND type != 'PCR') AS prev_projects,
-        COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')                       AS prev_adhoc,
+        COUNT(*) FILTER (WHERE intake_type IN (${IRQ}, ${SERF}) AND type != ${PCR}) AS prev_projects,
+        COUNT(*) FILTER (WHERE intake_type = ${ADHOC})                       AS prev_adhoc,
         COALESCE(SUM(nna), 0)                                                    AS prev_nna
       FROM engagements e ${CLIENT_JOIN} ${prevAndClause}
     `, prevParams),
@@ -169,8 +242,10 @@ export async function computeMetrics(filters: EngagementFilters, serverConstrain
       intakeSourceBreakdown: {
         irqCount,
         irqPercent: totalProjects > 0 ? Math.round((irqCount / totalProjects) * 100) : 0,
+        irqColor,
         serfCount,
         serfPercent: totalProjects > 0 ? Math.round((serfCount / totalProjects) * 100) : 0,
+        serfColor,
         portfoliosLogged,
         portfoliosTotal: eligibleCount,
         portfoliosPercent: eligibleCount > 0 ? Math.round((portfoliosLogged / eligibleCount) * 100) : 0,
@@ -214,24 +289,22 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
   const resolved = await resolveOfficeMembers(filters);
   const { whereClause, params } = buildFilterClause(resolved, 'e', serverConstraints);
 
-  const rows = await query<Record<string, unknown>>(`
-    SELECT internal_client_dept AS dept, COUNT(*) AS cnt
-    FROM engagements e ${CLIENT_JOIN} ${whereClause}
-    GROUP BY internal_client_dept
-  `, params);
-
-  const DEPT_COLORS: Record<string, string> = {
-    Advisory: '#a5f3fc',
-    'Brokerage': '#22d3ee',
-    Institutional: '#0e7490',
-    'Retirement': '#67e8f9',
-  };
+  const [rows, deptColors] = await Promise.all([
+    query<Record<string, unknown>>(`
+      SELECT internal_client_dept AS dept, COUNT(*) AS cnt
+      FROM engagements e ${CLIENT_JOIN} ${whereClause}
+      GROUP BY internal_client_dept
+    `, params),
+    departmentColorMap(),
+  ]);
 
   const total = rows.reduce((s, r) => s + Number(r.cnt), 0);
   const safeTotal = total || 1;
 
-  // Ensure all three departments appear even if count is 0
-  const deptMap: Record<string, number> = { Advisory: 0, 'Brokerage': 0, Institutional: 0, 'Retirement': 0 };
+  // Zero-fill every managed department (in their configured order) so each appears
+  // even at count 0. Any department present in data but not managed is appended.
+  const deptMap: Record<string, number> = {};
+  Object.keys(deptColors).forEach(name => { deptMap[name] = 0; });
   rows.forEach(r => {
     const dept = r.dept as string;
     deptMap[dept] = Number(r.cnt);
@@ -242,7 +315,7 @@ export async function computeDepartmentBreakdown(filters: EngagementFilters, ser
       name,
       value: Math.round((count / safeTotal) * 100),
       count,
-      color: DEPT_COLORS[name] || '#71717a',
+      color: deptColors[name] || '#71717a',
     })),
     total,
   };
@@ -268,11 +341,12 @@ export async function computeContributionData(filters: EngagementFilters, server
     ? `${whereClause} AND date_finished IS NOT NULL AND date_finished >= ?`
     : `WHERE date_finished IS NOT NULL AND date_finished >= ?`;
 
+  const ADHOC = sqlLiteral(await intakeNameForRole('ad_hoc'));
   const rows = await query<Record<string, unknown>>(`
     SELECT
       CAST(date_finished AS VARCHAR) AS finish_date,
-      COUNT(*) FILTER (WHERE intake_type != 'Ad-Hoc') AS project_count,
-      COUNT(*) FILTER (WHERE intake_type = 'Ad-Hoc')  AS ad_hoc_count
+      COUNT(*) FILTER (WHERE intake_type != ${ADHOC}) AS project_count,
+      COUNT(*) FILTER (WHERE intake_type = ${ADHOC})  AS ad_hoc_count
     FROM engagements e ${CLIENT_JOIN} ${dateFilter}
     GROUP BY CAST(date_finished AS VARCHAR)
     ORDER BY finish_date
@@ -372,7 +446,7 @@ export async function computeEngagementsList(filters: EngagementFilters, serverC
       params
     ),
     query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending,
          (SELECT COUNT(*) FROM engagement_notes WHERE engagement_id = e.id) AS note_count
        FROM engagements e ${CLIENT_JOIN} ${whereClause}
        ORDER BY ${orderBy}
