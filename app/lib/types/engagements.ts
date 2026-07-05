@@ -72,7 +72,7 @@ export interface Client {
   crnPending?: boolean; // true when `crn` is a placeholder awaiting the real value
 }
 
-export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds';
+export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds' | 'Multi-Asset';
 export type ConstituentType = 'Portfolio' | 'Morningstar-Fund' | 'Security' | 'Index';
 
 export interface PortfolioHolding {

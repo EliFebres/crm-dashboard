@@ -5,7 +5,7 @@
  */
 import type { AssetClass, ConstituentType, PortfolioHolding } from '@/app/lib/types/engagements';
 
-export const ASSET_CLASSES: AssetClass[] = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds'];
+export const ASSET_CLASSES: AssetClass[] = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds', 'Multi-Asset'];
 export const CONSTITUENT_TYPES: ConstituentType[] = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
 
 /** Parse a loose constituent-type string (e.g. from an Excel paste) into a canonical value. */
@@ -35,6 +35,9 @@ export function parseAssetClass(value: string): AssetClass | '' {
   }
   if (normalized === 'fundoffunds' || normalized === 'fof' || normalized === 'fund of funds') {
     return 'Fund of Funds';
+  }
+  if (normalized === 'multi-asset' || normalized === 'multiasset' || normalized === 'multi asset' || normalized === 'multi') {
+    return 'Multi-Asset';
   }
   return '';
 }
