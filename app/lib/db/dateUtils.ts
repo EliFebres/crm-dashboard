@@ -67,6 +67,41 @@ export function getPeriodStartISO(period: string): string | null {
 }
 
 /**
+ * Weekday-grid window for the "Completed Interactions" heatmap. Spans the active
+ * period filter (via {@link getPeriodStartISO}) up to today, so the heatmap
+ * tracks whatever range the rest of the dashboard is showing. For ALL (no period
+ * start) it falls back to `earliestISO` (the earliest completion in the data) so
+ * the whole history shows, or ~1 year if there's nothing to anchor on.
+ *
+ * Returns the Monday the grid should start on and how many weeks it spans to
+ * include today.
+ */
+export function getContributionWindow(
+  period: string,
+  earliestISO?: string | null,
+): { anchorMonday: Date; weekCount: number } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let startISO = getPeriodStartISO(period);
+  if (!startISO) {
+    startISO = earliestISO || localDateISO(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()));
+  }
+
+  const start = new Date(startISO + 'T00:00:00');
+  // Align to the Monday of the start week (Mon–Fri → that week; weekend → next).
+  const dayOfWeek = start.getDay();
+  const mondayOffset = dayOfWeek === 0 ? 1 : dayOfWeek === 6 ? 2 : 1 - dayOfWeek;
+  const anchorMonday = new Date(start);
+  anchorMonday.setDate(start.getDate() + mondayOffset);
+  anchorMonday.setHours(0, 0, 0, 0);
+
+  const msPerWeek = 7 * 86400000;
+  const weekCount = Math.max(1, Math.floor((today.getTime() - anchorMonday.getTime()) / msPerWeek) + 1);
+  return { anchorMonday, weekCount };
+}
+
+/**
  * Returns ISO start/end dates for the previous equivalent period (used for change% calculations).
  */
 export function getPreviousPeriodDates(period: string): { start: string; end: string; label: string } {

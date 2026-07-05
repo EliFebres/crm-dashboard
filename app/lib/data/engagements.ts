@@ -3,6 +3,7 @@
 
 
 import type { Engagement, Client, DayData, AdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';
+import { getContributionWindow } from '../db/dateUtils';
 
 // Sample tickers for portfolio generation
 const sampleTickers = [
@@ -457,18 +458,14 @@ function getDateKey(date: Date): string {
 }
 
 // Generate contribution graph data from engagements
-// Can optionally pass filtered engagements to show filtered heatmap
-export function generateContributionData(filteredEngagements?: Engagement[]): DayData[][] {
-  const weeks: DayData[][] = [];
-  // Start ~2 years before today so the heatmap window tracks the (now-relative)
-  // mock engagement dates instead of a fixed 2023 anchor.
-  const startDate = new Date();
-  startDate.setHours(0, 0, 0, 0);
-  startDate.setFullYear(startDate.getFullYear() - 2);
+// Can optionally pass filtered engagements to show a filtered heatmap, and a
+// period so the window tracks the active filter (matching the DB path).
+export function generateContributionData(filteredEngagements?: Engagement[], period: string = '1Y'): DayData[][] {
   const dataSource = filteredEngagements ?? engagements;
 
-  // Build a map of completed engagements by date
+  // Build a map of completed engagements by date, tracking the earliest one.
   const completionsByDate: Record<string, { projects: number; adHoc: number }> = {};
+  let earliestISO: string | null = null;
 
   for (const engagement of dataSource) {
     const finishedDate = parseDateString(engagement.dateFinished);
@@ -482,21 +479,19 @@ export function generateContributionData(filteredEngagements?: Engagement[]): Da
       } else {
         completionsByDate[key].projects++;
       }
+      if (!earliestISO || key < earliestISO) earliestISO = key;
     }
   }
 
-  // Generate 105 weeks of data (2 years + 1 week to always include the current week)
-  for (let week = 0; week < 105; week++) {
+  // Window spans the active period (full history for ALL) up to today.
+  const { anchorMonday, weekCount } = getContributionWindow(period, earliestISO);
+
+  const weeks: DayData[][] = [];
+  for (let week = 0; week < weekCount; week++) {
     const days: DayData[] = [];
     for (let day = 0; day < 5; day++) {
-      const currentDate = new Date(startDate);
-      // Adjust for weekday positioning (Mon=0, Tue=1, etc.)
-      const weekStart = new Date(startDate);
-      weekStart.setDate(startDate.getDate() + week * 7);
-      // Find the Monday of this week
-      const dayOfWeek = weekStart.getDay();
-      const mondayOffset = dayOfWeek === 0 ? 1 : (dayOfWeek === 6 ? 2 : 1 - dayOfWeek);
-      currentDate.setDate(startDate.getDate() + week * 7 + mondayOffset + day);
+      const currentDate = new Date(anchorMonday);
+      currentDate.setDate(anchorMonday.getDate() + week * 7 + day);
 
       const key = getDateKey(currentDate);
       const completions = completionsByDate[key] || { projects: 0, adHoc: 0 };

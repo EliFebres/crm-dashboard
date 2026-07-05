@@ -275,7 +275,7 @@ export function getMockDepartmentBreakdown(filters: EngagementFilters): Departme
 
 export function getMockContributionData(filters: EngagementFilters): ContributionDataResponse {
   const filtered = applyMockFilters(mockEngagements, filters);
-  const weeks = generateContributionData(filtered);
+  const weeks = generateContributionData(filtered, filters.period || '1Y');
   let maxCount = 0;
   let totalDays = 0;
   weeks.forEach(week => week.forEach(day => {

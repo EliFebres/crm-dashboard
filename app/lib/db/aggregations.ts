@@ -19,7 +19,7 @@ import { listDepartmentNames, departmentColorMap } from './departments';
 import { listOrg } from './org';
 import { listIntakeTypeNames, intakeNameForRole, intakeColorMap } from './intakeTypes';
 import { listProjectTypeNames, projectNameForRole } from './projectTypes';
-import { getPreviousPeriodDates, getPeriodStartISO } from './dateUtils';
+import { getPreviousPeriodDates, getPeriodStartISO, getContributionWindow } from './dateUtils';
 import type { EngagementFilters, DashboardMetrics, DepartmentBreakdown, ContributionDataResponse, EngagementsResponse, FilterOptions } from '../api/client-interactions';
 import type { DayData } from '../types/engagements';
 import { VALID_STATUSES } from '../statusHelpers';
@@ -329,17 +329,22 @@ export async function computeContributionData(filters: EngagementFilters, server
   if (!hasDb()) return getMockContributionData(filters);
 
   const resolved = await resolveOfficeMembers(filters);
-  // Apply all filters EXCEPT period — heatmap always shows a rolling 104-week window
-  const heatmapFilters = { ...resolved, period: undefined };
-  const { whereClause, params } = buildFilterClause(heatmapFilters, 'e', serverConstraints);
+  const period = resolved.period || '1Y';
+  // Every filter EXCEPT period applies through the generic clause; period bounds
+  // the completed-in-window range on date_finished (the heatmap's own axis), so
+  // the graph tracks the active filter instead of a fixed 2-year window.
+  const { whereClause, params } = buildFilterClause({ ...resolved, period: undefined }, 'e', serverConstraints);
 
-  const heatmapStart = new Date();
-  heatmapStart.setDate(heatmapStart.getDate() - 104 * 7);
-  const heatmapStartISO = heatmapStart.toISOString().split('T')[0];
-
+  const periodStartISO = getPeriodStartISO(period); // null for ALL → no lower bound
+  const finishBounds = ['date_finished IS NOT NULL'];
+  const boundParams: unknown[] = [];
+  if (periodStartISO) {
+    finishBounds.push('date_finished >= ?');
+    boundParams.push(periodStartISO);
+  }
   const dateFilter = whereClause
-    ? `${whereClause} AND date_finished IS NOT NULL AND date_finished >= ?`
-    : `WHERE date_finished IS NOT NULL AND date_finished >= ?`;
+    ? `${whereClause} AND ${finishBounds.join(' AND ')}`
+    : `WHERE ${finishBounds.join(' AND ')}`;
 
   const ADHOC = sqlLiteral(await intakeNameForRole('ad_hoc'));
   const rows = await query<Record<string, unknown>>(`
@@ -350,7 +355,7 @@ export async function computeContributionData(filters: EngagementFilters, server
     FROM engagements e ${CLIENT_JOIN} ${dateFilter}
     GROUP BY CAST(date_finished AS VARCHAR)
     ORDER BY finish_date
-  `, [...params, heatmapStartISO]);
+  `, [...params, ...boundParams]);
 
   // Build a lookup map from ISO date string to counts
   const completionsByDate = new Map<string, { projects: number; adHoc: number }>();
@@ -362,19 +367,15 @@ export async function computeContributionData(filters: EngagementFilters, server
     });
   }
 
-  // Build 104-week weekday grid (same logic as existing generateContributionData)
-  const startDate = new Date(heatmapStartISO + 'T00:00:00');
-  // Align to nearest Monday on or after startDate
-  const dayOfWeek = startDate.getDay(); // 0=Sun, 1=Mon...
-  const mondayOffset = dayOfWeek === 0 ? 1 : dayOfWeek === 6 ? 2 : 1 - dayOfWeek;
-  const anchorMonday = new Date(startDate);
-  anchorMonday.setDate(startDate.getDate() + mondayOffset);
+  // Grid spans the period (or, for ALL, from the earliest completion) to today.
+  const earliestISO = rows.length ? (rows[0].finish_date as string).split('T')[0] : null;
+  const { anchorMonday, weekCount } = getContributionWindow(period, earliestISO);
 
   const weeks: DayData[][] = [];
   let maxCount = 0;
   let totalDays = 0;
 
-  for (let week = 0; week < 105; week++) {
+  for (let week = 0; week < weekCount; week++) {
     const days: DayData[] = [];
     for (let day = 0; day < 5; day++) {
       const d = new Date(anchorMonday);

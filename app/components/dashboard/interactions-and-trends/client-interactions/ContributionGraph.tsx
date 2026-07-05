@@ -26,18 +26,15 @@ export default function ContributionGraph({ data, contributionChanges }: Contrib
     }
   };
 
-  // Only show the most recent 52 weeks (1 year) in the heatmap
-  const recentWeeks = data.slice(-52);
-  const flatData = recentWeeks.flat();
+  // Render exactly the weeks the server sends — the window now tracks the active
+  // period filter (see computeContributionData / getContributionWindow).
+  const weekCount = Math.max(data.length, 1);
+  const flatData = data.flat();
 
-  // Depend on `data` rather than the sliced array — recentWeeks gets a new
-  // reference every render, which prevents React Compiler from preserving
-  // this memoization.
   const monthMarkers = useMemo(() => {
     const markers: { label: string; colIndex: number }[] = [];
-    const weeks = data.slice(-52);
     let lastMonth = -1;
-    weeks.forEach((week, weekIndex) => {
+    data.forEach((week, weekIndex) => {
       const firstDay = new Date(week[0].date);
       const month = firstDay.getMonth();
       if (month !== lastMonth) {
@@ -56,7 +53,7 @@ export default function ContributionGraph({ data, contributionChanges }: Contrib
             key={i}
             style={{
               position: 'absolute',
-              left: `${(colIndex / 52) * 100}%`,
+              left: `${(colIndex / weekCount) * 100}%`,
               fontSize: '10px',
               color: '#71717a',
               fontWeight: 500,
@@ -82,7 +79,7 @@ export default function ContributionGraph({ data, contributionChanges }: Contrib
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(52, 1fr)',
+          gridTemplateColumns: `repeat(${weekCount}, 1fr)`,
           gridTemplateRows: 'repeat(5, 1fr)',
           gap: '3px',
           flex: 1,
