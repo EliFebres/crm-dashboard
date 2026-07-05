@@ -226,12 +226,19 @@ function generateEngagements(): Engagement[] {
   const engagements: Engagement[] = [];
   let id = 1;
 
-  // Start from Feb 1, 2023 to Jan 31, 2025 (2 years)
-  const startDate = new Date('2023-02-01');
-  const endDate = new Date('2025-01-31');
+  // Anchor the 2-year window so it ends "today". Engagement CONTENT is driven by
+  // seeded RNG on id/weekNum (date-independent), so only the absolute dates move —
+  // re-seeds stay deterministic within a given day while guaranteeing the
+  // dashboard's default (last-12-months) view is always populated.
+  const endDate = new Date();
+  endDate.setHours(0, 0, 0, 0);
+  const startDate = new Date(endDate);
+  startDate.setFullYear(startDate.getFullYear() - 2);
 
-  // Cutoff date - anything finishing after this shows as blank/in-progress
-  const cutoffDate = new Date('2025-01-28');
+  // Cutoff date - anything finishing after this shows as blank/in-progress.
+  // Held 3 days before the end so the most recent items read as in-progress.
+  const cutoffDate = new Date(endDate);
+  cutoffDate.setDate(cutoffDate.getDate() - 3);
 
   // Holiday/slow weeks (week numbers where activity is reduced)
   const slowWeeks = [
@@ -382,7 +389,8 @@ function generateEngagements(): Engagement[] {
   }
 
   // Add a few in-progress and pending items for recent dates
-  const recentDate = new Date('2025-01-27');
+  const recentDate = new Date(endDate);
+  recentDate.setDate(recentDate.getDate() - 4);
   for (let i = 0; i < 5; i++) {
     const seed = (id + i) * 31;
     const dept = getWeightedDepartment(seed);
@@ -452,7 +460,11 @@ function getDateKey(date: Date): string {
 // Can optionally pass filtered engagements to show filtered heatmap
 export function generateContributionData(filteredEngagements?: Engagement[]): DayData[][] {
   const weeks: DayData[][] = [];
-  const startDate = new Date('2023-02-01'); // Start 2 years before most recent data
+  // Start ~2 years before today so the heatmap window tracks the (now-relative)
+  // mock engagement dates instead of a fixed 2023 anchor.
+  const startDate = new Date();
+  startDate.setHours(0, 0, 0, 0);
+  startDate.setFullYear(startDate.getFullYear() - 2);
   const dataSource = filteredEngagements ?? engagements;
 
   // Build a map of completed engagements by date

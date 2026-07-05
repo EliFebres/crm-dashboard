@@ -31,6 +31,14 @@ function bootstrap(db: DB): void {
   // One-time migration: generalize legacy department value 'ISG' → 'Default'
   db.exec(`UPDATE users SET department = 'Default' WHERE department = 'ISG'`);
 
+  // Marks accounts created by the mock seed script (`npm run seed:mock`). Set ONLY
+  // by that script — never from a signup request — so the first-user-admin rule can
+  // ignore seeded demo accounts without a signup payload being able to fake it.
+  // Defaults 0, so real/existing databases are unaffected.
+  if (!columnExists(db, 'users', 'is_seed')) {
+    db.exec(`ALTER TABLE users ADD COLUMN is_seed INTEGER NOT NULL DEFAULT 0`);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS team_members (
       id           TEXT PRIMARY KEY,
