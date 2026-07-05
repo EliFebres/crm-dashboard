@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Pencil, Check, X, Loader2, Trash2, Layers, Contact, Search } from 'lucide-react';
 import { Select } from '@/app/components/ui/Select';
 import { DeleteOrgModal } from '@/app/admin/settings/_components/OrgSection';
@@ -223,7 +223,7 @@ function DepartmentSection({ onChanged }: { onChanged: () => void }) {
 
 // ── Internal Clients ─────────────────────────────────────────────────────────
 
-function InternalClientSection({ departments }: { departments: string[] }) {
+function InternalClientSection({ departments, deptColors }: { departments: string[]; deptColors: Record<string, string> }) {
   const [items, setItems] = useState<InternalClientItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -253,6 +253,20 @@ function InternalClientSection({ departments }: { departments: string[] }) {
   const filtered = q
     ? items.filter(c => c.name.toLowerCase().includes(q) || c.department.toLowerCase().includes(q))
     : items;
+
+  // Group by department for section-header rendering. `filtered` is already alpha
+  // by name (API order), so items stay sorted within each group; groups sort A→Z.
+  const groups = useMemo(() => {
+    const map = new Map<string, InternalClientItem[]>();
+    for (const c of filtered) {
+      const key = c.department || 'No department';
+      const list = map.get(key);
+      if (list) list.push(c); else map.set(key, [c]);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([department, groupItems]) => ({ department, items: groupItems }));
+  }, [filtered]);
 
   const handleAdd = async () => {
     const name = addName.trim();
@@ -368,7 +382,21 @@ function InternalClientSection({ departments }: { departments: string[] }) {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={4} className="px-4 py-10 text-center text-muted text-sm">{q ? 'No matching internal clients.' : 'No internal clients yet.'}</td></tr>
             ) : (
-              filtered.map(item => {
+              groups.map(group => (
+                <React.Fragment key={group.department}>
+                  <tr className="bg-zinc-900/60 border-b border-zinc-800/50">
+                    <td colSpan={4} className="px-4 py-2">
+                      <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                        <span
+                          className="w-2.5 h-2.5 rounded-sm shrink-0 border border-white/10"
+                          style={{ backgroundColor: deptColors[group.department] ?? DEFAULT_COLOR }}
+                        />
+                        {group.department}
+                        <span className="text-muted font-normal normal-case tracking-normal">({group.items.length})</span>
+                      </span>
+                    </td>
+                  </tr>
+                  {group.items.map(item => {
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (
@@ -423,7 +451,9 @@ function InternalClientSection({ departments }: { departments: string[] }) {
                     </td>
                   </tr>
                 );
-              })
+                  })}
+                </React.Fragment>
+              ))
             )}
           </tbody>
         </table>
@@ -444,9 +474,15 @@ function InternalClientSection({ departments }: { departments: string[] }) {
 /** Internal Clients tab — manage departments (with colors) and the internal-client registry. */
 export default function InternalClientsTab() {
   const [departments, setDepartments] = useState<string[]>([]);
+  const [deptColors, setDeptColors] = useState<Record<string, string>>({});
 
   const loadDepartments = useCallback(() => {
-    getDepartments().then(items => setDepartments(items.map(d => d.name))).catch(() => setDepartments([]));
+    getDepartments()
+      .then(items => {
+        setDepartments(items.map(d => d.name));
+        setDeptColors(Object.fromEntries(items.map(d => [d.name, d.color])));
+      })
+      .catch(() => { setDepartments([]); setDeptColors({}); });
   }, []);
 
   useEffect(() => { loadDepartments(); }, [loadDepartments]);
@@ -454,7 +490,7 @@ export default function InternalClientsTab() {
   return (
     <div className="space-y-8">
       <DepartmentSection onChanged={loadDepartments} />
-      <InternalClientSection departments={departments} />
+      <InternalClientSection departments={departments} deptColors={deptColors} />
     </div>
   );
 }
