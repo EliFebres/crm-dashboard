@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, ChevronDown, Check, DollarSign, Briefcase, FileText, Link2 } from 'lucide-react';
+import { X, ChevronDown, Check, DollarSign, Briefcase, FileText, Link2, AlertTriangle } from 'lucide-react';
 import NNAModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NNAModal';
 import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/PortfolioModal';
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
@@ -10,17 +10,21 @@ import { Select } from '@/app/components/ui/Select';
 import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
 import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
-  getClients, registerClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+  getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+  getClientModels,
 } from '@/app/lib/api/client-interactions';
+import { getDepartments } from '@/app/lib/api/internal-clients';
+import { getIntakeTypes, getProjectTypes, type IntakeTypeItem, type ProjectTypeItem } from '@/app/lib/api/types';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import type { TeamMember } from '@/app/lib/auth/types';
+import { canUserEditEngagement, type TeamMember } from '@/app/lib/auth/types';
 
 export interface InteractionFormData {
   clientCrn: string;          // CRN of the selected registered external client (required)
+  clientCrnPending?: boolean; // true when clientCrn is a placeholder awaiting the real value
   externalClient: string;     // Canonical name of the selected client (display only)
   internalClient: string;
-  internalClientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement' | '';
-  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc' | '';
+  internalClientDept: string; // A managed department name, or '' when unset
+  intakeType: string;          // A managed intake-type name, or '' when unset
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
   teamMembers: string[];
@@ -43,6 +47,7 @@ export interface EditingEngagement {
   originalDateFinished?: string; // Preserve exact original string to avoid roundtrip changes
   version?: number; // Optimistic locking — sent back on save to detect concurrent edits
   createdById?: string; // User ID of the creator — used to determine delete permission
+  filepath?: string | null; // Project folder path — shown/edited in the Notes modal
 }
 
 interface NewInteractionFormProps {
@@ -55,38 +60,17 @@ interface NewInteractionFormProps {
   initialNoteCount?: number;
   onNoteAdded?: (engagementId: number) => void;
   onNoteDeleted?: (engagementId: number) => void;
+  onFilepathSaved?: (engagementId: number, filepath: string | null) => void;
   onBulkUploadClick?: () => void;
 }
 
-const CLIENT_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'] as const;
-
-
-// Project types by intake
-const projectTypesByIntake = {
-  'IRQ': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'SERF': ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Follow-up Material', 'Follow-up Meeting'],
-  'Ad-Hoc': ['PCR', 'Discovery Meeting', 'Data Request', 'Data Update', 'Other'],
-};
-
-// Format NNA for display
-const formatNNADisplay = (value: number | null): string => {
-  if (!value || value === 0) return '—';
-  if (value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  } else if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
-  } else if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
-};
-
-export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onBulkUploadClick }: NewInteractionFormProps) {
+export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onFilepathSaved, onBulkUploadClick }: NewInteractionFormProps) {
   const isEditMode = !!editingEngagement;
   const { user: currentUser } = useCurrentUser();
 
   const getDefaultFormData = (): InteractionFormData => ({
     clientCrn: '',
+    clientCrnPending: false,
     externalClient: '',
     internalClient: '',
     internalClientDept: '',
@@ -109,6 +93,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [internalClients, setInternalClients] = useState<InternalClientOption[]>([]);
   const [internalClientsLoading, setInternalClientsLoading] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [intakeTypes, setIntakeTypes] = useState<IntakeTypeItem[]>([]);
+  const [projectTypes, setProjectTypes] = useState<ProjectTypeItem[]>([]);
   const [internalClientSearch, setInternalClientSearch] = useState('');
   const [showInternalClientDropdown, setShowInternalClientDropdown] = useState(false);
   // External client registry (keyed by CRN)
@@ -119,14 +106,35 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [registeringClient, setRegisteringClient] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newClientCrn, setNewClientCrn] = useState('');
+  const [registerPending, setRegisterPending] = useState(false); // "I don't have the CRN yet"
   const [registerError, setRegisterError] = useState('');
   const [registerBusy, setRegisterBusy] = useState(false);
+  // Inline flow for filling in a selected pending client's real CRN.
+  const [resolvingCrn, setResolvingCrn] = useState(false);
+  const [resolveCrnInput, setResolveCrnInput] = useState('');
+  const [resolveError, setResolveError] = useState('');
+  const [resolveBusy, setResolveBusy] = useState(false);
   const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
+  // Summary of the selected client's models (count source for the "Manage Models"
+  // button). Models are client-level, so we fetch by CRN; whether the button
+  // *lights up* is gated separately on this interaction's portfolioLogged flag.
+  const [modelSummary, setModelSummary] = useState<{ count: number; mainName?: string } | null>(null);
+  useEffect(() => {
+    if (!isOpen || !formData.clientCrn) { setModelSummary(null); return; }
+    let active = true;
+    getClientModels(formData.clientCrn)
+      .then(models => { if (active) setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name }); })
+      .catch(() => { if (active) setModelSummary(null); });
+    return () => { active = false; };
+  }, [isOpen, formData.clientCrn]);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [localNoteCount, setLocalNoteCount] = useState(initialNoteCount ?? 0);
+  // Filepath for the Notes modal — kept in local state so a save there updates the
+  // displayed value live without reopening. Synced from editingEngagement on open.
+  const [notesFilepath, setNotesFilepath] = useState<string | null>(null);
   const [tickerInput, setTickerInput] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const internalClientRef = useRef<HTMLDivElement>(null);
@@ -185,7 +193,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       .catch(() => setTeamMembersByOffice({}));
   }, [currentUser]);
 
-  // Fetch internal clients fresh each time the form opens
+  // Fetch internal clients + the managed department list fresh each time the form opens
   useEffect(() => {
     if (!isOpen) return;
     setInternalClientsLoading(true);
@@ -193,6 +201,15 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       .then(setInternalClients)
       .catch(() => setInternalClients([]))
       .finally(() => setInternalClientsLoading(false));
+    getDepartments()
+      .then(items => setDepartments(items.map(d => d.name)))
+      .catch(() => setDepartments([]));
+    getIntakeTypes()
+      .then(setIntakeTypes)
+      .catch(() => setIntakeTypes([]));
+    getProjectTypes()
+      .then(setProjectTypes)
+      .catch(() => setProjectTypes([]));
   }, [isOpen]);
 
   // Reset form when opened (or populate with editing data)
@@ -213,9 +230,14 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       setRegisteringClient(false);
       setNewClientName('');
       setNewClientCrn('');
+      setRegisterPending(false);
       setRegisterError('');
+      setResolvingCrn(false);
+      setResolveCrnInput('');
+      setResolveError('');
       setTickerInput('');
       setLocalNoteCount(initialNoteCount ?? 0);
+      setNotesFilepath(editingEngagement?.filepath ?? null);
       setDeleteConfirm(false);
     }
   }, [isOpen, editingEngagement, initialNoteCount]);
@@ -255,18 +277,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const isNewClient = trimmedSearch.length > 0 &&
     !internalClients.some(c => c.name.toLowerCase() === trimmedSearch.toLowerCase());
 
-  // Get available project types based on intake type
-  const availableProjectTypes = formData.intakeType
-    ? (projectTypesByIntake[formData.intakeType as keyof typeof projectTypesByIntake] || [])
-    : [];
+  // Project types are a flat managed list (not scoped per intake type).
+  const availableProjectTypes = projectTypes.map(t => t.name);
 
-  // Reset project type when intake type changes (only if current project type is invalid)
-  useEffect(() => {
-    if (formData.intakeType && formData.projectType && !availableProjectTypes.includes(formData.projectType)) {
-      setFormData(prev => ({ ...prev, projectType: '' }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.intakeType]);
+  // The Ad-Hoc channel field is gated on the selected intake type's *role*, not its
+  // display name, so it keeps working even if an admin renames the "Ad-Hoc" type.
+  const selectedIntake = intakeTypes.find(t => t.name === formData.intakeType);
+  const isAdHoc = selectedIntake?.role === 'ad_hoc';
 
   // Register a brand-new external client, then select it.
   const handleRegisterClient = async () => {
@@ -276,20 +293,24 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       return;
     }
     const manual = !crnConfig?.autoGenerate;
+    // In manual mode the user can register without a CRN ("add it later") — the
+    // server assigns a highlighted placeholder CRN.
+    const wantPending = manual && registerPending;
     const crn = newClientCrn.trim();
-    if (manual && !crn) {
+    if (manual && !wantPending && !crn) {
       setRegisterError('CRN is required.');
       return;
     }
     setRegisterBusy(true);
     setRegisterError('');
     try {
-      const client = await registerClient(name, manual ? crn : undefined);
-      setFormData(prev => ({ ...prev, clientCrn: client.crn, externalClient: client.name }));
+      const client = await registerClient(name, manual && !wantPending ? crn : undefined, { pending: wantPending });
+      setFormData(prev => ({ ...prev, clientCrn: client.crn, externalClient: client.name, clientCrnPending: client.crnPending ?? false }));
       setClients(prev => (prev.some(c => c.crn === client.crn) ? prev : [client, ...prev]));
       setRegisteringClient(false);
       setNewClientName('');
       setNewClientCrn('');
+      setRegisterPending(false);
       setClientSearch('');
       setShowClientDropdown(false);
       setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
@@ -301,6 +322,34 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       );
     } finally {
       setRegisterBusy(false);
+    }
+  };
+
+  // Replace a selected pending client's placeholder CRN with the real value. This
+  // cascades to every interaction referencing the placeholder, and updates this form.
+  const handleResolveCrn = async () => {
+    const real = resolveCrnInput.trim();
+    if (!real) {
+      setResolveError('Enter the real CRN.');
+      return;
+    }
+    setResolveBusy(true);
+    setResolveError('');
+    try {
+      const updated = await updateClient(formData.clientCrn, { crn: real, name: formData.externalClient });
+      const prevCrn = formData.clientCrn;
+      setFormData(prev => ({ ...prev, clientCrn: updated.crn, externalClient: updated.name, clientCrnPending: updated.crnPending ?? false }));
+      setClients(prev => prev.map(c => (c.crn === prevCrn ? { ...c, crn: updated.crn, name: updated.name, crnPending: updated.crnPending ?? false } : c)));
+      setResolvingCrn(false);
+      setResolveCrnInput('');
+    } catch (err) {
+      setResolveError(
+        err instanceof ClientConflictError ? err.message
+          : err instanceof Error ? err.message
+          : 'Failed to update CRN.'
+      );
+    } finally {
+      setResolveBusy(false);
     }
   };
 
@@ -333,7 +382,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       newErrors.dateStarted = 'Start date is required';
     }
 
-    if (formData.intakeType === 'Ad-Hoc' && !formData.adHocChannel) {
+    if (isAdHoc && !formData.adHocChannel) {
       newErrors.adHocChannel = 'Channel is required for Ad-Hoc';
     }
 
@@ -450,7 +499,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6 space-y-4">
               {/* Row 1: Intake Type + Project Type + Interaction Type for Ad-Hoc */}
-              <div className={`grid gap-4 ${formData.intakeType === 'Ad-Hoc' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-4 ${isAdHoc ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Intake Type <span className="text-red-400">*</span>
@@ -458,13 +507,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   <div className="relative">
                     <select
                       value={formData.intakeType}
-                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value as 'IRQ' | 'SERF' | 'Ad-Hoc' | '', adHocChannel: undefined }))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, intakeType: e.target.value, adHocChannel: undefined }))}
                       className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50 transition-colors appearance-none cursor-pointer"
                     >
                       <option value="" className="bg-zinc-800">Select...</option>
-                      <option value="IRQ" className="bg-zinc-800">IRQ</option>
-                      <option value="SERF" className="bg-zinc-800">SERF</option>
-                      <option value="Ad-Hoc" className="bg-zinc-800">Ad-Hoc</option>
+                      {intakeTypes.map(t => (
+                        <option key={t.id} value={t.name} className="bg-zinc-800">{t.name}</option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                   </div>
@@ -489,7 +538,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   </div>
                   {errors.projectType && <p className="mt-1 text-xs text-red-400">{errors.projectType}</p>}
                 </div>
-                {formData.intakeType === 'Ad-Hoc' && (
+                {isAdHoc && (
                   <div>
                     <label className="block text-sm font-medium text-muted mb-1.5">
                       Interaction Type <span className="text-red-400">*</span>
@@ -565,7 +614,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               </div>
 
               {/* Tickers Mentioned - Only for Ad-Hoc */}
-              {formData.intakeType === 'Ad-Hoc' && (
+              {isAdHoc && (
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Tickers Mentioned <span className="text-muted font-normal text-xs">(Optional - for Ticker Trends)</span>
@@ -601,7 +650,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               )}
 
               {/* Row 2: External Client + Internal Client */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* items-start so the Internal Client column doesn't stretch to match a
+                  taller External Client column (CRN line / register UI) and open a gap. */}
+              <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="relative" ref={externalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     External Client <span className="text-red-400">*</span>
@@ -614,8 +665,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                           value={formData.externalClient || clientSearch}
                           onChange={(e) => {
                             setClientSearch(e.target.value);
-                            setFormData(prev => ({ ...prev, clientCrn: '', externalClient: '' }));
+                            setFormData(prev => ({ ...prev, clientCrn: '', externalClient: '', clientCrnPending: false }));
                             setShowClientDropdown(true);
+                            setResolvingCrn(false);
                           }}
                           onFocus={() => setShowClientDropdown(true)}
                           placeholder="Search by name or CRN..."
@@ -623,8 +675,54 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         />
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
                       </div>
-                      {formData.clientCrn && (
+                      {formData.clientCrn && !formData.clientCrnPending && (
                         <p className="mt-1 text-xs text-muted">CRN: <span className="text-cyan-400">{formData.clientCrn}</span></p>
+                      )}
+                      {formData.clientCrn && formData.clientCrnPending && (
+                        <div className="mt-1.5 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
+                          {!resolvingCrn ? (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-red-400">
+                                <AlertTriangle className="w-3 h-3" /> CRN Pending
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => { setResolvingCrn(true); setResolveCrnInput(''); setResolveError(''); }}
+                                className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                              >
+                                + Add real CRN
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <input
+                                type="text"
+                                value={resolveCrnInput}
+                                onChange={(e) => setResolveCrnInput(e.target.value)}
+                                placeholder={`Real CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
+                                className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                              />
+                              {resolveError && <p className="text-xs text-red-400">{resolveError}</p>}
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleResolveCrn}
+                                  disabled={resolveBusy}
+                                  className="px-3 py-1 text-xs rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 transition-colors"
+                                >
+                                  {resolveBusy ? 'Saving…' : 'Save CRN'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setResolvingCrn(false); setResolveError(''); }}
+                                  className="px-3 py-1 text-xs rounded-lg bg-zinc-700/50 text-muted hover:bg-zinc-700 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                       {showClientDropdown && (
                         <div className="absolute z-50 w-full mt-1 max-h-52 overflow-y-auto bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl">
@@ -634,9 +732,10 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 key={c.crn}
                                 type="button"
                                 onClick={() => {
-                                  setFormData(prev => ({ ...prev, clientCrn: c.crn, externalClient: c.name }));
+                                  setFormData(prev => ({ ...prev, clientCrn: c.crn, externalClient: c.name, clientCrnPending: c.crnPending ?? false }));
                                   setClientSearch('');
                                   setShowClientDropdown(false);
+                                  setResolvingCrn(false);
                                   setErrors(prev => { const n = { ...prev }; delete n.externalClient; return n; });
                                 }}
                                 className={`w-full px-3 py-2 text-left text-sm transition-colors ${
@@ -646,7 +745,13 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 }`}
                               >
                                 <span className="block text-white">{c.name}</span>
-                                <span className="block text-xs text-muted">{c.crn}</span>
+                                {c.crnPending ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-red-400">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide">CRN Pending</span>
+                                  </span>
+                                ) : (
+                                  <span className="block text-xs text-muted">{c.crn}</span>
+                                )}
                               </button>
                             ))
                           ) : (
@@ -658,6 +763,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                               setRegisteringClient(true);
                               setNewClientName(clientSearch.trim());
                               setNewClientCrn('');
+                              setRegisterPending(false);
                               setRegisterError('');
                               setShowClientDropdown(false);
                             }}
@@ -681,13 +787,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                       {crnConfig?.autoGenerate ? (
                         <p className="text-xs text-muted">A CRN will be generated automatically.</p>
                       ) : (
-                        <input
-                          type="text"
-                          value={newClientCrn}
-                          onChange={(e) => setNewClientCrn(e.target.value)}
-                          placeholder={`CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
-                          className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-                        />
+                        <>
+                          {!registerPending && (
+                            <input
+                              type="text"
+                              value={newClientCrn}
+                              onChange={(e) => setNewClientCrn(e.target.value)}
+                              placeholder={`CRN${crnConfig?.prefix ? ` (e.g. ${crnConfig.prefix}000123)` : ''}`}
+                              className="w-full px-3 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                            />
+                          )}
+                          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={registerPending}
+                              onChange={(e) => { setRegisterPending(e.target.checked); setRegisterError(''); }}
+                              className="accent-cyan-500"
+                            />
+                            I don&apos;t have the CRN yet — add it later
+                          </label>
+                          {registerPending && (
+                            <p className="inline-flex items-center gap-1 text-xs text-red-400">
+                              <AlertTriangle className="w-3 h-3" />
+                              A placeholder CRN will be used and highlighted until you add the real one.
+                            </p>
+                          )}
+                        </>
                       )}
                       {registerError && <p className="text-xs text-red-400">{registerError}</p>}
                       <div className="flex gap-2">
@@ -701,7 +826,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setRegisteringClient(false); setRegisterError(''); }}
+                          onClick={() => { setRegisteringClient(false); setRegisterPending(false); setRegisterError(''); }}
                           className="px-3 py-1.5 text-sm rounded-lg bg-zinc-700/50 text-muted hover:bg-zinc-700 transition-colors"
                         >
                           Cancel
@@ -711,6 +836,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   )}
                   {errors.externalClient && <p className="mt-1 text-xs text-red-400">{errors.externalClient}</p>}
                 </div>
+                {/* Right column stacks Internal Client + its Department so the Dept
+                    box sits directly under the input, not below the taller left column. */}
+                <div className="space-y-4">
                 <div className="relative" ref={internalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Internal Client <span className="text-red-400">*</span>
@@ -745,7 +873,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                                 type="button"
                                 onClick={() => {
                                   const client = internalClients.find(c => c.name === name)!;
-                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept as 'Advisory' | 'Brokerage' | 'Institutional' }));
+                                  setFormData(prev => ({ ...prev, internalClient: name, internalClientDept: client.dept }));
                                   setInternalClientSearch('');
                                   setShowInternalClientDropdown(false);
                                 }}
@@ -784,36 +912,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   )}
                   {errors.internalClient && <p className="mt-1 text-xs text-red-400">{errors.internalClient}</p>}
                 </div>
-              </div>
 
-              {/* Department row — shown when a client name is committed */}
-              {formData.internalClient && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div /> {/* spacer aligns with External Client column */}
-                  <div>
-                    {formData.internalClientDept ? (
-                      /* Existing client — show dept as read-only */
-                      <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
-                        <span className="text-xs font-semibold text-muted uppercase tracking-wider">Dept</span>
-                        <span className="text-sm text-muted">{formData.internalClientDept}</span>
-                      </div>
-                    ) : (
-                      /* New client — dept selector */
-                      <div>
-                        <label className="block text-sm font-medium text-muted mb-1.5">
-                          Department <span className="text-red-400">*</span>
-                        </label>
-                        <Select
-                          value={formData.internalClientDept}
-                          onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v as typeof prev.internalClientDept }))}
-                          options={CLIENT_DEPARTMENTS}
-                          placeholder="Select department..."
-                        />
-                      </div>
-                    )}
-                  </div>
+                {/* Department — shown once a client name is committed, directly below. */}
+                {formData.internalClient && (
+                  formData.internalClientDept ? (
+                    /* Existing client — show dept as read-only */
+                    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
+                      <span className="text-xs font-semibold text-muted uppercase tracking-wider">Dept</span>
+                      <span className="text-sm text-muted">{formData.internalClientDept}</span>
+                    </div>
+                  ) : (
+                    /* New client — dept selector */
+                    <div>
+                      <label className="block text-sm font-medium text-muted mb-1.5">
+                        Department <span className="text-red-400">*</span>
+                      </label>
+                      <Select
+                        value={formData.internalClientDept}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v }))}
+                        options={departments}
+                        placeholder="Select department..."
+                      />
+                    </div>
+                  )
+                )}
                 </div>
-              )}
+              </div>
 
               {/* Row 3: Team Members (4 columns, grouped by office) */}
               <div>
@@ -909,28 +1033,41 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     }`}
                   >
                     <DollarSign className="w-4 h-4" />
-                    {formData.nna ? formatNNADisplay(formData.nna) : '+ Add NNA'}
+                    {formData.nna ? <span className="font-mono">{formData.nna.toLocaleString('en-US')}</span> : '+ Add NNA'}
                   </button>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-muted mb-1.5">
-                    Client Portfolio <span className="text-muted font-normal text-xs">(Optional)</span>
+                    Client Models <span className="text-muted font-normal text-xs">(Optional)</span>
                   </label>
+                  {(() => {
+                    // Mirror the table "Model Logged" check mark: light up + show the
+                    // count only when this interaction logged a portfolio.
+                    const showModels = !!formData.portfolioLogged && !!modelSummary && modelSummary.count > 0;
+                    return (
                   <button
                     type="button"
                     onClick={() => setIsPortfolioModalOpen(true)}
+                    disabled={!formData.clientCrn}
+                    title={!formData.clientCrn ? 'Select a client first' : undefined}
                     className={`w-full h-[38px] px-3 bg-zinc-800/50 border rounded-lg text-sm text-left transition-colors flex items-center gap-2 ${
-                      formData.portfolio && formData.portfolio.length > 0
-                        ? 'border-cyan-500/50 text-cyan-400 hover:border-cyan-500/70'
-                        : 'border-zinc-700 text-muted hover:border-cyan-500/50'
+                      !formData.clientCrn
+                        ? 'border-zinc-800 text-zinc-600 cursor-not-allowed'
+                        : showModels
+                          ? 'border-cyan-500/50 text-cyan-400 hover:border-cyan-500/70'
+                          : 'border-zinc-700 text-muted hover:border-cyan-500/50'
                     }`}
                   >
                     <Briefcase className="w-4 h-4" />
-                    {formData.portfolio && formData.portfolio.length > 0
-                      ? `${formData.portfolio.length} holding${formData.portfolio.length > 1 ? 's' : ''}`
-                      : '+ Add Portfolio'}
+                    {!formData.clientCrn
+                      ? 'Select a client first'
+                      : showModels
+                        ? `${modelSummary!.count} model${modelSummary!.count > 1 ? 's' : ''}${modelSummary!.mainName ? ` · ${modelSummary!.mainName}` : ''}`
+                        : 'Manage Models'}
                   </button>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1020,19 +1157,19 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         }}
       />
 
-      {/* Portfolio Modal */}
-      <PortfolioModal
-        isOpen={isPortfolioModalOpen}
-        onClose={() => setIsPortfolioModalOpen(false)}
-        currentPortfolio={formData.portfolio}
-        onSave={(portfolio) => {
-          setFormData(prev => ({
-            ...prev,
-            portfolio,
-            portfolioLogged: portfolio !== undefined && portfolio.length > 0,
-          }));
-        }}
-      />
+      {/* Client Models Modal (shared, client-level) */}
+      {formData.clientCrn && (
+        <PortfolioModal
+          isOpen={isPortfolioModalOpen}
+          onClose={() => setIsPortfolioModalOpen(false)}
+          clientCrn={formData.clientCrn}
+          clientName={formData.externalClient}
+          onSaved={(models) => {
+            setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name });
+            setFormData(prev => ({ ...prev, portfolioLogged: models.length > 0 }));
+          }}
+        />
+      )}
 
       {/* Link Previous Interaction Modal */}
       <LinkInteractionModal
@@ -1050,9 +1187,16 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         <NotesModal
           isOpen={isNotesModalOpen}
           onClose={() => setIsNotesModalOpen(false)}
-          title="Engagement Notes"
-          subtitle={`${formData.externalClient || formData.internalClient || 'Engagement'} · ${formData.projectType}`}
+          title="Notes"
+          subtitle={formData.externalClient || formData.internalClient || ''}
           engagementId={editingEngagement.id}
+          readOnly={!canUserEditEngagement(currentUser, formData.teamMembers)}
+          filepath={notesFilepath}
+          canEditFilepath={canUserEditEngagement(currentUser, formData.teamMembers)}
+          onFilepathSaved={(next) => {
+            setNotesFilepath(next);
+            onFilepathSaved?.(editingEngagement.id, next);
+          }}
           onNoteAdded={() => {
             setLocalNoteCount(prev => prev + 1);
             onNoteAdded?.(editingEngagement.id);

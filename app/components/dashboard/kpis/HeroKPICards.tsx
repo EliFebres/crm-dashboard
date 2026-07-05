@@ -26,7 +26,7 @@ export default function HeroKPICards({ heroKpis }: HeroKPICardsProps) {
       sublabel: heroKpis.periodLabel,
     },
     {
-      label: 'Total In-Progress Interactions',
+      label: 'In-Progress',
       value: formatNumber(heroKpis.inProgress.value),
       deltaPercent: heroKpis.inProgress.deltaPercent,
       sublabel: heroKpis.periodLabel,

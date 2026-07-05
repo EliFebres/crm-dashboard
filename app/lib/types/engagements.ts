@@ -20,8 +20,10 @@ export interface IntakeBreakdown {
 export interface IntakeSourceBreakdown {
   irqCount: number;
   irqPercent: number;
+  irqColor: string;  // Managed chart color of the IRQ intake type (from the registry)
   serfCount: number;
   serfPercent: number;
+  serfColor: string; // Managed chart color of the SERF intake type (from the registry)
   portfoliosLogged: number;
   portfoliosTotal: number;
   portfoliosPercent: number;
@@ -43,7 +45,6 @@ export interface EngagementMetric {
   percent?: number; // Optional percentage for progress bar visualization
   sparklineData?: { value: number }[]; // Optional sparkline data for trend visualization
   pieData?: { name: string; value: number; color: string }[]; // Optional pie chart data for breakdown visualization
-  stackedBarData?: { month: string; Advisory: number; 'Brokerage': number; Institutional: number; 'Retirement': number }[]; // Optional stacked bar data
   intakeBreakdown?: IntakeBreakdown[]; // Optional intake breakdown for Ad-Hoc
   intakeSourceBreakdown?: IntakeSourceBreakdown; // Optional intake source breakdown for Client Projects
   nnaTiers?: NNATier[]; // Optional NNA distribution tiers
@@ -58,7 +59,7 @@ export interface DepartmentData {
 
 export interface InternalClient {
   name: string;
-  clientDept: 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement';
+  clientDept: string; // A managed department name (see the departments table)
 }
 
 // A registered external client. The CRN is the canonical, unique identifier; the
@@ -68,9 +69,10 @@ export interface Client {
   name: string;
   createdByName?: string;
   createdAt?: string;
+  crnPending?: boolean; // true when `crn` is a placeholder awaiting the real value
 }
 
-export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds';
+export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds' | 'Multi-Asset';
 export type ConstituentType = 'Portfolio' | 'Morningstar-Fund' | 'Security' | 'Index';
 
 export interface PortfolioHolding {
@@ -78,6 +80,21 @@ export interface PortfolioHolding {
   constituentType: ConstituentType;
   assetClass: AssetClass;
   weight: number; // Normalized weight (0-1, sums to 1)
+}
+
+// A model portfolio belonging to an external client (keyed by CRN). A client can
+// run several (e.g. large- vs small-client models, per-office models, 60/40 vs
+// 100/0 splits); exactly one is flagged `isMain` (drives the Portfolio Trends
+// dashboard). Canonical + shared across all of that client's interactions.
+export interface ClientModel {
+  id: string;                   // stable UUID
+  name: string;                 // free-text label, e.g. "60/40 Model"
+  isMain: boolean;              // exactly one main per client
+  aum?: number;                 // optional dollars (often unknown/empty)
+  holdings: PortfolioHolding[]; // weights normalized to sum to 1
+  sortOrder: number;
+  createdAt?: string;           // when first logged (preserved across saves)
+  updatedAt?: string;           // when last logged/changed (bumps only on content change)
 }
 
 export interface NoteEntry {
@@ -92,10 +109,11 @@ export interface NoteEntry {
 export interface Engagement {
   id: number;
   clientCrn: string; // CRN of the registered external client (required)
+  crnPending?: boolean; // true when clientCrn is a placeholder awaiting the real value
   externalClient: string; // Canonical external-client name, resolved from the registry via JOIN
   internalClient: InternalClient; // Contact/relationship owner/salesperson
-  intakeType: 'IRQ' | 'SERF' | 'Ad-Hoc';
-  adHocChannel?: AdHocChannel; // Only applicable when intakeType is 'Ad-Hoc'
+  intakeType: string; // A managed intake-type name (IRQ/SERF/Ad-Hoc are built-in; admins can add more)
+  adHocChannel?: AdHocChannel; // Only applicable when the intake type has the 'ad_hoc' role
   type: string; // Project Type
   teamMembers: string[];
   department: string;

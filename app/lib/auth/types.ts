@@ -47,6 +47,7 @@ export interface TeamMember {
   displayName: string;
   firstName: string;
   lastName: string;
+  title: string;
   team: User['team'];
   office: User['office'];
   status: 'active' | 'inactive';
@@ -60,6 +61,7 @@ export function rowToTeamMember(row: Record<string, unknown>): TeamMember {
     displayName: row.display_name as string,
     firstName: row.first_name as string,
     lastName: row.last_name as string,
+    title: (row.title as string) ?? '',
     team: row.team as User['team'],
     office: row.office as User['office'],
     status: row.status as TeamMember['status'],

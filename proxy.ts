@@ -26,8 +26,9 @@ export async function proxy(req: NextRequest) {
   const isAuthenticated = payload !== null && payload.status === 'active';
   const isAdmin = isAuthenticated && payload?.role === 'admin';
 
-  // Logged-in users on landing page → send to dashboard
-  if (pathname === '/' && isAuthenticated) {
+  // Logged-in users on landing page → send to dashboard, UNLESS they explicitly
+  // asked to view the homepage (e.g. clicked the sidebar brand → /?home=1).
+  if (pathname === '/' && isAuthenticated && !req.nextUrl.searchParams.has('home')) {
     return NextResponse.redirect(new URL('/dashboard/interactions-and-trends/client-interactions', req.url));
   }
 

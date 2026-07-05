@@ -6,6 +6,7 @@ import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToUser, toDisplayName } from '@/app/lib/auth/types';
 import { emitUserChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
+import { titleExists } from '@/app/lib/db/titles';
 
 const VALID_STATUSES = ['pending', 'active', 'inactive'];
 const VALID_ROLES = ['user', 'admin'];
@@ -40,7 +41,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { status, role } = body;
+    const { status, role, title } = body;
 
     // Identify the founding account (earliest created_at) — their admin can only be
     // removed by themselves, not by any other admin.
@@ -76,6 +77,9 @@ export async function PATCH(
     if (role !== undefined && !VALID_ROLES.includes(role)) {
       return NextResponse.json({ error: 'Invalid role value.' }, { status: 400 });
     }
+    if (title !== undefined && !(await titleExists(title))) {
+      return NextResponse.json({ error: 'Invalid title value.' }, { status: 400 });
+    }
 
     const sets: string[] = [];
     const values: unknown[] = [];
@@ -92,6 +96,10 @@ export async function PATCH(
     if (role !== undefined) {
       sets.push('role = ?');
       values.push(role);
+    }
+    if (title !== undefined) {
+      sets.push('title = ?');
+      values.push(title);
     }
 
     if (sets.length === 0) {
@@ -125,6 +133,7 @@ export async function PATCH(
         targetEmail: user.email,
         status: status ?? undefined,
         role: role ?? undefined,
+        title: title ?? undefined,
       },
     });
 

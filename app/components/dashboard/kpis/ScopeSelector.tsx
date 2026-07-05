@@ -1,16 +1,11 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Users } from 'lucide-react';
 import { Select } from '@/app/components/ui/Select';
 import { useCurrentUser } from '@/app/lib/auth/context';
+import { getTeams } from '@/app/lib/api/org';
 import type { KpiScope } from '@/app/lib/api/kpi';
-
-export const KPI_DELIVERY_TEAMS = [
-  'Default Team',
-  'Equity Specialist',
-  'Fixed Income Specialist',
-] as const;
 
 interface ScopeSelectorProps {
   value: KpiScope;
@@ -22,19 +17,24 @@ const ALL_OPTION = { value: 'all' as const, label: 'All Teams' };
 export default function ScopeSelector({ value, onChange }: ScopeSelectorProps) {
   const { user } = useCurrentUser();
 
-  // Non-admins may only scope to 'all' or to their own team (if it's a KPI
-  // delivery team). Admins see every team. This mirrors the server-side
-  // enforcement in canAccessKpiScope.
+  // Admins can scope to any managed team; the list reflects the live Teams
+  // registry (in the admin-set order). Non-admins fall back to their own team.
+  const [teams, setTeams] = useState<string[]>([]);
+  useEffect(() => {
+    getTeams().then(items => setTeams(items.map(t => t.name))).catch(() => setTeams([]));
+  }, []);
+
+  // Non-admins may only scope to 'all' or to their own team; admins see every
+  // team. This mirrors the server-side enforcement in canAccessKpiScope.
   const options = useMemo(() => {
     if (!user) return [ALL_OPTION];
     if (user.role === 'admin') {
-      return [ALL_OPTION, ...KPI_DELIVERY_TEAMS.map(t => ({ value: `team:${t}`, label: t }))];
+      return [ALL_OPTION, ...teams.map(t => ({ value: `team:${t}`, label: t }))];
     }
-    const isKpiTeam = (KPI_DELIVERY_TEAMS as readonly string[]).includes(user.team);
-    return isKpiTeam
+    return user.team
       ? [ALL_OPTION, { value: `team:${user.team}`, label: user.team }]
       : [ALL_OPTION];
-  }, [user]);
+  }, [user, teams]);
 
   const currentLabel = options.find(o => o.value === value)?.label ?? 'All Teams';
 

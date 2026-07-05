@@ -8,6 +8,7 @@ import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
+import { ensureInternalClient } from '@/app/lib/db/internalClients';
 
 // GET /api/client-interactions/engagements/:id
 export async function GET(
@@ -23,7 +24,7 @@ export async function GET(
     const teamClause = sc.team ? 'AND e.team = ?' : '';
     const teamParams = sc.team ? [sc.team] : [];
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
       [Number(id), ...teamParams]
     );
     if (rows.length === 0) {
@@ -198,10 +199,19 @@ export async function PATCH(
     }
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [engagementId]
     );
     emitEngagementChange('updated');
+    // Register any newly-typed internal client in the managed registry so it
+    // shows up in Settings → Internal Clients (best-effort; never blocks the write).
+    if (body.internalClient?.name) {
+      void ensureInternalClient(
+        body.internalClient.name,
+        body.internalClient.clientDept,
+        { id: auth.payload.sub, name: `${auth.payload.firstName} ${auth.payload.lastName}` }
+      ).catch(err => console.error('ensureInternalClient (update) failed:', err));
+    }
     const changedFields = Object.keys(body).filter(k => k !== 'version' && k !== 'id');
     const internalClient = (rows[0].internal_client_name as string | null) ?? null;
     void logActivity(req, {

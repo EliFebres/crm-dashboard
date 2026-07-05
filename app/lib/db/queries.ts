@@ -13,10 +13,16 @@ export interface InternalEngagementFilters extends EngagementFilters {
 }
 
 /**
- * Resolves an "Office B" / "Office A" filter to the live list of
- * member display names. team_members lives in users.sqlite, so we can't JOIN to
- * it from the engagements connection — caller must pre-resolve and pass the
- * results to buildFilterClause via _officeMembers.
+ * Resolves an Office filter (any managed office name, e.g. "Charlotte") to the
+ * live list of member display names. team_members lives in users.sqlite, so we
+ * can't JOIN to it from the engagements connection — caller must pre-resolve and
+ * pass the results to buildFilterClause via _officeMembers.
+ *
+ * A non-default teamMember is treated as an office only if it matches a row in
+ * the managed `offices` table; otherwise it's an individual member name and is
+ * left untouched (buildFilterClause matches it directly). Setting _officeMembers
+ * — even to an empty array — is the signal to buildFilterClause that this is an
+ * office filter.
  *
  * Cross-office surfacing falls out of the OR-based match in buildFilterClause:
  * an engagement is shown in an office's filter as long as ANY assigned team
@@ -25,13 +31,20 @@ export interface InternalEngagementFilters extends EngagementFilters {
 export async function resolveOfficeMembers(
   filters: EngagementFilters
 ): Promise<InternalEngagementFilters> {
-  if (filters.teamMember !== 'Office B' && filters.teamMember !== 'Office A') {
+  const teamMember = filters.teamMember;
+  if (!teamMember || teamMember === 'All Team Members' || teamMember === 'All Teams') {
     return filters;
   }
-  const office = filters.teamMember === 'Office B' ? 'Office B' : 'Office A';
+  const isOffice = await queryUsers(
+    `SELECT 1 FROM offices WHERE name = ? COLLATE NOCASE LIMIT 1`,
+    [teamMember]
+  );
+  if (isOffice.length === 0) {
+    return filters; // an individual member name, not an office
+  }
   const rows = await queryUsers<{ display_name: string }>(
     `SELECT display_name FROM team_members WHERE office = ? AND status = 'active'`,
-    [office]
+    [teamMember]
   );
   return { ...filters, _officeMembers: rows.map(r => r.display_name) };
 }
@@ -123,14 +136,14 @@ export function buildFilterClause(
   // EXISTS can test for an exact element match.
   // - 'All Teams' is the cross-team aggregate scope (admin/Leadership/Guest only)
   //   and 'All Team Members' is the no-filter default — both pass through.
-  // - 'Office B' / 'Office A' are pseudo-values: the caller resolves
-  //   them to a live member-name list via resolveOfficeMembers() and passes it as
-  //   _officeMembers. An engagement matches an office's filter as long as ANY
-  //   assigned team member belongs to that office, so a project staffed across
-  //   offices shows up in BOTH offices' results.
+  // - An office name is a pseudo-value: resolveOfficeMembers() expands it to a
+  //   live member-name list and sets _officeMembers (its presence flags an office
+  //   filter). An engagement matches an office's filter as long as ANY assigned
+  //   team member belongs to that office, so a project staffed across offices
+  //   shows up in BOTH offices' results.
   if (filters.teamMember && filters.teamMember !== 'All Team Members' && filters.teamMember !== 'All Teams') {
-    const isOffice = filters.teamMember === 'Office A' || filters.teamMember === 'Office B';
-    const members = isOffice ? (filters._officeMembers ?? []) : [filters.teamMember];
+    const isOffice = filters._officeMembers !== undefined;
+    const members = isOffice ? filters._officeMembers ?? [] : [filters.teamMember];
 
     if (members.length === 0) {
       // Office had no active members — match nothing rather than fall back to
@@ -173,14 +186,15 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
   return {
     id: Number(row.id),
     clientCrn: (row.client_crn as string | null) ?? '',
+    crnPending: Boolean(row.client_crn_pending),
     // Canonical name resolved via CLIENT_JOIN (aliased client_name); never the
     // retired free-text external_client column.
     externalClient: (row.client_name as string | null) ?? '',
     internalClient: {
       name: row.internal_client_name as string,
-      clientDept: row.internal_client_dept as 'Advisory' | 'Brokerage' | 'Institutional',
+      clientDept: row.internal_client_dept as string,
     },
-    intakeType: row.intake_type as 'IRQ' | 'SERF' | 'Ad-Hoc',
+    intakeType: row.intake_type as string,
     adHocChannel: (row.ad_hoc_channel as string | undefined) as import('../types/engagements').AdHocChannel | undefined,
     type: row.type as string,
     teamMembers: JSON.parse((row.team_members as string) || '[]') as string[],

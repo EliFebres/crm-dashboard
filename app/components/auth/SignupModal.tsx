@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, ArrowRight, CheckCircle, X } from 'lucide-react';
 import { Select } from '@/app/components/ui/Select';
 import { getTeams, getOffices } from '@/app/lib/api/org';
+import { getTitles } from '@/app/lib/api/titles';
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
   const [success, setSuccess] = useState<'pending' | null>(null);
   const [teams, setTeams] = useState<string[]>([]);
   const [offices, setOffices] = useState<string[]>([]);
+  const [titles, setTitles] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -57,6 +59,15 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
           setForm(prev => (prev.office ? prev : { ...prev, office: names[0] ?? '' }));
         })
         .catch(() => setOffices([]));
+
+      // Titles are an admin-managed list too — default to the first (highest rank).
+      getTitles()
+        .then(items => {
+          const names = items.map(t => t.name);
+          setTitles(names);
+          setForm(prev => (prev.title ? prev : { ...prev, title: names[0] ?? '' }));
+        })
+        .catch(() => setTitles([]));
     }
   }, [isOpen]);
 
@@ -316,13 +327,12 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               {/* Title */}
               <div>
                 <label className="block text-[13px] font-medium text-[#9b9ba4] mb-2">Title</label>
-                <input
-                  type="text"
+                <Select
                   value={form.title}
-                  onChange={set('title')}
-                  className={inputClass('title')}
-                  placeholder="e.g. Associate, Analyst"
-                  autoComplete="organization-title"
+                  onValueChange={v => { setForm(prev => ({ ...prev, title: v })); setFieldErrors(prev => ({ ...prev, title: '' })); }}
+                  options={titles}
+                  placeholder="Select title"
+                  hasError={!!fieldErrors.title}
                 />
                 {fieldErrors.title && <p className="text-red-400 text-[12px] mt-1">{fieldErrors.title}</p>}
               </div>

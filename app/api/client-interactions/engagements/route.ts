@@ -10,6 +10,7 @@ import { toISODate } from '@/app/lib/db/dateUtils';
 import type { EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
+import { ensureInternalClient } from '@/app/lib/db/internalClients';
 
 // Parses repeated `sort=col:dir` params into a SortSpec[] (preserves order).
 function parseSortParams(sp: URLSearchParams): SortSpec[] {
@@ -133,11 +134,20 @@ export async function POST(req: NextRequest) {
     const id = Number(insertRows[0].id);
 
     const rows = await query<Record<string, unknown>>(
-      `SELECT e.*, c.name AS client_name FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
+      `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ?`,
       [id]
     );
 
     emitEngagementChange('created');
+    // Register any newly-typed internal client in the managed registry so it
+    // shows up in Settings → Internal Clients (best-effort; never blocks the write).
+    if (body.internalClient?.name) {
+      void ensureInternalClient(
+        body.internalClient.name,
+        department,
+        { id: auth.payload.sub, name: `${auth.payload.firstName} ${auth.payload.lastName}` }
+      ).catch(err => console.error('ensureInternalClient (create) failed:', err));
+    }
     void logActivity(req, {
       action: 'engagement.create',
       entityType: 'engagement',

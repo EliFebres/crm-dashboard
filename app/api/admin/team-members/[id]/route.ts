@@ -6,6 +6,7 @@ import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToTeamMember } from '@/app/lib/auth/types';
 import { logActivity } from '@/app/lib/activity/log';
 import { orgNameExists } from '@/app/lib/db/org';
+import { titleExists } from '@/app/lib/db/titles';
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -37,7 +38,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { status, userId, office } = body as { status?: string; userId?: string | null; office?: string };
+    const { status, userId, office, title } = body as { status?: string; userId?: string | null; office?: string; title?: string };
 
     const sets: string[] = [];
     const values: unknown[] = [];
@@ -82,6 +83,15 @@ export async function PATCH(
       values.push(office);
     }
 
+    if (title !== undefined) {
+      // Allow clearing the title (''), but any non-empty value must be a real title.
+      if (title && !(await titleExists(title))) {
+        return NextResponse.json({ error: 'Invalid title.' }, { status: 400 });
+      }
+      sets.push('title = ?');
+      values.push(title);
+    }
+
     if (sets.length === 0) {
       return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 });
     }
@@ -94,7 +104,7 @@ export async function PATCH(
       action: 'team_member.update',
       entityType: 'team_member',
       entityId: id,
-      details: { status, userId, office },
+      details: { status, userId, office, title },
     });
     return NextResponse.json(rowToTeamMember(updated[0] as Record<string, unknown>));
   } catch (err) {

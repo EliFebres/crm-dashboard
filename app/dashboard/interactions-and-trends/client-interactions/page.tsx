@@ -102,6 +102,12 @@ function parseISODate(dateStr: string): string {
 // COMPONENT
 // =============================================================================
 
+// Short label for the active period filter, shown on the chart cards so the
+// window they display is never mistaken for a fixed range.
+const PERIOD_LABELS: Record<string, string> = {
+  '1W': '1W', '1M': '1M', '3M': '3M', '6M': '6M', 'YTD': 'YTD', '1Y': '1Y', 'ALL': 'All',
+};
+
 export default function EngagementsDashboard() {
   const { user } = useCurrentUser();
   const readOnly = isReadOnlyUser(user);
@@ -379,12 +385,17 @@ export default function EngagementsDashboard() {
   const handleStatusChange = (engagementId: number, newStatus: string) => {
     const target = engagements.find(e => e.id === engagementId);
     if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
+    // Completing an interaction with no finish date defaults it to today (mirrors the
+    // server). Optimistically show today now, then reconcile with the server's value.
+    const autoFinish = newStatus === 'Completed' && (!target.dateFinished || target.dateFinished === '—');
     patchEngagements(e => ({
       ...e,
       status: newStatus,
-      dateFinished: e.dateFinished,
+      dateFinished: autoFinish ? formatDisplayDate(parseISODate('—')) : e.dateFinished,
     }), engagementId);
-    updateEngagementStatus(engagementId, newStatus).catch(console.error);
+    updateEngagementStatus(engagementId, newStatus)
+      .then(res => patchEngagements(e => ({ ...e, dateFinished: res.dateFinished }), engagementId))
+      .catch(console.error);
   };
 
   const handleNoteAdded = (engagementId: number) => {
@@ -412,6 +423,7 @@ export default function EngagementsDashboard() {
       id: engagement.id,
       data: {
         clientCrn: engagement.clientCrn,
+        clientCrnPending: engagement.crnPending ?? false,
         externalClient: engagement.externalClient,
         internalClient: engagement.internalClient.name,
         internalClientDept: engagement.internalClient.clientDept,
@@ -436,6 +448,7 @@ export default function EngagementsDashboard() {
       originalDateFinished: engagement.dateFinished,
       version: engagement.version,
       createdById: engagement.createdById,
+      filepath: engagement.filepath,
     });
     setEditingEngagementNoteCount(engagement.noteCount ?? 0);
     setIsNewInteractionOpen(true);
@@ -509,6 +522,7 @@ export default function EngagementsDashboard() {
         initialNoteCount={editingEngagementNoteCount}
         onNoteAdded={handleNoteAdded}
         onNoteDeleted={handleNoteDeleted}
+        onFilepathSaved={handleFilepathSaved}
         onBulkUploadClick={() => setIsBulkUploadOpen(true)}
       />
       <BulkUploadModal
@@ -625,7 +639,7 @@ export default function EngagementsDashboard() {
                   <div className="flex items-center justify-between mb-3 flex-shrink-0">
                     <div>
                       <h3 className="text-sm font-medium text-white">Completed Interactions</h3>
-                      <p className="text-xs text-muted">Daily completed projects & touch points (1YR)</p>
+                      <p className="text-xs text-muted">Daily completed projects & touch points ({PERIOD_LABELS[period] ?? period})</p>
                     </div>
                     <button className="p-1.5 bg-zinc-800/50 backdrop-blur-sm text-muted hover:text-cyan-400 transition-colors" title="Download chart data">
                       <Download className="w-3.5 h-3.5" />
@@ -644,7 +658,7 @@ export default function EngagementsDashboard() {
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
                     <div>
                       <h3 className="text-sm font-medium text-white">Client Department</h3>
-                      <p className="text-xs text-muted">Total projects (1YR)</p>
+                      <p className="text-xs text-muted">Total projects ({PERIOD_LABELS[period] ?? period})</p>
                     </div>
                     <button className="p-1.5 bg-zinc-800/50 backdrop-blur-sm text-muted hover:text-cyan-400 transition-colors" title="Download chart data">
                       <Download className="w-3.5 h-3.5" />

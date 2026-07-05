@@ -111,7 +111,7 @@ export interface PortfolioReturns {
 
 export interface InternalClientInfo {
   name: string;
-  clientDept: 'Advisory' | 'Brokerage' | 'Institutional';
+  clientDept: string; // A managed department name (see the departments table)
 }
 
 export interface LoggedPortfolio {

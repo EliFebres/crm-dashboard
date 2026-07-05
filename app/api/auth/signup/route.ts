@@ -9,6 +9,7 @@ import { rowToUser } from '@/app/lib/auth/types';
 import { emitUserChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { orgNameExists } from '@/app/lib/db/org';
+import { titleExists } from '@/app/lib/db/titles';
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,12 +39,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Passwords do not match.' }, { status: 400 });
     }
 
-    // Validate team/office against the admin-managed lists in the DB
+    // Validate team/office/title against the admin-managed lists in the DB
     if (!(await orgNameExists('team', team))) {
       return NextResponse.json({ error: 'Invalid team selection.' }, { status: 400 });
     }
     if (!(await orgNameExists('office', office))) {
       return NextResponse.json({ error: 'Invalid office selection.' }, { status: 400 });
+    }
+    if (!(await titleExists(title))) {
+      return NextResponse.json({ error: 'Invalid title selection.' }, { status: 400 });
     }
 
     // Check for duplicate email
@@ -52,8 +56,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 });
     }
 
-    // Determine if this is the first user (auto-admin + active)
-    const countResult = await queryUsers<{ count: number }>('SELECT COUNT(*) AS count FROM users');
+    // Determine if this is the first user (auto-admin + active). Seeded demo
+    // accounts (is_seed = 1, set only by scripts/seed-db.ts) don't count, so the
+    // first REAL person to sign up still becomes the admin even on a seeded DB.
+    const countResult = await queryUsers<{ count: number }>('SELECT COUNT(*) AS count FROM users WHERE is_seed = 0');
     const isFirstUser = Number(countResult[0]?.count ?? 0) === 0;
 
     const id = randomUUID();
