@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Users, CheckCircle, XCircle, ShieldCheck, ShieldOff, RotateCcw, Clock, Trash2 } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import type { User } from '@/app/lib/auth/types';
+import { Select } from '@/app/components/ui/Select';
+import { getTitles } from '@/app/lib/api/titles';
 
 function StatusBadge({ status }: { status: User['status'] }) {
   if (status === 'active') {
@@ -86,6 +88,12 @@ export default function AdminUsersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [titles, setTitles] = useState<string[]>([]);
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getTitles().then(items => setTitles(items.map(t => t.name))).catch(() => setTitles([]));
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -115,7 +123,7 @@ export default function AdminUsersPage() {
     return () => es.close();
   }, [fetchUsers]);
 
-  async function patch(id: string, body: Partial<Pick<User, 'status' | 'role'>>) {
+  async function patch(id: string, body: Partial<Pick<User, 'status' | 'role' | 'title'>>) {
     setActionLoading(id);
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
@@ -215,7 +223,30 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-muted">{u.email}</td>
-                    <td className="px-4 py-3 text-muted">{u.title}</td>
+                    <td className="px-4 py-3">
+                      {editingTitleId === u.id ? (
+                        <div className="w-40">
+                          <Select
+                            value={u.title}
+                            onValueChange={v => {
+                              if (v !== u.title) patch(u.id, { title: v });
+                              setEditingTitleId(null);
+                            }}
+                            options={titles}
+                            placeholder="Select title"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setEditingTitleId(u.id)}
+                          disabled={busy}
+                          className="text-muted text-sm hover:text-zinc-200 transition-colors disabled:opacity-50"
+                          title="Click to change title (promotion)"
+                        >
+                          {u.title || <span className="text-zinc-600">—</span>}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted">{u.team}</td>
                     <td className="px-4 py-3 text-muted">{u.office}</td>
                     <td className="px-4 py-3"><RoleBadge role={u.role} /></td>
