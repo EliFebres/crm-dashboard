@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Plus, Trash2, Check, ClipboardPaste, Download, Briefcase } from 'lucide-react';
+import { Plus, Trash2, Check, ClipboardPaste, Download, Briefcase, DollarSign } from 'lucide-react';
 import type { AssetClass, ConstituentType, ClientModel, PortfolioHolding } from '@/app/lib/types/engagements';
 import {
   ASSET_CLASSES, CONSTITUENT_TYPES, parseAssetClass, parseConstituentType, normalizeHoldingWeights,
@@ -84,7 +84,7 @@ const modelToEditable = (m: ClientModel): EditableModel => ({
   id: m.id || generateId(),
   name: m.name,
   isMain: m.isMain,
-  aum: m.aum != null ? String(m.aum) : '',
+  aum: m.aum != null ? m.aum.toLocaleString('en-US') : '',
   holdings: m.holdings.length > 0 ? [...m.holdings.map(holdingToEditable), createEmptyRow()] : [createEmptyRow()],
   updatedAt: m.updatedAt,
 });
@@ -285,16 +285,19 @@ const ClientModelsEditor: React.FC<ClientModelsEditorProps> = ({ models: seed, o
                 className="w-full px-2.5 py-1.5 bg-zinc-800/50 border border-zinc-700/50 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50"
               />
             </div>
-            <div className="w-28">
+            <div className="w-44">
               <label className="block text-[11px] font-medium text-muted uppercase tracking-wider mb-1">AUM</label>
-              <input
-                type="text"
-                value={selected.aum}
-                onChange={(e) => patchSelected({ aum: e.target.value })}
-                placeholder="e.g. 200M"
-                title="Optional. Accepts shorthand like 200M or 1.5B."
-                className="w-full px-2.5 py-1.5 bg-zinc-800/50 border border-zinc-700/50 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 font-mono text-left"
-              />
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                <input
+                  type="text"
+                  value={selected.aum}
+                  onChange={(e) => patchSelected({ aum: e.target.value })}
+                  placeholder="e.g. 130,000,000"
+                  title="Optional. Accepts full numbers like 130,000,000 or shorthand like 200M."
+                  className="w-full pl-9 pr-3 py-1.5 bg-zinc-800/50 border border-zinc-700/50 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 font-mono"
+                />
+              </div>
             </div>
             <button
               type="button"

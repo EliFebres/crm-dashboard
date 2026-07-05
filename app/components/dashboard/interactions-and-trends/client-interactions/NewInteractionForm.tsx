@@ -64,19 +64,6 @@ interface NewInteractionFormProps {
   onBulkUploadClick?: () => void;
 }
 
-// Format NNA for display
-const formatNNADisplay = (value: number | null): string => {
-  if (!value || value === 0) return '—';
-  if (value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  } else if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
-  } else if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
-};
-
 export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onFilepathSaved, onBulkUploadClick }: NewInteractionFormProps) {
   const isEditMode = !!editingEngagement;
   const { user: currentUser } = useCurrentUser();
@@ -663,7 +650,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               )}
 
               {/* Row 2: External Client + Internal Client */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* items-start so the Internal Client column doesn't stretch to match a
+                  taller External Client column (CRN line / register UI) and open a gap. */}
+              <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="relative" ref={externalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     External Client <span className="text-red-400">*</span>
@@ -847,6 +836,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   )}
                   {errors.externalClient && <p className="mt-1 text-xs text-red-400">{errors.externalClient}</p>}
                 </div>
+                {/* Right column stacks Internal Client + its Department so the Dept
+                    box sits directly under the input, not below the taller left column. */}
+                <div className="space-y-4">
                 <div className="relative" ref={internalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Internal Client <span className="text-red-400">*</span>
@@ -920,36 +912,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   )}
                   {errors.internalClient && <p className="mt-1 text-xs text-red-400">{errors.internalClient}</p>}
                 </div>
-              </div>
 
-              {/* Department row — shown when a client name is committed */}
-              {formData.internalClient && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div /> {/* spacer aligns with External Client column */}
-                  <div>
-                    {formData.internalClientDept ? (
-                      /* Existing client — show dept as read-only */
-                      <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
-                        <span className="text-xs font-semibold text-muted uppercase tracking-wider">Dept</span>
-                        <span className="text-sm text-muted">{formData.internalClientDept}</span>
-                      </div>
-                    ) : (
-                      /* New client — dept selector */
-                      <div>
-                        <label className="block text-sm font-medium text-muted mb-1.5">
-                          Department <span className="text-red-400">*</span>
-                        </label>
-                        <Select
-                          value={formData.internalClientDept}
-                          onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v }))}
-                          options={departments}
-                          placeholder="Select department..."
-                        />
-                      </div>
-                    )}
-                  </div>
+                {/* Department — shown once a client name is committed, directly below. */}
+                {formData.internalClient && (
+                  formData.internalClientDept ? (
+                    /* Existing client — show dept as read-only */
+                    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
+                      <span className="text-xs font-semibold text-muted uppercase tracking-wider">Dept</span>
+                      <span className="text-sm text-muted">{formData.internalClientDept}</span>
+                    </div>
+                  ) : (
+                    /* New client — dept selector */
+                    <div>
+                      <label className="block text-sm font-medium text-muted mb-1.5">
+                        Department <span className="text-red-400">*</span>
+                      </label>
+                      <Select
+                        value={formData.internalClientDept}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v }))}
+                        options={departments}
+                        placeholder="Select department..."
+                      />
+                    </div>
+                  )
+                )}
                 </div>
-              )}
+              </div>
 
               {/* Row 3: Team Members (4 columns, grouped by office) */}
               <div>
@@ -1045,7 +1033,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     }`}
                   >
                     <DollarSign className="w-4 h-4" />
-                    {formData.nna ? formatNNADisplay(formData.nna) : '+ Add NNA'}
+                    {formData.nna ? <span className="font-mono">{formData.nna.toLocaleString('en-US')}</span> : '+ Add NNA'}
                   </button>
                 </div>
 
