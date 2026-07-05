@@ -281,19 +281,19 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     >
       <td className="px-4 py-3">
         <div>
-          <span className={`text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
+          <span className={`block text-sm font-medium ${engagement.externalClient ? 'text-zinc-200' : 'text-muted'}`}>
             {engagement.externalClient || '—'}
           </span>
           {engagement.crnPending ? (
             <span
-              className="mt-1 inline-flex items-center gap-0.5 px-1 py-px text-[8px] font-semibold uppercase tracking-wide rounded bg-red-500/15 text-red-400 border border-red-500/30"
+              className="mt-1 flex w-fit items-center gap-0.5 px-1 py-px text-[8px] font-semibold uppercase tracking-wide rounded bg-red-500/15 text-red-400 border border-red-500/30"
               title="This client has no CRN yet. Open the interaction to add the real CRN."
             >
               <AlertTriangle className="w-2.5 h-2.5" />
               CRN Pending
             </span>
           ) : (
-            engagement.clientCrn && <p className="text-xs text-muted">{engagement.clientCrn}</p>
+            engagement.clientCrn && <p className="block text-xs text-muted">{engagement.clientCrn}</p>
           )}
         </div>
       </td>
