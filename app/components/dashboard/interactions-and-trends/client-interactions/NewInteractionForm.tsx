@@ -11,6 +11,7 @@ import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types
 import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+  getClientModels,
 } from '@/app/lib/api/client-interactions';
 import { getDepartments } from '@/app/lib/api/internal-clients';
 import { getIntakeTypes, getProjectTypes, type IntakeTypeItem, type ProjectTypeItem } from '@/app/lib/api/types';
@@ -129,10 +130,18 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
-  // Summary of the selected client's models, refreshed after a save in the modal.
+  // Summary of the selected client's models (count source for the "Manage Models"
+  // button). Models are client-level, so we fetch by CRN; whether the button
+  // *lights up* is gated separately on this interaction's portfolioLogged flag.
   const [modelSummary, setModelSummary] = useState<{ count: number; mainName?: string } | null>(null);
-  // Models are client-level; switching clients invalidates the cached summary.
-  useEffect(() => { setModelSummary(null); }, [formData.clientCrn]);
+  useEffect(() => {
+    if (!isOpen || !formData.clientCrn) { setModelSummary(null); return; }
+    let active = true;
+    getClientModels(formData.clientCrn)
+      .then(models => { if (active) setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name }); })
+      .catch(() => { if (active) setModelSummary(null); });
+    return () => { active = false; };
+  }, [isOpen, formData.clientCrn]);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [localNoteCount, setLocalNoteCount] = useState(initialNoteCount ?? 0);
@@ -1044,6 +1053,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Client Models <span className="text-muted font-normal text-xs">(Optional)</span>
                   </label>
+                  {(() => {
+                    // Mirror the table "Model Logged" check mark: light up + show the
+                    // count only when this interaction logged a portfolio.
+                    const showModels = !!formData.portfolioLogged && !!modelSummary && modelSummary.count > 0;
+                    return (
                   <button
                     type="button"
                     onClick={() => setIsPortfolioModalOpen(true)}
@@ -1052,7 +1066,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     className={`w-full h-[38px] px-3 bg-zinc-800/50 border rounded-lg text-sm text-left transition-colors flex items-center gap-2 ${
                       !formData.clientCrn
                         ? 'border-zinc-800 text-zinc-600 cursor-not-allowed'
-                        : modelSummary && modelSummary.count > 0
+                        : showModels
                           ? 'border-cyan-500/50 text-cyan-400 hover:border-cyan-500/70'
                           : 'border-zinc-700 text-muted hover:border-cyan-500/50'
                     }`}
@@ -1060,10 +1074,12 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     <Briefcase className="w-4 h-4" />
                     {!formData.clientCrn
                       ? 'Select a client first'
-                      : modelSummary && modelSummary.count > 0
-                        ? `${modelSummary.count} model${modelSummary.count > 1 ? 's' : ''}${modelSummary.mainName ? ` · ${modelSummary.mainName}` : ''}`
+                      : showModels
+                        ? `${modelSummary!.count} model${modelSummary!.count > 1 ? 's' : ''}${modelSummary!.mainName ? ` · ${modelSummary!.mainName}` : ''}`
                         : 'Manage Models'}
                   </button>
+                    );
+                  })()}
                 </div>
               </div>
 

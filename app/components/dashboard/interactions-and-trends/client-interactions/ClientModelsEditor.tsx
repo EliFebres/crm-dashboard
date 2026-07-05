@@ -23,6 +23,7 @@ interface EditableModel {
   isMain: boolean;
   aum: string;       // free-form, accepts shorthand like "200M"
   holdings: EditableHolding[];
+  updatedAt?: string; // last-logged timestamp (undefined until first saved)
 }
 
 const generateId = (): string => {
@@ -41,6 +42,18 @@ const formatAum = (value: number): string => {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
   return `$${value.toLocaleString()}`;
+};
+
+// Format a stored log timestamp for display. Handles both ISO dates ("2026-07-03",
+// from seeding) and SQLite datetimes ("2026-07-03 14:22:11") without a timezone
+// off-by-one, by reading the calendar date portion directly.
+const formatLoggedDate = (value?: string): string | null => {
+  if (!value) return null;
+  const m = value.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
 // Parse an AUM input that accepts plain numbers or K/M/B shorthand ("200M", "1.5b").
@@ -73,6 +86,7 @@ const modelToEditable = (m: ClientModel): EditableModel => ({
   isMain: m.isMain,
   aum: m.aum != null ? String(m.aum) : '',
   holdings: m.holdings.length > 0 ? [...m.holdings.map(holdingToEditable), createEmptyRow()] : [createEmptyRow()],
+  updatedAt: m.updatedAt,
 });
 
 // Convert an editable holding row to a typed holding (or null if incomplete).
@@ -235,7 +249,15 @@ const ClientModelsEditor: React.FC<ClientModelsEditorProps> = ({ models: seed, o
                   </span>
                 )}
               </div>
-              <div className="text-[11px] text-muted mt-0.5">{aum != null ? formatAum(aum) : 'AUM —'}</div>
+              <div className="text-[11px] text-muted mt-0.5 flex items-center gap-1.5">
+                <span>{aum != null ? formatAum(aum) : 'AUM —'}</span>
+                {formatLoggedDate(m.updatedAt) && (
+                  <>
+                    <span className="text-zinc-600">·</span>
+                    <span className="truncate">Logged {formatLoggedDate(m.updatedAt)}</span>
+                  </>
+                )}
+              </div>
             </button>
           );
         })}
@@ -296,6 +318,13 @@ const ClientModelsEditor: React.FC<ClientModelsEditorProps> = ({ models: seed, o
             >
               <Trash2 className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Last-logged timestamp */}
+          <div className="text-[11px] text-muted -mt-1">
+            {formatLoggedDate(selected.updatedAt)
+              ? <>Logged <span className="text-zinc-300">{formatLoggedDate(selected.updatedAt)}</span></>
+              : 'Not saved yet'}
           </div>
 
           {/* Paste hint */}

@@ -291,14 +291,25 @@ function seededAum(seed: number): number {
   return tiers[Math.floor(rng(seed) * tiers.length)];
 }
 
+/** ISO "YYYY-MM-DD" for a now-relative date `days` before today. */
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
+}
+
 async function seedClientModels() {
   // Prefer each client's most-recent logged portfolio as its main model, so the
   // main model matches real logged data where it exists.
-  const legacyByCrn = new Map<string, { id: number; holdings: PortfolioHolding[] }>();
+  const legacyByCrn = new Map<string, { id: number; holdings: PortfolioHolding[]; loggedAt: string }>();
   for (const e of engagements) {
     if (e.clientCrn && e.portfolio && e.portfolio.length) {
       const prev = legacyByCrn.get(e.clientCrn);
-      if (!prev || e.id > prev.id) legacyByCrn.set(e.clientCrn, { id: e.id, holdings: e.portfolio });
+      if (!prev || e.id > prev.id) {
+        // Log the main model against the interaction where the portfolio was
+        // captured, so its "logged" date matches real (now-relative) data.
+        legacyByCrn.set(e.clientCrn, { id: e.id, holdings: e.portfolio, loggedAt: parseDisplayDate(e.dateStarted) });
+      }
     }
   }
 
@@ -309,17 +320,22 @@ async function seedClientModels() {
     const seed = (idx + 1) * 13;
     const legacy = legacyByCrn.get(c.crn);
 
-    const models: Array<{ name: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[] }> = [
-      { name: 'Core Model', isMain: true, aum: seededAum(seed), holdings: legacy?.holdings ?? synthHoldings(seed, 'balanced') },
+    const models: Array<{ name: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[]; loggedAt?: string }> = [
+      {
+        name: 'Core Model', isMain: true, aum: seededAum(seed),
+        holdings: legacy?.holdings ?? synthHoldings(seed, 'balanced'),
+        // Prefer the source interaction's date; else a now-relative logged date.
+        loggedAt: legacy?.loggedAt ?? isoDaysAgo(Math.floor(rng(seed) * 120) + 5),
+      },
     ];
     if (idx % 5 < 2) {
       // ~40% of clients also run an equity-tilted growth model.
-      models.push({ name: 'Growth Model', isMain: false, aum: seededAum(seed + 7), holdings: synthHoldings(seed + 7, 'growth') });
+      models.push({ name: 'Growth Model', isMain: false, aum: seededAum(seed + 7), holdings: synthHoldings(seed + 7, 'growth'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 7) * 150) + 10) });
     }
     if (idx % 5 === 0) {
       // ~20% additionally run a 60/40 — AUM intentionally left blank to exercise
       // the "unknown AUM" path.
-      models.push({ name: 'Conservative 60/40', isMain: false, holdings: synthHoldings(seed + 11, 'conservative') });
+      models.push({ name: 'Conservative 60/40', isMain: false, holdings: synthHoldings(seed + 11, 'conservative'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 11) * 180) + 15) });
     }
 
     await replaceClientModels(c.crn, models);
