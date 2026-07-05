@@ -69,6 +69,38 @@ export async function createInternalClient(
 }
 
 /**
+ * Ensure an internal client exists in the registry (idempotent, best-effort).
+ *
+ * Called as a side-effect of engagement writes so a free-form name typed into the
+ * New/Edit Interaction form also lands in the managed registry. Unlike
+ * createInternalClient, this never throws for the caller to handle: it returns
+ * false (a no-op) when the name/department is blank or the department is unknown,
+ * so a registry hiccup can't fail the engagement write. Uses INSERT OR IGNORE
+ * against the unique name index, so it's race-safe and a duplicate is a silent
+ * no-op. Returns true only when a new row was actually inserted.
+ */
+export async function ensureInternalClient(
+  rawName: string,
+  rawDepartment: string,
+  creator?: { id: string; name: string }
+): Promise<boolean> {
+  const name = (rawName ?? '').trim();
+  const department = (rawDepartment ?? '').trim();
+  if (!name || !department) return false;
+  if (!(await departmentExists(department))) return false;
+
+  const id = randomUUID();
+  return executeTransaction<boolean>((tx) => {
+    const result = tx.run(
+      `INSERT OR IGNORE INTO internal_clients (id, name, department, created_by_id, created_by_name)
+         VALUES (?, ?, ?, ?, ?)`,
+      [id, name, department, creator?.id ?? null, creator?.name ?? null]
+    );
+    return result.changes > 0;
+  });
+}
+
+/**
  * Update an internal client's name and/or department. A name change cascades into
  * engagements.internal_client_name. Atomic.
  */
