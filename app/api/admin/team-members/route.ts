@@ -7,6 +7,7 @@ import { rowToTeamMember, toDisplayName } from '@/app/lib/auth/types';
 import { randomUUID } from 'crypto';
 import { logActivity } from '@/app/lib/activity/log';
 import { orgNameExists } from '@/app/lib/db/org';
+import { titleExists } from '@/app/lib/db/titles';
 
 async function requireAdmin(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -65,9 +66,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { firstName, lastName, team, office } = body as {
+    const { firstName, lastName, title, team, office } = body as {
       firstName: string;
       lastName: string;
+      title?: string;
       team: string;
       office: string;
     };
@@ -80,6 +82,10 @@ export async function POST(req: NextRequest) {
     }
     if (!(await orgNameExists('office', office))) {
       return NextResponse.json({ error: 'Invalid office.' }, { status: 400 });
+    }
+    // Title is optional on the roster, but a provided one must be a real title.
+    if (title && !(await titleExists(title))) {
+      return NextResponse.json({ error: 'Invalid title.' }, { status: 400 });
     }
 
     const displayName = toDisplayName(firstName.trim(), lastName.trim());
@@ -98,9 +104,9 @@ export async function POST(req: NextRequest) {
 
     const id = randomUUID();
     await executeUsers(
-      `INSERT INTO team_members (id, display_name, first_name, last_name, team, office)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, displayName, firstName.trim(), lastName.trim(), team, office]
+      `INSERT INTO team_members (id, display_name, first_name, last_name, title, team, office)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, displayName, firstName.trim(), lastName.trim(), title?.trim() ?? '', team, office]
     );
 
     const rows = await queryUsers(`SELECT * FROM team_members WHERE id = ?`, [id]);
@@ -108,7 +114,7 @@ export async function POST(req: NextRequest) {
       action: 'team_member.create',
       entityType: 'team_member',
       entityId: id,
-      details: { displayName, team, office },
+      details: { displayName, title: title?.trim() ?? '', team, office },
     });
     return NextResponse.json(rowToTeamMember(rows[0] as Record<string, unknown>), { status: 201 });
   } catch (err) {

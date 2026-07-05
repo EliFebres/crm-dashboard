@@ -5,11 +5,25 @@ import { Users, Plus, LinkIcon, X, AlertCircle } from 'lucide-react';
 import type { TeamMember, User } from '@/app/lib/auth/types';
 import { Select } from '@/app/components/ui/Select';
 import { getTeams, getOffices } from '@/app/lib/api/org';
+import { getTitles } from '@/app/lib/api/titles';
+import { useRowFlashes, FLASH_CLASS, FLASH_TEXT_CLASS, type FieldSpec } from '@/app/lib/hooks/useRowFlashes';
+import { useSettingsStream } from '@/app/lib/hooks/useSettingsStream';
 
 interface TeamMemberWithLinked extends TeamMember {
   linkedEmail: string | null;
   linkedName: string | null;
 }
+
+// A registry rename cascades into team/office/title on members, and roster/user
+// edits change links — refetch on any of them.
+const ROSTER_LIVE = ['team', 'office', 'title', 'team_member', 'user'];
+const ROSTER_FLASH_SPECS: FieldSpec<TeamMemberWithLinked>[] = [
+  { key: 'name', get: r => `${r.firstName} ${r.lastName}` },
+  { key: 'title', get: r => r.title },
+  { key: 'office', get: r => r.office },
+  { key: 'status', get: r => r.status },
+  { key: 'linked', get: r => r.linkedEmail ?? '' },
+];
 
 function StatusBadge({ status }: { status: TeamMember['status'] }) {
   if (status === 'active') {
@@ -61,15 +75,17 @@ function ActionButton({
 interface AddModalProps {
   teams: string[];
   offices: string[];
+  titles: string[];
   onClose: () => void;
   onAdded: () => void;
 }
 
-function AddModal({ teams, offices, onClose, onAdded }: AddModalProps) {
+function AddModal({ teams, offices, titles, onClose, onAdded }: AddModalProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [team, setTeam] = useState<string>(teams[0] ?? '');
   const [office, setOffice] = useState<string>(offices[0] ?? '');
+  const [title, setTitle] = useState<string>(titles[0] ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -81,7 +97,7 @@ function AddModal({ teams, offices, onClose, onAdded }: AddModalProps) {
       const res = await fetch('/api/admin/team-members', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim(), team, office }),
+        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim(), title, team, office }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -126,6 +142,15 @@ function AddModal({ teams, offices, onClose, onAdded }: AddModalProps) {
                 className="w-full px-3 py-2 text-sm bg-zinc-800/50 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-cyan-500/50 transition-colors"
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted mb-1">Title</label>
+            <Select
+              value={title}
+              onValueChange={setTitle}
+              options={titles}
+              placeholder="Select title"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-muted mb-1">Team</label>
@@ -266,13 +291,23 @@ export default function TeamMembersManager() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [linkingMember, setLinkingMember] = useState<TeamMemberWithLinked | null>(null);
   const [editingOfficeId, setEditingOfficeId] = useState<string | null>(null);
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [teams, setTeams] = useState<string[]>([]);
   const [offices, setOffices] = useState<string[]>([]);
+  const [titles, setTitles] = useState<string[]>([]);
 
   useEffect(() => {
     getTeams().then(items => setTeams(items.map(t => t.name))).catch(() => setTeams([]));
     getOffices().then(items => setOffices(items.map(o => o.name))).catch(() => setOffices([]));
+    getTitles().then(items => setTitles(items.map(t => t.name))).catch(() => setTitles([]));
   }, []);
+
+  const flashes = useRowFlashes(members, ROSTER_FLASH_SPECS);
+  const cellFlash = (id: string, key: string) => {
+    const t = flashes.cells.get(id)?.[key];
+    return t ? FLASH_TEXT_CLASS[t.kind] : '';
+  };
+  const rowFlash = (id: string) => (flashes.newIds.has(id) ? FLASH_CLASS.neutral : '');
 
   const fetchAll = useCallback(async () => {
     try {
@@ -293,9 +328,29 @@ export default function TeamMembersManager() {
     }
   }, []);
 
+  // Silent refetch (no loading flicker) for live updates and post-mutation, so
+  // the changed cells flash instead of the whole table blinking.
+  const refetch = useCallback(async () => {
+    try {
+      const [membersRes, usersRes] = await Promise.all([
+        fetch('/api/admin/team-members'),
+        fetch('/api/admin/users'),
+      ]);
+      if (membersRes.ok) setMembers(await membersRes.json());
+      if (usersRes.ok) setUsers(await usersRes.json());
+    } catch {
+      /* transient — keep showing current data */
+    }
+  }, []);
+
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  const onStream = useCallback((entity: string) => {
+    if (ROSTER_LIVE.includes(entity)) refetch();
+  }, [refetch]);
+  useSettingsStream(onStream);
 
   async function patch(id: string, body: Record<string, unknown>) {
     setActionLoading(id);
@@ -305,7 +360,7 @@ export default function TeamMembersManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (res.ok) await fetchAll();
+      if (res.ok) await refetch();
     } finally {
       setActionLoading(null);
     }
@@ -354,6 +409,7 @@ export default function TeamMembersManager() {
                     <tr className="border-b border-zinc-800/50">
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Name</th>
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Display</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Title</th>
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Office</th>
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Status</th>
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">Linked Account</th>
@@ -364,10 +420,33 @@ export default function TeamMembersManager() {
                     {teamMembers.map(m => {
                       const busy = actionLoading === m.id;
                       return (
-                        <tr key={m.id} className="hover:bg-zinc-800/20 transition-colors align-middle">
-                          <td className="px-4 py-3 text-zinc-200 font-medium">{m.firstName} {m.lastName}</td>
+                        <tr key={m.id} className={`hover:bg-zinc-800/20 transition-colors align-middle ${rowFlash(m.id)}`}>
+                          <td className="px-4 py-3 text-zinc-200 font-medium"><span className={cellFlash(m.id, 'name')}>{m.firstName} {m.lastName}</span></td>
                           <td className="px-4 py-3">
                             <span className="font-mono text-xs px-1.5 py-0.5 bg-zinc-800 rounded text-cyan-400">{m.displayName}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {editingTitleId === m.id ? (
+                              <div className="w-40">
+                                <Select
+                                  value={m.title}
+                                  onValueChange={v => {
+                                    patch(m.id, { title: v });
+                                    setEditingTitleId(null);
+                                  }}
+                                  options={titles}
+                                  placeholder="Select title"
+                                />
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setEditingTitleId(m.id)}
+                                className={`text-left text-muted text-sm hover:text-zinc-200 transition-colors ${cellFlash(m.id, 'title')}`}
+                                title="Click to edit title"
+                              >
+                                {m.title || <span className="text-zinc-600">—</span>}
+                              </button>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             {editingOfficeId === m.id ? (
@@ -384,20 +463,19 @@ export default function TeamMembersManager() {
                             ) : (
                               <button
                                 onClick={() => setEditingOfficeId(m.id)}
-                                className="text-muted text-sm hover:text-zinc-200 transition-colors"
+                                className={`text-muted text-sm hover:text-zinc-200 transition-colors ${cellFlash(m.id, 'office')}`}
                                 title="Click to edit office"
                               >
                                 {m.office}
                               </button>
                             )}
                           </td>
-                          <td className="px-4 py-3"><StatusBadge status={m.status} /></td>
+                          <td className="px-4 py-3"><span className={`inline-flex ${cellFlash(m.id, 'status')}`}><StatusBadge status={m.status} /></span></td>
                           <td className="px-4 py-3">
                             {m.linkedEmail ? (
-                              <div className="flex items-center gap-1.5">
+                              <div className={`flex items-center gap-1.5 ${cellFlash(m.id, 'linked')}`}>
                                 <LinkIcon className="w-3 h-3 text-emerald-400" />
                                 <span className="text-muted text-xs">{m.linkedName}</span>
-                                <span className="text-muted text-xs">({m.linkedEmail})</span>
                               </div>
                             ) : (
                               <button
@@ -447,7 +525,7 @@ export default function TeamMembersManager() {
                     })}
                     {teamMembers.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6 text-center text-muted text-xs">No members yet.</td>
+                        <td colSpan={7} className="px-4 py-6 text-center text-muted text-xs">No members yet.</td>
                       </tr>
                     )}
                   </tbody>
@@ -464,14 +542,14 @@ export default function TeamMembersManager() {
       )}
 
       {showAddModal && (
-        <AddModal teams={teams} offices={offices} onClose={() => setShowAddModal(false)} onAdded={fetchAll} />
+        <AddModal teams={teams} offices={offices} titles={titles} onClose={() => setShowAddModal(false)} onAdded={refetch} />
       )}
       {linkingMember && (
         <LinkModal
           member={linkingMember}
           users={users}
           onClose={() => setLinkingMember(null)}
-          onLinked={fetchAll}
+          onLinked={refetch}
         />
       )}
     </section>

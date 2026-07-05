@@ -93,6 +93,8 @@ export interface ClientModel {
   aum?: number;                 // optional dollars (often unknown/empty)
   holdings: PortfolioHolding[]; // weights normalized to sum to 1
   sortOrder: number;
+  createdAt?: string;           // when first logged (preserved across saves)
+  updatedAt?: string;           // when last logged/changed (bumps only on content change)
 }
 
 export interface NoteEntry {

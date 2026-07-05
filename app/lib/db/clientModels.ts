@@ -40,6 +40,8 @@ interface ClientModelRow {
   aum: number | null;
   holdings: string;
   sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 function rowToModel(r: ClientModelRow): ClientModel {
@@ -50,13 +52,15 @@ function rowToModel(r: ClientModelRow): ClientModel {
     aum: r.aum == null ? undefined : Number(r.aum),
     holdings: parseHoldings(r.holdings),
     sortOrder: Number(r.sort_order),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 
 /** List a client's models, ordered by sort_order then name. */
 export async function listClientModels(crn: string): Promise<ClientModel[]> {
   const rows = await query<ClientModelRow>(
-    `SELECT id, name, is_main, aum, holdings, sort_order
+    `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
        FROM client_models
       WHERE crn = ?
       ORDER BY sort_order, name COLLATE NOCASE`,
@@ -84,9 +88,10 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
     throw new ClientModelError(400, 'Expected an array of models.');
   }
 
-  // Sanitize + normalize each model before touching the DB.
+  // Sanitize + normalize each model before touching the DB. `loggedAt` is an
+  // optional seed-only override for the log timestamp; the UI never sends it.
   const cleaned = input.map((raw) => {
-    const m = (raw ?? {}) as Partial<ClientModel>;
+    const m = (raw ?? {}) as Partial<ClientModel> & { loggedAt?: string };
     const name = typeof m.name === 'string' ? m.name.trim() : '';
     if (!name) throw new ClientModelError(400, 'Every model needs a name.');
     return {
@@ -95,6 +100,7 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
       isMain: Boolean(m.isMain),
       aum: normalizeAum(m.aum),
       holdings: normalizeHoldingWeights(Array.isArray(m.holdings) ? m.holdings : []),
+      loggedAt: typeof m.loggedAt === 'string' && m.loggedAt.trim() ? m.loggedAt.trim() : null,
     };
   });
 
@@ -111,22 +117,64 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
     const client = tx.get<{ x: number }>(`SELECT 1 AS x FROM clients WHERE crn = ?`, [crn]);
     if (!client) throw new ClientModelError(404, 'Client not found.');
 
-    tx.run(`DELETE FROM client_models WHERE crn = ?`, [crn]);
-    cleaned.forEach((m, i) => {
+    // Snapshot existing rows so we can preserve created_at and only bump updated_at
+    // when a model's content actually changed (so "logged" dates stay meaningful).
+    const existing = new Map(
+      tx.all<ClientModelRow>(
+        `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
+           FROM client_models WHERE crn = ?`,
+        [crn]
+      ).map((r) => [r.id, r])
+    );
+
+    // Drop rows the caller no longer includes.
+    const keepIds = cleaned.map((m) => m.id);
+    if (keepIds.length === 0) {
+      tx.run(`DELETE FROM client_models WHERE crn = ?`, [crn]);
+    } else {
+      const placeholders = keepIds.map(() => '?').join(', ');
       tx.run(
-        `INSERT INTO client_models (id, crn, name, is_main, aum, holdings, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [m.id, crn, m.name, m.isMain ? 1 : 0, m.aum, JSON.stringify(m.holdings), i]
+        `DELETE FROM client_models WHERE crn = ? AND id NOT IN (${placeholders})`,
+        [crn, ...keepIds]
       );
+    }
+
+    cleaned.forEach((m, i) => {
+      const holdingsJson = JSON.stringify(m.holdings);
+      const prev = existing.get(m.id);
+      if (!prev) {
+        // New model: created_at/updated_at land on loggedAt (seed) or now.
+        tx.run(
+          `INSERT INTO client_models
+             (id, crn, name, is_main, aum, holdings, sort_order, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+          [m.id, crn, m.name, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.loggedAt]
+        );
+      } else {
+        const changed =
+          prev.name !== m.name ||
+          Boolean(prev.is_main) !== m.isMain ||
+          (prev.aum == null ? null : Number(prev.aum)) !== (m.aum == null ? null : m.aum) ||
+          prev.holdings !== holdingsJson;
+        // Preserve created_at; advance updated_at only on a real content change
+        // (a seed loggedAt override still wins when provided).
+        tx.run(
+          `UPDATE client_models
+              SET name = ?, is_main = ?, aum = ?, holdings = ?, sort_order = ?,
+                  updated_at = COALESCE(?, ${changed ? `datetime('now')` : 'updated_at'})
+            WHERE id = ?`,
+          [m.name, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.id]
+        );
+      }
     });
 
-    return cleaned.map((m, i) => ({
-      id: m.id,
-      name: m.name,
-      isMain: m.isMain,
-      aum: m.aum == null ? undefined : m.aum,
-      holdings: m.holdings,
-      sortOrder: i,
-    }));
+    // Re-select so the response carries accurate persisted timestamps.
+    return tx.all<ClientModelRow>(
+      `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
+         FROM client_models
+        WHERE crn = ?
+        ORDER BY sort_order, name COLLATE NOCASE`,
+      [crn]
+    ).map(rowToModel);
   });
 }

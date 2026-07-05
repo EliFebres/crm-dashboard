@@ -10,6 +10,8 @@ import {
   RegistryConflictError,
   type ProjectTypeItem, type IntakeTypeItem,
 } from '@/app/lib/api/types';
+import { useRowFlashes, FLASH_CLASS, FLASH_TEXT_CLASS, type FieldSpec } from '@/app/lib/hooks/useRowFlashes';
+import { useSettingsStream } from '@/app/lib/hooks/useSettingsStream';
 
 const DEFAULT_COLOR = '#22d3ee';
 
@@ -26,6 +28,11 @@ interface TypeItem {
   assignedCount: number;
 }
 
+const TYPE_FLASH_SPECS: FieldSpec<TypeItem>[] = [
+  { key: 'name', get: r => r.name },
+  { key: 'assigned', get: r => r.assignedCount, kind: (a, b) => (Number(b) > Number(a) ? 'blue' : 'neutral') },
+];
+
 interface TypeApi<T extends TypeItem> {
   list: () => Promise<T[]>;
   create: (name: string, color?: string) => Promise<T>;
@@ -39,16 +46,24 @@ interface TypeApi<T extends TypeItem> {
  * can be renamed and recolored but not deleted — the app has features hardwired to them.
  */
 function TypeSection<T extends TypeItem>({
-  title, description, singular, icon, api,
+  title, description, singular, icon, api, liveEntities,
 }: {
   title: string;
   description: string;
   singular: string;
   icon: React.ReactNode;
   api: TypeApi<T>;
+  /** entityTypes whose live change should refetch this list. Must be stable. */
+  liveEntities?: readonly string[];
 }) {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const flashes = useRowFlashes(items, TYPE_FLASH_SPECS);
+  const cellFlash = (id: string, key: string) => {
+    const t = flashes.cells.get(id)?.[key];
+    return t ? FLASH_TEXT_CLASS[t.kind] : '';
+  };
+  const rowFlash = (id: string) => (flashes.newIds.has(id) ? FLASH_CLASS.neutral : '');
 
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
@@ -69,16 +84,26 @@ function TypeSection<T extends TypeItem>({
     api.list().then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
   }, [api]);
 
+  // Silent refetch (no loading flicker) for live updates, so the flash shows.
+  const refetch = useCallback(() => {
+    api.list().then(setItems).catch(() => {});
+  }, [api]);
+
   useEffect(() => { load(); }, [load]);
+
+  const onStream = useCallback((entity: string) => {
+    if (liveEntities && liveEntities.includes(entity)) refetch();
+  }, [liveEntities, refetch]);
+  useSettingsStream(onStream);
 
   const handleAdd = async () => {
     const name = addName.trim();
     if (!name) { setAddError(`A ${singular} name is required.`); return; }
     setAddBusy(true); setAddError('');
     try {
-      await api.create(name, addColor);
+      const created = await api.create(name, addColor);
       setShowAdd(false); setAddName(''); setAddColor(DEFAULT_COLOR);
-      load();
+      setItems(prev => [...prev, created]); // optimistic append → new-row flash
     } catch (err) {
       setAddError(errMsg(err, `Failed to add ${singular}.`));
     } finally {
@@ -94,11 +119,14 @@ function TypeSection<T extends TypeItem>({
     const name = editName.trim();
     if (!name) { setEditError('Name is required.'); return; }
     setEditBusy(true); setEditError('');
+    const startItems = items;
+    setItems(cur => cur.map(i => (i.id === id ? { ...i, name, color: editColor } : i))); // optimistic
     try {
-      await api.update(id, { name, color: editColor });
+      const updated = await api.update(id, { name, color: editColor });
+      setItems(cur => cur.map(i => (i.id === id ? updated : i)));
       setEditingId(null);
-      load();
     } catch (err) {
+      setItems(startItems); // revert on failure
       setEditError(errMsg(err, `Failed to update ${singular}.`));
     } finally {
       setEditBusy(false);
@@ -200,7 +228,7 @@ function TypeSection<T extends TypeItem>({
                     ? `Can't delete — ${item.assignedCount} engagement(s) still use this ${singular}.`
                     : `Delete ${singular}`;
                 return (
-                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
+                  <SortableRow key={item.id} id={item.id} disabled={editing} className={`border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle ${rowFlash(item.id)}`}>
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -227,7 +255,7 @@ function TypeSection<T extends TypeItem>({
                       ) : (
                         <span className="flex items-center gap-2 text-sm text-zinc-200">
                           <span className="w-3 h-3 rounded-sm shrink-0 border border-white/10" style={{ backgroundColor: item.color }} />
-                          {item.name}
+                          <span className={cellFlash(item.id, 'name')}>{item.name}</span>
                           {isBuiltIn && (
                             <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted" title="Built-in — cannot be deleted">
                               <Lock className="w-3 h-3" /> Built-in
@@ -236,7 +264,7 @@ function TypeSection<T extends TypeItem>({
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-sm text-muted">{item.assignedCount}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted"><span className={cellFlash(item.id, 'assigned')}>{item.assignedCount}</span></td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {editing ? (
                         <div className="flex items-center justify-end gap-1">
@@ -272,12 +300,16 @@ function TypeSection<T extends TypeItem>({
           item={deleting}
           singular={singular}
           onClose={() => setDeleting(null)}
-          onConfirm={async () => { await api.remove(deleting.id); load(); }}
+          onConfirm={async () => { await api.remove(deleting.id); setItems(prev => prev.filter(i => i.id !== deleting.id)); }}
         />
       )}
     </section>
   );
 }
+
+// entityTypes logged by the type routes — live change refetches that list.
+const PROJECT_TYPE_LIVE = ['projectType'] as const;
+const INTAKE_TYPE_LIVE = ['intakeType'] as const;
 
 const projectTypeApi: TypeApi<ProjectTypeItem> = {
   list: getProjectTypes,
@@ -305,6 +337,7 @@ export default function TypesTab() {
         singular="project type"
         icon={<FolderKanban className="w-5 h-5 text-cyan-400" />}
         api={projectTypeApi}
+        liveEntities={PROJECT_TYPE_LIVE}
       />
       <TypeSection
         title="Intake Types"
@@ -312,6 +345,7 @@ export default function TypesTab() {
         singular="intake type"
         icon={<Inbox className="w-5 h-5 text-cyan-400" />}
         api={intakeTypeApi}
+        liveEntities={INTAKE_TYPE_LIVE}
       />
     </div>
   );

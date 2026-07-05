@@ -1,6 +1,19 @@
 import { openSqlite, dbAll, dbRun, columnExists, type DB } from './connection';
 import { randomUUID } from 'crypto';
 
+/**
+ * Starting rank titles for a brand-new workspace, highest rank first. Admins can
+ * edit/add/delete these from Settings; they're just a sensible default. Also used
+ * by the mock seed so demo data stays consistent with the real default.
+ */
+export const DEFAULT_TITLES = [
+  'Head of Department',
+  'Head of Team',
+  'Manager',
+  'Associate',
+  'Analyst',
+] as const;
+
 // Cached on `global` so the connection survives Next.js hot reloads in dev mode.
 const g = global as typeof globalThis & {
   _usersDb?: DB;
@@ -55,6 +68,12 @@ function bootstrap(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_tm_status ON team_members (status);
   `);
 
+  // Migration: roster members carry a rank title (picked from the managed titles
+  // list), same as user accounts. Guarded so it runs once on existing databases.
+  if (!columnExists(db, 'team_members', 'title')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN title TEXT NOT NULL DEFAULT ''`);
+  }
+
   // Teams and offices were once hardcoded constants duplicated across the app.
   // They now live here so admins can rename/add/remove them from Settings.
   db.exec(`
@@ -66,6 +85,17 @@ function bootstrap(db: DB): void {
     CREATE TABLE IF NOT EXISTS offices (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Rank titles are an admin-managed, orderable list people pick from — the same
+  // shape as teams/offices, but sort_order is meaningful (it's the rank).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS titles (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -83,6 +113,43 @@ function bootstrap(db: DB): void {
   }
 
   seedOrgLists(db);
+  seedTitles(db);
+}
+
+/**
+ * Idempotent seed/backfill for the rank titles list.
+ *
+ *  1. Backfill any distinct title already referenced by users or team_members so
+ *     an existing database keeps every value it relies on as a valid option.
+ *  2. If the list is still empty (a brand-new database with no titles yet), seed
+ *     a few sensible defaults so the sign-up form has options on first run.
+ *
+ * New rows get a sort_order past the current max so backfilled titles keep a
+ * stable rank instead of all colliding at 0.
+ */
+function seedTitles(db: DB): void {
+  const distinct = db.prepare(`
+    SELECT title FROM (
+      SELECT title FROM users
+      UNION
+      SELECT title FROM team_members
+    ) WHERE title IS NOT NULL AND trim(title) <> ''
+    ORDER BY title COLLATE NOCASE
+  `).all() as Array<{ title: string }>;
+
+  const insert = db.prepare(`INSERT OR IGNORE INTO titles (id, name, sort_order) VALUES (?, ?, ?)`);
+  let nextOrder = (db.prepare(`SELECT COALESCE(MAX(sort_order), -1) AS m FROM titles`).get() as { m: number }).m + 1;
+  for (const { title } of distinct) {
+    const info = insert.run(randomUUID(), title.trim(), nextOrder);
+    if (info.changes > 0) nextOrder += 1;
+  }
+
+  const titleCount = (db.prepare(`SELECT COUNT(*) AS c FROM titles`).get() as { c: number }).c;
+  if (titleCount === 0) {
+    DEFAULT_TITLES.forEach((name, i) => {
+      insert.run(randomUUID(), name, i);
+    });
+  }
 }
 
 /**

@@ -29,7 +29,7 @@ import { randomUUID } from 'crypto';
 import { query, executeTransaction } from '../app/lib/db';
 import { engagements, clients, teamMemberOffices } from '../app/lib/data/engagements';
 import { replaceClientModels } from '../app/lib/db/clientModels';
-import { queryUsers, executeUsers } from '../app/lib/db/users';
+import { queryUsers, executeUsers, DEFAULT_TITLES } from '../app/lib/db/users';
 import { executeActivity } from '../app/lib/db/activity';
 import { hashPassword } from '../app/lib/auth/password';
 import type { PortfolioHolding, AssetClass } from '../app/lib/types/engagements';
@@ -291,14 +291,25 @@ function seededAum(seed: number): number {
   return tiers[Math.floor(rng(seed) * tiers.length)];
 }
 
+/** ISO "YYYY-MM-DD" for a now-relative date `days` before today. */
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
+}
+
 async function seedClientModels() {
   // Prefer each client's most-recent logged portfolio as its main model, so the
   // main model matches real logged data where it exists.
-  const legacyByCrn = new Map<string, { id: number; holdings: PortfolioHolding[] }>();
+  const legacyByCrn = new Map<string, { id: number; holdings: PortfolioHolding[]; loggedAt: string }>();
   for (const e of engagements) {
     if (e.clientCrn && e.portfolio && e.portfolio.length) {
       const prev = legacyByCrn.get(e.clientCrn);
-      if (!prev || e.id > prev.id) legacyByCrn.set(e.clientCrn, { id: e.id, holdings: e.portfolio });
+      if (!prev || e.id > prev.id) {
+        // Log the main model against the interaction where the portfolio was
+        // captured, so its "logged" date matches real (now-relative) data.
+        legacyByCrn.set(e.clientCrn, { id: e.id, holdings: e.portfolio, loggedAt: parseDisplayDate(e.dateStarted) });
+      }
     }
   }
 
@@ -309,17 +320,22 @@ async function seedClientModels() {
     const seed = (idx + 1) * 13;
     const legacy = legacyByCrn.get(c.crn);
 
-    const models: Array<{ name: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[] }> = [
-      { name: 'Core Model', isMain: true, aum: seededAum(seed), holdings: legacy?.holdings ?? synthHoldings(seed, 'balanced') },
+    const models: Array<{ name: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[]; loggedAt?: string }> = [
+      {
+        name: 'Core Model', isMain: true, aum: seededAum(seed),
+        holdings: legacy?.holdings ?? synthHoldings(seed, 'balanced'),
+        // Prefer the source interaction's date; else a now-relative logged date.
+        loggedAt: legacy?.loggedAt ?? isoDaysAgo(Math.floor(rng(seed) * 120) + 5),
+      },
     ];
     if (idx % 5 < 2) {
       // ~40% of clients also run an equity-tilted growth model.
-      models.push({ name: 'Growth Model', isMain: false, aum: seededAum(seed + 7), holdings: synthHoldings(seed + 7, 'growth') });
+      models.push({ name: 'Growth Model', isMain: false, aum: seededAum(seed + 7), holdings: synthHoldings(seed + 7, 'growth'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 7) * 150) + 10) });
     }
     if (idx % 5 === 0) {
       // ~20% additionally run a 60/40 — AUM intentionally left blank to exercise
       // the "unknown AUM" path.
-      models.push({ name: 'Conservative 60/40', isMain: false, holdings: synthHoldings(seed + 11, 'conservative') });
+      models.push({ name: 'Conservative 60/40', isMain: false, holdings: synthHoldings(seed + 11, 'conservative'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 11) * 180) + 15) });
     }
 
     await replaceClientModels(c.crn, models);
@@ -334,10 +350,10 @@ async function seedClientModels() {
 // Part B — users.sqlite + activity.sqlite: users, team members, logs, presence
 // =============================================================================
 const SEED_USERS = [
-  { first: 'Alex', last: 'Morgan', title: 'Managing Director', office: 'Office A', role: 'admin', status: 'active', display: 'Alex M.' },
-  { first: 'Blake', last: 'Nguyen', title: 'Senior Analyst', office: 'Office A', role: 'user', status: 'active', display: 'Blake N.' },
+  { first: 'Alex', last: 'Morgan', title: 'Head of Department', office: 'Office A', role: 'admin', status: 'active', display: 'Alex M.' },
+  { first: 'Blake', last: 'Nguyen', title: 'Manager', office: 'Office A', role: 'user', status: 'active', display: 'Blake N.' },
   { first: 'Casey', last: 'Patel', title: 'Associate', office: 'Office A', role: 'user', status: 'active', display: 'Casey P.' },
-  { first: 'Finley', last: 'Torres', title: 'Vice President', office: 'Office B', role: 'user', status: 'active', display: 'Finley T.' },
+  { first: 'Finley', last: 'Torres', title: 'Head of Team', office: 'Office B', role: 'user', status: 'active', display: 'Finley T.' },
   { first: 'Harper', last: 'Brooks', title: 'Analyst', office: 'Office B', role: 'user', status: 'pending', display: 'Harper B.' },
   { first: 'Indi', last: 'Chen', title: 'Associate', office: 'Office B', role: 'user', status: 'pending', display: null },
 ] as const;
@@ -354,6 +370,15 @@ async function seedUsersAndActivity() {
   await executeUsers(`INSERT OR IGNORE INTO teams (id, name) VALUES (?, 'Default Team')`, [randomUUID()]);
   for (const office of ['Office A', 'Office B']) {
     await executeUsers(`INSERT OR IGNORE INTO offices (id, name) VALUES (?, ?)`, [randomUUID(), office]);
+  }
+
+  // Rank titles, highest first — the same default list a real workspace starts
+  // with. Insert then set sort_order so the demo ranks are correct even over the
+  // bootstrap defaults.
+  const TITLES = DEFAULT_TITLES;
+  for (let i = 0; i < TITLES.length; i++) {
+    await executeUsers(`INSERT OR IGNORE INTO titles (id, name, sort_order) VALUES (?, ?, ?)`, [randomUUID(), TITLES[i], i]);
+    await executeUsers(`UPDATE titles SET sort_order = ? WHERE name = ? COLLATE NOCASE`, [i, TITLES[i]]);
   }
 
   // All seeded accounts share one demo password (meets the signup policy: >=10
@@ -383,13 +408,18 @@ async function seedUsersAndActivity() {
   }
 
   // Team members (the 12 mock members), linking the few that have a user account.
+  // Give each a title: the linked user's title, else a rotating demo title.
+  const titleByDisplay = new Map(SEED_USERS.filter(u => u.display).map(u => [u.display as string, u.title]));
+  let memberIndex = 0;
   for (const [display, office] of Object.entries(teamMemberOffices)) {
     const [first, ...rest] = display.split(' ');
     const last = rest.join(' ') || first;
+    const title = titleByDisplay.get(display) ?? TITLES[memberIndex % TITLES.length];
+    memberIndex += 1;
     await executeUsers(
-      `INSERT INTO team_members (id, display_name, first_name, last_name, team, office, status, user_id)
-       VALUES (?, ?, ?, ?, 'Default Team', ?, 'active', ?)`,
-      [randomUUID(), display, first, last, office, userIdByDisplay.get(display) ?? null]
+      `INSERT INTO team_members (id, display_name, first_name, last_name, title, team, office, status, user_id)
+       VALUES (?, ?, ?, ?, ?, 'Default Team', ?, 'active', ?)`,
+      [randomUUID(), display, first, last, title, office, userIdByDisplay.get(display) ?? null]
     );
   }
 

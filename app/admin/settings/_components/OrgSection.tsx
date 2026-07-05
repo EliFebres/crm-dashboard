@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Check, X, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { type OrgItem, OrgConflictError } from '@/app/lib/api/org';
 import { SortableList, SortableBody, SortableRow } from '@/app/admin/settings/_components/sortable';
+import { useRowFlashes, FLASH_CLASS, FLASH_TEXT_CLASS, type FieldSpec } from '@/app/lib/hooks/useRowFlashes';
+import { useSettingsStream } from '@/app/lib/hooks/useSettingsStream';
 
 export interface OrgApi {
   list: () => Promise<OrgItem[]>;
@@ -12,6 +14,12 @@ export interface OrgApi {
   remove: (id: string) => Promise<void>;
   reorder: (ids: string[]) => Promise<void>;
 }
+
+// Flash the name when it's renamed and the assigned count when it moves.
+const ORG_FLASH_SPECS: FieldSpec<OrgItem>[] = [
+  { key: 'name', get: r => r.name },
+  { key: 'assigned', get: r => r.assignedCount, kind: (a, b) => (Number(b) > Number(a) ? 'blue' : 'neutral') },
+];
 
 /** Modal requiring the admin to type the exact name before a delete is allowed. */
 export function DeleteOrgModal({
@@ -90,7 +98,7 @@ export function DeleteOrgModal({
 
 /** Reusable admin manager for an editable list (Teams or Offices). */
 export function OrgSection({
-  title, singular, icon, api, align = 'left',
+  title, singular, icon, api, align = 'left', liveEntities,
 }: {
   title: string;
   singular: string;
@@ -98,11 +106,19 @@ export function OrgSection({
   api: OrgApi;
   /** Horizontal alignment of the (capped-width) card within its container. */
   align?: 'left' | 'right';
+  /** entityTypes whose live change should refetch this list. Must be stable. */
+  liveEntities?: readonly string[];
 }) {
   // Pushes the max-w-md blocks to the right edge when the card is right-aligned.
   const alignCls = align === 'right' ? 'ml-auto' : '';
   const [items, setItems] = useState<OrgItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const flashes = useRowFlashes(items, ORG_FLASH_SPECS);
+  const cellFlash = (id: string, key: string) => {
+    const t = flashes.cells.get(id)?.[key];
+    return t ? FLASH_TEXT_CLASS[t.kind] : '';
+  };
+  const rowFlash = (id: string) => (flashes.newIds.has(id) ? FLASH_CLASS.neutral : '');
 
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
@@ -121,7 +137,18 @@ export function OrgSection({
     api.list().then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
   }, [api]);
 
+  // Silent refetch (no loading flicker) for live updates, so the flash shows.
+  const refetch = useCallback(() => {
+    api.list().then(setItems).catch(() => {});
+  }, [api]);
+
   useEffect(() => { load(); }, [load]);
+
+  // Live refresh when another admin changes a relevant registry elsewhere.
+  const onStream = useCallback((entity: string) => {
+    if (liveEntities && liveEntities.includes(entity)) refetch();
+  }, [liveEntities, refetch]);
+  useSettingsStream(onStream);
 
   const handleAdd = async () => {
     const name = addName.trim();
@@ -129,10 +156,10 @@ export function OrgSection({
     setAddBusy(true);
     setAddError('');
     try {
-      await api.create(name);
+      const created = await api.create(name);
       setShowAdd(false);
       setAddName('');
-      load();
+      setItems(prev => [...prev, created]); // optimistic append → new-row flash
     } catch (err) {
       setAddError(err instanceof OrgConflictError || err instanceof Error ? err.message : `Failed to add ${singular}.`);
     } finally {
@@ -151,11 +178,14 @@ export function OrgSection({
     if (!name) { setEditError('Name is required.'); return; }
     setEditBusy(true);
     setEditError('');
+    const startItems = items;
+    setItems(cur => cur.map(i => (i.id === id ? { ...i, name } : i))); // optimistic rename
     try {
-      await api.rename(id, name);
+      const updated = await api.rename(id, name);
+      setItems(cur => cur.map(i => (i.id === id ? updated : i)));
       setEditingId(null);
-      load();
     } catch (err) {
+      setItems(startItems); // revert on failure
       setEditError(err instanceof OrgConflictError || err instanceof Error ? err.message : 'Failed to rename.');
     } finally {
       setEditBusy(false);
@@ -253,7 +283,7 @@ export function OrgSection({
                 const editing = editingId === item.id;
                 const inUse = item.assignedCount > 0;
                 return (
-                  <SortableRow key={item.id} id={item.id} disabled={editing} className="border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle">
+                  <SortableRow key={item.id} id={item.id} disabled={editing} className={`border-b border-zinc-800/30 hover:bg-white/[0.02] transition-colors align-middle ${rowFlash(item.id)}`}>
                     <td className="px-4 py-3">
                       {editing ? (
                         <div className="space-y-1">
@@ -269,10 +299,10 @@ export function OrgSection({
                           {editError && <p className="text-xs text-red-400">{editError}</p>}
                         </div>
                       ) : (
-                        <span className="text-sm text-zinc-200">{item.name}</span>
+                        <span className={`text-sm text-zinc-200 ${cellFlash(item.id, 'name')}`}>{item.name}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center text-sm text-muted">{item.assignedCount}</td>
+                    <td className="px-4 py-3 text-center text-sm text-muted"><span className={cellFlash(item.id, 'assigned')}>{item.assignedCount}</span></td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {editing ? (
                         <div className="flex items-center justify-end gap-1">
@@ -335,7 +365,7 @@ export function OrgSection({
           item={deleting}
           singular={singular}
           onClose={() => setDeleting(null)}
-          onConfirm={async () => { await api.remove(deleting.id); load(); }}
+          onConfirm={async () => { await api.remove(deleting.id); setItems(prev => prev.filter(i => i.id !== deleting.id)); }}
         />
       )}
     </section>

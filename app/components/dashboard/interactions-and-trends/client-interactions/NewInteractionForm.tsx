@@ -11,6 +11,7 @@ import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types
 import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
+  getClientModels,
 } from '@/app/lib/api/client-interactions';
 import { getDepartments } from '@/app/lib/api/internal-clients';
 import { getIntakeTypes, getProjectTypes, type IntakeTypeItem, type ProjectTypeItem } from '@/app/lib/api/types';
@@ -62,19 +63,6 @@ interface NewInteractionFormProps {
   onFilepathSaved?: (engagementId: number, filepath: string | null) => void;
   onBulkUploadClick?: () => void;
 }
-
-// Format NNA for display
-const formatNNADisplay = (value: number | null): string => {
-  if (!value || value === 0) return '—';
-  if (value >= 1_000_000_000) {
-    return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  } else if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
-  } else if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
-};
 
 export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onFilepathSaved, onBulkUploadClick }: NewInteractionFormProps) {
   const isEditMode = !!editingEngagement;
@@ -129,10 +117,18 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const externalClientRef = useRef<HTMLDivElement>(null);
   const [isNNAModalOpen, setIsNNAModalOpen] = useState(false);
   const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
-  // Summary of the selected client's models, refreshed after a save in the modal.
+  // Summary of the selected client's models (count source for the "Manage Models"
+  // button). Models are client-level, so we fetch by CRN; whether the button
+  // *lights up* is gated separately on this interaction's portfolioLogged flag.
   const [modelSummary, setModelSummary] = useState<{ count: number; mainName?: string } | null>(null);
-  // Models are client-level; switching clients invalidates the cached summary.
-  useEffect(() => { setModelSummary(null); }, [formData.clientCrn]);
+  useEffect(() => {
+    if (!isOpen || !formData.clientCrn) { setModelSummary(null); return; }
+    let active = true;
+    getClientModels(formData.clientCrn)
+      .then(models => { if (active) setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name }); })
+      .catch(() => { if (active) setModelSummary(null); });
+    return () => { active = false; };
+  }, [isOpen, formData.clientCrn]);
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [localNoteCount, setLocalNoteCount] = useState(initialNoteCount ?? 0);
@@ -654,7 +650,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               )}
 
               {/* Row 2: External Client + Internal Client */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* items-start so the Internal Client column doesn't stretch to match a
+                  taller External Client column (CRN line / register UI) and open a gap. */}
+              <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="relative" ref={externalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     External Client <span className="text-red-400">*</span>
@@ -838,6 +836,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   )}
                   {errors.externalClient && <p className="mt-1 text-xs text-red-400">{errors.externalClient}</p>}
                 </div>
+                {/* Right column stacks Internal Client + its Department so the Dept
+                    box sits directly under the input, not below the taller left column. */}
+                <div className="space-y-4">
                 <div className="relative" ref={internalClientRef}>
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Internal Client <span className="text-red-400">*</span>
@@ -911,36 +912,32 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   )}
                   {errors.internalClient && <p className="mt-1 text-xs text-red-400">{errors.internalClient}</p>}
                 </div>
-              </div>
 
-              {/* Department row — shown when a client name is committed */}
-              {formData.internalClient && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div /> {/* spacer aligns with External Client column */}
-                  <div>
-                    {formData.internalClientDept ? (
-                      /* Existing client — show dept as read-only */
-                      <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
-                        <span className="text-xs font-semibold text-muted uppercase tracking-wider">Dept</span>
-                        <span className="text-sm text-muted">{formData.internalClientDept}</span>
-                      </div>
-                    ) : (
-                      /* New client — dept selector */
-                      <div>
-                        <label className="block text-sm font-medium text-muted mb-1.5">
-                          Department <span className="text-red-400">*</span>
-                        </label>
-                        <Select
-                          value={formData.internalClientDept}
-                          onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v }))}
-                          options={departments}
-                          placeholder="Select department..."
-                        />
-                      </div>
-                    )}
-                  </div>
+                {/* Department — shown once a client name is committed, directly below. */}
+                {formData.internalClient && (
+                  formData.internalClientDept ? (
+                    /* Existing client — show dept as read-only */
+                    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/30 border border-zinc-700/50 rounded-lg">
+                      <span className="text-xs font-semibold text-muted uppercase tracking-wider">Dept</span>
+                      <span className="text-sm text-muted">{formData.internalClientDept}</span>
+                    </div>
+                  ) : (
+                    /* New client — dept selector */
+                    <div>
+                      <label className="block text-sm font-medium text-muted mb-1.5">
+                        Department <span className="text-red-400">*</span>
+                      </label>
+                      <Select
+                        value={formData.internalClientDept}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, internalClientDept: v }))}
+                        options={departments}
+                        placeholder="Select department..."
+                      />
+                    </div>
+                  )
+                )}
                 </div>
-              )}
+              </div>
 
               {/* Row 3: Team Members (4 columns, grouped by office) */}
               <div>
@@ -1036,7 +1033,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     }`}
                   >
                     <DollarSign className="w-4 h-4" />
-                    {formData.nna ? formatNNADisplay(formData.nna) : '+ Add NNA'}
+                    {formData.nna ? <span className="font-mono">{formData.nna.toLocaleString('en-US')}</span> : '+ Add NNA'}
                   </button>
                 </div>
 
@@ -1044,6 +1041,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   <label className="block text-sm font-medium text-muted mb-1.5">
                     Client Models <span className="text-muted font-normal text-xs">(Optional)</span>
                   </label>
+                  {(() => {
+                    // Mirror the table "Model Logged" check mark: light up + show the
+                    // count only when this interaction logged a portfolio.
+                    const showModels = !!formData.portfolioLogged && !!modelSummary && modelSummary.count > 0;
+                    return (
                   <button
                     type="button"
                     onClick={() => setIsPortfolioModalOpen(true)}
@@ -1052,7 +1054,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     className={`w-full h-[38px] px-3 bg-zinc-800/50 border rounded-lg text-sm text-left transition-colors flex items-center gap-2 ${
                       !formData.clientCrn
                         ? 'border-zinc-800 text-zinc-600 cursor-not-allowed'
-                        : modelSummary && modelSummary.count > 0
+                        : showModels
                           ? 'border-cyan-500/50 text-cyan-400 hover:border-cyan-500/70'
                           : 'border-zinc-700 text-muted hover:border-cyan-500/50'
                     }`}
@@ -1060,10 +1062,12 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     <Briefcase className="w-4 h-4" />
                     {!formData.clientCrn
                       ? 'Select a client first'
-                      : modelSummary && modelSummary.count > 0
-                        ? `${modelSummary.count} model${modelSummary.count > 1 ? 's' : ''}${modelSummary.mainName ? ` · ${modelSummary.mainName}` : ''}`
+                      : showModels
+                        ? `${modelSummary!.count} model${modelSummary!.count > 1 ? 's' : ''}${modelSummary!.mainName ? ` · ${modelSummary!.mainName}` : ''}`
                         : 'Manage Models'}
                   </button>
+                    );
+                  })()}
                 </div>
               </div>
 
