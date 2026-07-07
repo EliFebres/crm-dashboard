@@ -118,6 +118,115 @@ export interface DormantClient {
   historicalCount: number;
   lastEngagedDate: string;
   daysSinceLast: number;
+  /** Team member(s) on this client's most recent engagement. */
+  assignees: string[];
+}
+
+// -----------------------------------------------------------------------------
+// EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
+//
+// These are intentionally scope(team)-only: they use fixed windows (26 weeks /
+// 12 months / all-completed / all-history) and do NOT respond to the period,
+// clientDepts, or intakeTypes filters. See kpi-aggregations.ts.
+// -----------------------------------------------------------------------------
+
+/** Q2 — one point per week over the last 26 weeks. */
+export interface WeeklyFlowPoint {
+  /** 0 = oldest week in the window, 25 = current week. */
+  weeksAgo: number;
+  opened: number;
+  completed: number;
+  /** e.g. "Jan 6" — the week's anchor date. */
+  label: string;
+}
+
+/** Q3 — one point per month over the last 12 months (high-touch vs data-task share). */
+export interface MixDriftPoint {
+  label: string;
+  highPct: number;
+  lowPct: number;
+  total: number;
+}
+
+/** Q4 — cycle time (median + P90 days) for one project type, completed work only. */
+export interface CycleTimeRow {
+  type: string;
+  count: number;
+  median: number;
+  p90: number;
+  color: string;
+}
+
+/** Q8 — chain-rolled NNA attribution for one originating project type. */
+export interface ChainRolledRow {
+  type: string;
+  directNna: number;
+  rolledNna: number;
+  downstream: number;
+  /** % uplift of rolled over direct. */
+  uplift: number;
+  color: string;
+}
+
+/** Q9 — one cell of the type × department conversion matrix. */
+export interface SegmentCell {
+  n: number;
+  hitRate: number;
+  medianNna: number;
+}
+
+/** Q9 — the full type × department matrix. `cells` keyed by `"<type>|<dept>"`. */
+export interface SegmentMatrix {
+  depts: string[];
+  types: string[];
+  cells: Record<string, SegmentCell | null>;
+}
+
+/** Q10 — one completed engagement with no recorded NNA outcome (the chase list). */
+export interface ChaseRow {
+  clientName: string;
+  clientDept: string;
+  type: string;
+  /** ISO date the work was finished. */
+  finished: string;
+  daysSince: number;
+  /** Team member(s) assigned to this engagement. */
+  assignees: string[];
+}
+
+/** Q12 — follow-up spawn rate for one originating project type. */
+export interface SpawnRateRow {
+  type: string;
+  count: number;
+  spawned: number;
+  pct: number;
+  color: string;
+}
+
+/** Q13 — new vs returning unique clients for one month. */
+export interface ClientBasePoint {
+  label: string;
+  newN: number;
+  returningN: number;
+}
+
+/** Q13 — unique-client count for one department over the last year. */
+export interface UniquePerDeptRow {
+  dept: string;
+  color: string;
+  unique: number;
+}
+
+export interface KpiExtendedData {
+  weeklyFlow: WeeklyFlowPoint[];
+  mixDrift: MixDriftPoint[];
+  cycleTimes: CycleTimeRow[];
+  chainRolled: ChainRolledRow[];
+  segmentMatrix: SegmentMatrix;
+  chaseList: ChaseRow[];
+  spawnRate: SpawnRateRow[];
+  clientBase: ClientBasePoint[];
+  uniquePerDept: UniquePerDeptRow[];
 }
 
 export interface KpiDashboardData {
@@ -130,6 +239,8 @@ export interface KpiDashboardData {
   nnaConcentration: NnaConcentration;
   staleEngagements: StaleEngagement[];
   dormantClients: DormantClient[];
+  /** The "Briefing" redesign's extended metrics (Q2–Q13). */
+  extended: KpiExtendedData;
 }
 
 // =============================================================================

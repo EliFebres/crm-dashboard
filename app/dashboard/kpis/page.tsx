@@ -1,49 +1,48 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Building2, Inbox, Loader2 } from 'lucide-react';
-import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
-import ScopeSelector from '@/app/components/dashboard/kpis/ScopeSelector';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import HeroKPICards from '@/app/components/dashboard/kpis/HeroKPICards';
-import JourneyExplorer from '@/app/components/dashboard/kpis/JourneyExplorer';
-import ClientDeptChart from '@/app/components/dashboard/kpis/ClientDeptChart';
-import NnaConcentrationCard from '@/app/components/dashboard/kpis/NnaConcentrationCard';
-import StaleEngagementsTable from '@/app/components/dashboard/kpis/StaleEngagementsTable';
-import DormantClientsTable from '@/app/components/dashboard/kpis/DormantClientsTable';
 import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
-import { getDepartments } from '@/app/lib/api/internal-clients';
-import { getIntakeTypes } from '@/app/lib/api/types';
+
+import Masthead from '@/app/components/dashboard/kpis/briefing/Masthead';
+import { GroupDivider, QHeader, BriefingRow } from '@/app/components/dashboard/kpis/briefing/Blocks';
+import HeroStats from '@/app/components/dashboard/kpis/briefing/HeroStats';
+import { WeeklyFlowChart, MixDriftChart, ParetoBlock } from '@/app/components/dashboard/kpis/briefing/Charts';
+import CycleDumbbell from '@/app/components/dashboard/kpis/briefing/CycleDumbbell';
+import EvidenceList, { type EvidenceRow } from '@/app/components/dashboard/kpis/briefing/EvidenceList';
+import { DeptBars, SpawnBars, ChainRolledBars } from '@/app/components/dashboard/kpis/briefing/Bars';
+import SegmentMatrixTable from '@/app/components/dashboard/kpis/briefing/SegmentMatrixTable';
+import SankeyBlock from '@/app/components/dashboard/kpis/briefing/SankeyBlock';
+import ClientBaseBlock from '@/app/components/dashboard/kpis/briefing/ClientBaseBlock';
+import {
+  buildHeroCards,
+  fmtDate,
+  verdictQ1,
+  verdictFlow,
+  verdictMix,
+  verdictQ4,
+  verdictQ5,
+  verdictQ6,
+  subtitleConc,
+  verdictQ8,
+  verdictQ9,
+  verdictQ10,
+  verdictQ12,
+  verdictQ13,
+  verdictQ14,
+} from '@/app/components/dashboard/kpis/briefing/briefing-utils';
+import { C } from '@/app/components/dashboard/kpis/briefing/tokens';
 
 export default function KpiDashboard() {
   const { user, isLoading: authLoading } = useCurrentUser();
 
   const [scope, setScope] = useState<KpiScope>('all');
   const [period, setPeriod] = useState('1Y');
-  const [clientDepts, setClientDepts] = useState<string[]>([]);
-  const [intakeTypes, setIntakeTypes] = useState<string[]>([]);
-  const [staleThreshold, setStaleThreshold] = useState('3w');
-  const [clientDeptOptions, setClientDeptOptions] = useState<string[]>(['All Departments']);
-  const [intakeOptions, setIntakeOptions] = useState<string[]>(['All Intake Types']);
-
-  // The Client Department and Intake Type filters reflect the live managed
-  // registries (in their admin-set order), including renames and reordering.
-  useEffect(() => {
-    getDepartments()
-      .then(items => setClientDeptOptions(['All Departments', ...items.map(d => d.name)]))
-      .catch(() => setClientDeptOptions(['All Departments']));
-    getIntakeTypes()
-      .then(items => setIntakeOptions(['All Intake Types', ...items.map(t => t.name)]))
-      .catch(() => setIntakeOptions(['All Intake Types']));
-  }, []);
-
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Apply the default scope once the auth context finishes loading: a team
-  // member lands on their own team's KPIs, while admins default to the
-  // cross-team aggregate ('all'). Guarded by a ref so a later user refetch
-  // doesn't stomp on a manual selection.
+  // Default scope once auth resolves: non-admins land on their own team, admins on
+  // the cross-team aggregate. Guarded so a later refetch never stomps a manual pick.
   const defaultScopeAppliedRef = useRef(false);
   useEffect(() => {
     if (authLoading || !user || defaultScopeAppliedRef.current) return;
@@ -51,24 +50,21 @@ export default function KpiDashboard() {
     if (user.role !== 'admin' && user.team) setScope(`team:${user.team}`);
   }, [authLoading, user]);
 
+  // Recompute on (scope, period). The redesign has no dept/intake filters, and the
+  // extended metrics are scope-only; period still windows the computeDashboard half.
   useEffect(() => {
-    // Wait for the user context so the first fetch uses the correct default.
     if (authLoading) return;
     const controller = new AbortController();
-    // Defer the setState so it's not synchronously inside the effect body,
-    // matching the pattern used by the Client Interactions page.
     const id = setTimeout(async () => {
       setIsLoading(true);
       try {
         const result = await getKpiDashboardData(
-          { scope, period, clientDepts, intakeTypes, staleThreshold },
+          { scope, period, clientDepts: [], intakeTypes: [], staleThreshold: '3w' },
           controller.signal
         );
         setData(result);
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          console.error('Failed to load KPI dashboard:', err);
-        }
+        if ((err as Error).name !== 'AbortError') console.error('Failed to load KPI dashboard:', err);
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -77,82 +73,148 @@ export default function KpiDashboard() {
       clearTimeout(id);
       controller.abort();
     };
-  }, [scope, period, clientDepts, intakeTypes, staleThreshold, authLoading]);
+  }, [scope, period, authLoading]);
 
-  const subtitle = data?.scope.kind === 'team'
-    ? `Team · ${data.scope.team}`
-    : 'Cross-team aggregate';
+  const staleRows: EvidenceRow[] = (data?.staleEngagements ?? []).slice(0, 8).map(r => ({
+    key: String(r.id),
+    name: r.clientName,
+    meta: `${r.clientDept} · ${r.type}`,
+    badge: `${r.daysOpen}d`,
+    badgeColor: r.daysOpen >= 180 ? '#fb7185' : r.daysOpen >= 90 ? '#fb923c' : '#fbbf24',
+  }));
+
+  const chaseRows: EvidenceRow[] = (data?.extended.chaseList ?? []).slice(0, 8).map((r, i) => ({
+    key: `${r.clientName}-${r.type}-${i}`,
+    name: r.clientName,
+    meta: `${r.clientDept} · ${r.type}`,
+    assignee: r.assignees.join(', ') || undefined,
+    rightText: `done ${fmtDate(r.finished)}`,
+    badge: `${r.daysSince}d`,
+    badgeColor: C.amber,
+  }));
+
+  const dormantRows: EvidenceRow[] = (data?.dormantClients ?? []).slice(0, 8).map((r, i) => ({
+    key: `${r.clientName}-${i}`,
+    name: r.clientName,
+    meta: `${r.clientDept} · ${r.historicalCount} engagements`,
+    assignee: r.assignees.join(', ') || undefined,
+    rightText: `last ${fmtDate(r.lastEngagedDate)}`,
+    badge: `${r.daysSinceLast}d`,
+    badgeColor: C.violet,
+  }));
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-transparent">
-      <DashboardHeader
-        title="Team KPIs"
-        subtitle={subtitle}
-        searchPlaceholder="Search (not used on KPI view)"
-        searchValue=""
-        onSearchChange={() => {}}
-        alwaysShowFilters
-        period={period}
-        onPeriodChange={setPeriod}
-        periodOptions={['1M', '3M', '6M', 'YTD', '1Y', 'ALL']}
-        filters={[
-          {
-            id: 'client-dept',
-            icon: Building2,
-            label: 'Client Department',
-            options: clientDeptOptions,
-            value: clientDepts,
-            onChange: (v) => setClientDepts(Array.isArray(v) ? v : []),
-            multiSelect: true,
-          },
-          {
-            id: 'intake',
-            icon: Inbox,
-            label: 'Intake Type',
-            options: intakeOptions,
-            value: intakeTypes,
-            onChange: (v) => setIntakeTypes(Array.isArray(v) ? v : []),
-            multiSelect: true,
-          },
-        ]}
-        rightContent={
-          <div className="flex items-center gap-3">
-            {isLoading && (
-              <span className="flex items-center gap-1.5 text-xs text-muted">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Loading…
-              </span>
-            )}
-            <span className="text-xs uppercase tracking-wider text-muted font-medium">Scope</span>
-            <ScopeSelector value={scope} onChange={setScope} />
-          </div>
-        }
-      />
+    <div className="flex-1 flex flex-col min-h-0" style={{ background: C.bg, color: '#ededed' }}>
+      <div className="flex-1 overflow-y-auto">
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 48px 110px' }}>
+          <Masthead scope={scope} period={period} onScopeChange={setScope} onPeriodChange={setPeriod} loading={isLoading} />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-        {data ? (
-          <>
-            <HeroKPICards heroKpis={data.heroKpis} />
+          {data ? (
+            <>
+              {/* ============ GROUP 1 — Demand & throughput ============ */}
+              <GroupDivider n={1} name="Demand & throughput" topPad={56} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <ClientDeptChart data={data.clientDepts} />
-              <NnaConcentrationCard data={data.nnaConcentration} />
-            </div>
+              <div style={{ padding: '44px 0 0' }}>
+                <QHeader
+                  q="Q1"
+                  question="How much work are we doing — and is it trending up or down?"
+                  verdict={verdictQ1(data, scope, period)}
+                  maxWidth={640}
+                />
+                <HeroStats cards={buildHeroCards(data, period)} />
+              </div>
 
-            <JourneyExplorer sankey={data.journeySankey} templates={data.journeyTemplates} />
+              <BriefingRow
+                q="Q2"
+                question="Is open work growing because intake rose — or because delivery slowed?"
+                verdict={verdictFlow(data)}
+              >
+                <WeeklyFlowChart data={data.extended.weeklyFlow} />
+              </BriefingRow>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <StaleEngagementsTable
-                data={data.staleEngagements}
-                staleThreshold={staleThreshold}
-                onStaleThresholdChange={setStaleThreshold}
+              <BriefingRow q="Q3" question="Is our work mix drifting toward low-leverage tasks?" verdict={verdictMix(data)}>
+                <MixDriftChart data={data.extended.mixDrift} />
+              </BriefingRow>
+
+              {/* ============ GROUP 2 — Speed ============ */}
+              <GroupDivider n={2} name="Speed" />
+
+              <BriefingRow q="Q4" question="How fast do we turn work around?" verdict={verdictQ4(data)} top={44} evidencePadTop={14}>
+                <CycleDumbbell data={data.extended.cycleTimes} />
+              </BriefingRow>
+
+              <BriefingRow q="Q5" question="What open work has gone stale?" verdict={verdictQ5(data)}>
+                <EvidenceList rows={staleRows} empty="Nothing stale — nice." />
+              </BriefingRow>
+
+              {/* ============ GROUP 3 — Value & outcomes ============ */}
+              <GroupDivider n={3} name="Value & outcomes" />
+
+              <BriefingRow
+                q="Q6"
+                question="Which client departments drive our volume — and which are most efficient?"
+                verdict={verdictQ6(data)}
+                top={44}
+              >
+                <DeptBars data={data.clientDepts} />
+              </BriefingRow>
+
+              <BriefingRow q="Q7" question="Which clients concentrate our NNA?" verdict={subtitleConc(data)}>
+                <ParetoBlock data={data.nnaConcentration} />
+              </BriefingRow>
+
+              <BriefingRow
+                q="Q8"
+                question="What is the full value of work we originate, once downstream NNA rolls up the chain?"
+                verdict={verdictQ8(data)}
+                evidencePadTop={14}
+              >
+                <ChainRolledBars data={data.extended.chainRolled} />
+              </BriefingRow>
+
+              <BriefingRow q="Q9" question="Which segments convert — and at what typical size?" verdict={verdictQ9(data)} evidencePadTop={14}>
+                <SegmentMatrixTable matrix={data.extended.segmentMatrix} />
+              </BriefingRow>
+
+              <BriefingRow q="Q10" question="Which completed work still has no recorded outcome?" verdict={verdictQ10(data)}>
+                <EvidenceList rows={chaseRows} empty="None — every completed engagement has a recorded outcome." />
+              </BriefingRow>
+
+              {/* ============ GROUP 4 — Work journey ============ */}
+              <GroupDivider n={4} name="Work journey" />
+
+              <SankeyBlock
+                q="Q11"
+                question="How does work flow from intake channel to project type to outcome?"
+                sankey={data.journeySankey}
+                templates={data.journeyTemplates}
               />
-              <DormantClientsTable data={data.dormantClients} />
-            </div>
-          </>
-        ) : !isLoading ? (
-          <div className="py-20 text-center text-muted">Failed to load KPI data.</div>
-        ) : null}
+
+              <BriefingRow q="Q12" question="Does our work generate more work?" verdict={verdictQ12(data)} evidencePadTop={14}>
+                <SpawnBars data={data.extended.spawnRate} />
+              </BriefingRow>
+
+              {/* ============ GROUP 5 — People & relationships ============ */}
+              <GroupDivider n={5} name="People & relationships" />
+
+              <BriefingRow
+                q="Q13"
+                question="Is our internal client base growing — or just recycling?"
+                verdict={verdictQ13(data)}
+                top={44}
+                evidencePadTop={14}
+              >
+                <ClientBaseBlock clientBase={data.extended.clientBase} uniquePerDept={data.extended.uniquePerDept} />
+              </BriefingRow>
+
+              <BriefingRow q="Q14" question="Which valuable clients have gone quiet?" verdict={verdictQ14(data)}>
+                <EvidenceList rows={dormantRows} empty="No dormant clients — everyone we’ve worked with is still active." />
+              </BriefingRow>
+            </>
+          ) : !isLoading ? (
+            <div style={{ padding: '80px 0', textAlign: 'center', color: C.textMuted }}>Failed to load KPI data.</div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
