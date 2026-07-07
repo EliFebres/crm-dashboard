@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
 
@@ -50,30 +50,63 @@ export default function KpiDashboard() {
     if (user.role !== 'admin' && user.team) setScope(`team:${user.team}`);
   }, [authLoading, user]);
 
-  // Recompute on (scope, period). The redesign has no dept/intake filters, and the
-  // extended metrics are scope-only; period still windows the computeDashboard half.
-  useEffect(() => {
-    if (authLoading) return;
-    const controller = new AbortController();
-    const id = setTimeout(async () => {
-      setIsLoading(true);
+  // Fetch the dashboard for the current (scope, period). `silent` skips the
+  // masthead "updating…" note — used for realtime background refreshes so live
+  // updates never flicker, while user-initiated scope/period changes still show it.
+  const abortRef = useRef<AbortController | null>(null);
+  const reloadData = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (authLoading) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      if (!opts?.silent) setIsLoading(true);
       try {
         const result = await getKpiDashboardData(
           { scope, period, clientDepts: [], intakeTypes: [], staleThreshold: '3w' },
           controller.signal
         );
-        setData(result);
+        if (!controller.signal.aborted) setData(result);
       } catch (err) {
         if ((err as Error).name !== 'AbortError') console.error('Failed to load KPI dashboard:', err);
       } finally {
+        // Always clear on a non-aborted completion (even for a silent refetch) so a
+        // realtime refresh that superseded a pending user refetch doesn't strand the note.
         if (!controller.signal.aborted) setIsLoading(false);
       }
-    }, 0);
-    return () => {
-      clearTimeout(id);
-      controller.abort();
+    },
+    [scope, period, authLoading]
+  );
+
+  // Initial load + refetch when the user changes scope/period (non-silent → "updating…").
+  useEffect(() => {
+    reloadData();
+  }, [reloadData]);
+
+  // Realtime: engagement mutations broadcast over the shared SSE stream
+  // (/api/client-interactions/events). Refetch silently on any change. A single
+  // mount-once connection (via reloadRef) avoids reconnecting on every scope/period
+  // change; a ~400ms debounce coalesces bursts (e.g. a bulk upload).
+  const reloadRef = useRef(reloadData);
+  useEffect(() => {
+    reloadRef.current = reloadData;
+  }, [reloadData]);
+
+  useEffect(() => {
+    const es = new EventSource('/api/client-interactions/events');
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    es.onmessage = (e) => {
+      if (e.data === 'connected') return; // initial heartbeat
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => reloadRef.current({ silent: true }), 400);
     };
-  }, [scope, period, authLoading]);
+    // Intentionally no onerror handler: let the browser's native EventSource
+    // auto-reconnect keep a long-open dashboard live across transient drops.
+    return () => {
+      if (timer) clearTimeout(timer);
+      es.close();
+    };
+  }, []);
 
   const staleRows: EvidenceRow[] = (data?.staleEngagements ?? []).slice(0, 8).map(r => ({
     key: String(r.id),
