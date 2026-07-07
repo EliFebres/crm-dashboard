@@ -13,7 +13,7 @@ import { query } from './index';
 import { hasDb } from './connection';
 import { departmentColorMap, listDepartmentNames } from './departments';
 import { intakeColorMap } from './intakeTypes';
-import { projectTypeColorMap, listProjectTypeNames, projectNameForRole } from './projectTypes';
+import { projectTypeColorMap, listProjectTypeNames } from './projectTypes';
 import type { ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
@@ -699,10 +699,9 @@ export async function computeMixDrift(constraints: ServerConstraints): Promise<M
   const empty = months.map(m => ({ label: m.label, highPct: 0, lowPct: 0, total: 0 }));
   if (!hasDb()) return empty;
 
-  // "High-touch" set from the redesign spec; PCR resolved via its stable role so a
-  // rename of the built-in doesn't drop it from the set.
-  const pcr = await projectNameForRole('pcr');
-  const highSet = ['Discovery Meeting', 'Meeting', 'Follow-up Meeting', pcr];
+  // "High-touch" project types (relationship/advisory work); every other project
+  // type counts as a data task.
+  const highSet = ['Discovery Meeting', 'Meeting', 'Follow-up Meeting'];
   const placeholders = highSet.map(() => '?').join(', ');
 
   const { whereClause, params } = buildTeamWhere(constraints);

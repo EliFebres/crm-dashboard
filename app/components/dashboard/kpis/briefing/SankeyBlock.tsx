@@ -5,7 +5,8 @@ import { Sankey, ResponsiveContainer, Layer, Rectangle } from 'recharts';
 import ClientOnlyChart from '@/app/components/dashboard/shared/ClientOnlyChart';
 import type { JourneySankeyData, JourneyTemplate } from '@/app/lib/api/kpi';
 import { nodeColor } from '../utils';
-import { C, MONO, qLabelStyle, questionStyle } from './tokens';
+import { C, MONO, questionStyle } from './tokens';
+import { QLabel } from './Blocks';
 import { fmtCur, fmtInt } from './briefing-utils';
 
 type SankeyNodeDatum = { name: string; kind: 'intake' | 'project' | 'outcome'; color?: string };
@@ -129,7 +130,7 @@ export default function SankeyBlock({ q, question, sankey, templates }: SankeyBl
     <div style={{ padding: '44px 0 0' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ maxWidth: 640 }}>
-          <div style={qLabelStyle}>{q}</div>
+          <QLabel q={q} />
           <div style={questionStyle}>{question}</div>
         </div>
         <div style={{ display: 'flex', gap: 16, paddingBottom: 6 }}>
