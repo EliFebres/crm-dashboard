@@ -182,13 +182,14 @@ export interface SegmentMatrix {
   cells: Record<string, SegmentCell | null>;
 }
 
-/** Q10 — one completed engagement with no recorded NNA outcome (the chase list). */
+/** Q10 — a "Follow Up" project (delivered, NNA outcome pending) worth chasing. */
 export interface ChaseRow {
   clientName: string;
   clientDept: string;
   type: string;
-  /** ISO date the work was finished. */
-  finished: string;
+  /** ISO date the project started — Follow Up items have no completion date. */
+  started: string;
+  /** Days since the project started (how long it's been open). */
   daysSince: number;
   /** Team member(s) assigned to this engagement. */
   assignees: string[];

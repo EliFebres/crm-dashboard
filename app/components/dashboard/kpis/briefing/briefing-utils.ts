@@ -173,8 +173,8 @@ export function verdictQ4(data: KpiDashboardData): string {
 export function verdictQ5(data: KpiDashboardData): string {
   const stale = data.staleEngagements;
   return stale.length
-    ? `These have been open longer than 3 weeks. The oldest has sat for ${stale[0].daysOpen} days ${DASH} worth a check-in.`
-    : `Nothing stale ${DASH} nice.`;
+    ? `Only open work untouched for 3 weeks or longer is listed. The oldest has sat for ${stale[0].daysOpen} days ${DASH} worth a check-in.`
+    : `Nothing open longer than 3 weeks ${DASH} nice.`;
 }
 
 export function verdictQ6(data: KpiDashboardData): string {
@@ -207,10 +207,11 @@ export function verdictQ9(data: KpiDashboardData): string {
 }
 
 export function verdictQ10(data: KpiDashboardData): string {
-  const chase = data.extended.chaseList;
-  return chase.length
-    ? `${chase.length}+ engagements were completed over a month ago with no NNA recorded. Until someone chases these, our value numbers understate reality.`
-    : `None ${DASH} every completed engagement has a recorded outcome.`;
+  const n = data.extended.chaseList.length;
+  if (!n) return `Nothing outstanding ${DASH} no "Follow Up" project has been open longer than 6 months.`;
+  const label = `${n}${n >= 10 ? '+' : ''} project${n === 1 ? '' : 's'}`;
+  const verb = n === 1 ? 'has' : 'have';
+  return `${label} flagged "Follow Up" ${verb} been open 6+ months with no NNA outcome recorded yet ${DASH} worth chasing the sales rep. Until then, our value numbers understate reality.`;
 }
 
 export function verdictQ12(data: KpiDashboardData): string {
@@ -228,8 +229,8 @@ export function verdictQ13(data: KpiDashboardData): string {
 }
 
 export function verdictQ14(data: KpiDashboardData): string {
-  const dormant = data.dormantClients;
-  return dormant.length
-    ? `${dormant.length} clients with 3+ historical engagements have been silent for 60+ days.`
-    : `No dormant clients ${DASH} everyone we’ve worked with is still active.`;
+  const n = data.dormantClients.length;
+  return n
+    ? `${n} client${n === 1 ? '' : 's'} with 3+ past engagements ${n === 1 ? 'has' : 'have'} had no activity for 60+ days ${DASH} long enough to count as dormant.`
+    : `No client with 3+ past engagements has gone quiet for 60+ days ${DASH} all still active.`;
 }

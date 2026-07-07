@@ -886,7 +886,12 @@ export async function computeSegmentMatrix(constraints: ServerConstraints): Prom
 }
 
 // -----------------------------------------------------------------------------
-// Q10 — CHASE LIST (strict Completed ≥30d ago, NNA still blank)
+// Q10 — CHASE LIST ("Follow Up" projects open 6+ months, NNA outcome still pending)
+//
+// "Follow Up" is the workflow flag for a delivered project whose NNA outcome hasn't
+// come back yet. Since results take a long time, we surface only those open 6+ months
+// — measured from the START date, because Follow Up items carry no completion date
+// (the app only stamps date_finished when a project is set to "Completed").
 // -----------------------------------------------------------------------------
 
 export async function computeChaseList(constraints: ServerConstraints): Promise<ChaseRow[]> {
@@ -895,13 +900,10 @@ export async function computeChaseList(constraints: ServerConstraints): Promise<
   const rows = await query<Record<string, unknown>>(
     `
       SELECT internal_client_name AS client, internal_client_dept AS dept, type,
-             date_finished AS finished, team_members,
-             CAST(julianday('now') - julianday(date_finished) AS INTEGER) AS days_since
+             date_started AS started, team_members,
+             CAST(julianday('now') - julianday(date_started) AS INTEGER) AS days_since
       FROM engagements
-      ${andWhere(
-        whereClause,
-        `status = 'Completed' AND date_finished IS NOT NULL AND date_finished <= date('now', '-30 days') AND nna IS NULL`
-      )}
+      ${andWhere(whereClause, `status = 'Follow Up' AND date_started <= date('now', '-6 months')`)}
       ORDER BY days_since DESC
       LIMIT 10
     `,
@@ -912,7 +914,7 @@ export async function computeChaseList(constraints: ServerConstraints): Promise<
     clientName: String(r.client ?? ''),
     clientDept: String(r.dept ?? ''),
     type: String(r.type ?? ''),
-    finished: String(r.finished ?? '').split('T')[0],
+    started: String(r.started ?? '').split('T')[0],
     daysSince: Number(r.days_since ?? 0),
     assignees: parseAssignees(r.team_members),
   }));

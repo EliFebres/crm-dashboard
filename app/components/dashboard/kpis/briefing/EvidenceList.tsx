@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { C, MONO } from './tokens';
+import { C, MONO, captionStyle } from './tokens';
 
 export interface EvidenceRow {
   key: string;
@@ -16,12 +16,13 @@ export interface EvidenceRow {
 }
 
 /** Shared hairline-separated list used by Q5 (stale), Q10 (chase), Q14 (dormant). */
-export default function EvidenceList({ rows, empty }: { rows: EvidenceRow[]; empty: string }) {
+export default function EvidenceList({ rows, empty, caption }: { rows: EvidenceRow[]; empty: string; caption?: string }) {
   if (rows.length === 0) {
     return <div style={{ fontSize: 13, color: C.textMuted, paddingTop: 4 }}>{empty}</div>;
   }
   return (
     <div>
+      {caption && <div style={captionStyle}>{caption}</div>}
       {rows.map(r => (
         <div
           key={r.key}

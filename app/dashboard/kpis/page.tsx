@@ -121,7 +121,7 @@ export default function KpiDashboard() {
     name: r.clientName,
     meta: `${r.clientDept} · ${r.type}`,
     assignee: r.assignees.join(', ') || undefined,
-    rightText: `done ${fmtDate(r.finished)}`,
+    rightText: `started ${fmtDate(r.started)}`,
     badge: `${r.daysSince}d`,
     badgeColor: C.amber,
   }));
@@ -177,7 +177,11 @@ export default function KpiDashboard() {
               </BriefingRow>
 
               <BriefingRow q="Q5" question="What open work has gone stale?" verdict={verdictQ5(data)}>
-                <EvidenceList rows={staleRows} empty="Nothing stale — nice." />
+                <EvidenceList
+                  rows={staleRows}
+                  caption="Open 3 weeks or longer · oldest first"
+                  empty="Nothing open longer than 3 weeks — nice."
+                />
               </BriefingRow>
 
               {/* ============ GROUP 3 — Value & outcomes ============ */}
@@ -209,8 +213,12 @@ export default function KpiDashboard() {
                 <SegmentMatrixTable matrix={data.extended.segmentMatrix} />
               </BriefingRow>
 
-              <BriefingRow q="Q10" question="Which completed work still has no recorded outcome?" verdict={verdictQ10(data)}>
-                <EvidenceList rows={chaseRows} empty="None — every completed engagement has a recorded outcome." />
+              <BriefingRow q="Q10" question="Which delivered projects are we still chasing for an NNA outcome?" verdict={verdictQ10(data)}>
+                <EvidenceList
+                  rows={chaseRows}
+                  caption="Status 'Follow Up' · open 6+ months · oldest first"
+                  empty="No 'Follow Up' projects open longer than 6 months — all caught up."
+                />
               </BriefingRow>
 
               {/* ============ GROUP 4 — Work journey ============ */}
@@ -241,7 +249,11 @@ export default function KpiDashboard() {
               </BriefingRow>
 
               <BriefingRow q="Q14" question="Which valuable clients have gone quiet?" verdict={verdictQ14(data)}>
-                <EvidenceList rows={dormantRows} empty="No dormant clients — everyone we’ve worked with is still active." />
+                <EvidenceList
+                  rows={dormantRows}
+                  caption="Dormant = no activity in 60+ days · 3+ past engagements · longest silent first"
+                  empty="No client quiet for 60+ days — all still active."
+                />
               </BriefingRow>
             </>
           ) : !isLoading ? (
