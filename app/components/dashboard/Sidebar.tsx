@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Swords, TrendingUp, Landmark, Bell, Activity, FileChartPie, ChartCandlestick, Settings } from 'lucide-react';
+import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Swords, Landmark, Bell, Activity, FileChartPie, ChartCandlestick, Settings } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { useAlerts } from '@/app/lib/hooks/useAlerts';
 import { NotificationsPopover } from '@/app/components/dashboard/NotificationsPopover';
@@ -27,16 +27,14 @@ const navSections: NavSection[] = [
     title: 'Interactions & KPIs',
     items: [
       { label: 'Client Interactions', href: '/dashboard/interactions-and-trends/client-interactions', icon: LayoutDashboard },
-      {
-        label: 'Client Trends',
-        href: '#',
-        icon: TrendingUp,
-        children: [
-          { label: 'Portfolio Trends', href: '/dashboard/interactions-and-trends/portfolio-trends', icon: PieChart },
-          { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame, disabled: true },
-        ],
-      },
       { label: 'Team KPIs', href: '/dashboard/kpis', icon: FileChartPie },
+    ],
+  },
+  {
+    title: 'Client Trends',
+    items: [
+      { label: 'Portfolio Trends', href: '/dashboard/interactions-and-trends/portfolio-trends', icon: PieChart },
+      { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame, disabled: true },
     ],
   },
   {
