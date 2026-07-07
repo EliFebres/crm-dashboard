@@ -34,7 +34,7 @@ const navSections: NavSection[] = [
     title: 'Client Trends',
     items: [
       { label: 'Portfolio Trends', href: '/dashboard/interactions-and-trends/portfolio-trends', icon: PieChart },
-      { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame, disabled: true },
+      { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame },
     ],
   },
   {
