@@ -97,13 +97,18 @@ export interface ClientModel {
   updatedAt?: string;           // when last logged/changed (bumps only on content change)
 }
 
-export interface NoteEntry {
+// Source-agnostic note shape shared by the reusable NotesModal. Anything that
+// can supply/persist a list of authored notes (engagements, tickers, …) uses this.
+export interface BaseNote {
   id: number;
-  engagementId: number;
-  noteText: string;
+  noteText: string;    // stored as HTML (Tiptap) or legacy plain text
   authorName: string;
   authorId: string;
-  createdAt: string; // ISO string
+  createdAt: string;   // ISO string
+}
+
+export interface NoteEntry extends BaseNote {
+  engagementId: number;
 }
 
 export interface Engagement {

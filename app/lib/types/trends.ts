@@ -1,5 +1,7 @@
 // Types for Trends Dashboard
 
+import type { BaseNote } from './engagements';
+
 export interface PortfolioMetric {
   label: string;
   value: string;
@@ -53,11 +55,21 @@ export interface HotTicker {
     competitor: string;
     firm: string;
   };
-  notes: string;
+  // A list of team-member notes (rich text). Replaces the old single-string note.
+  noteEntries: BaseNote[];
   talkingPointsUrl: string;
   pcrUrl: string;
   requestBreakdown?: TickerRequestBreakdown;
   quarterlyRequests?: QuarterlyRequests[];
+  // Per-team request split, used by the Ticker Trends department lens and the
+  // "Who's asking · by team" rail section.
+  split: TickerTeamSplit;
+}
+
+export interface TickerTeamSplit {
+  Advisory: number;
+  Brokerage: number;
+  Institutional: number;
 }
 
 export interface PopularFirmTicker {
