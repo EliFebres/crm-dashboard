@@ -12,6 +12,7 @@ import {
 } from '@/app/lib/data/portfolioTrends';
 import type { BenchmarkComparison } from '@/app/lib/types/trends';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
+import DummyDataModal from '@/app/components/dashboard/shared/DummyDataModal';
 import { getDepartments } from '@/app/lib/api/internal-clients';
 
 // Static filter options. Filter selection is purely cosmetic on this dashboard
@@ -732,6 +733,7 @@ export default function PortfolioTrendsDashboard() {
 
   return (
     <>
+        <DummyDataModal feature="Portfolio Trends" />
         {/* Top Bar with Filters */}
         <DashboardHeader
           title="Portfolio Trends"
