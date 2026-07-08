@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building2, Search, Plus, Pencil, Check, X, Loader2, AlertTriangle, Briefcase } from 'lucide-react';
+import { Building2, Search, Plus, Pencil, Check, X, Loader2, AlertTriangle, Briefcase, Download } from 'lucide-react';
 import {
-  getClients, registerClient, updateClient, getCrnConfig,
+  getClients, registerClient, updateClient, getCrnConfig, exportClientModels,
   CrnConfigResponse, ClientConflictError,
 } from '@/app/lib/api/client-interactions';
 import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/PortfolioModal';
@@ -32,6 +32,9 @@ export default function ClientManagementTab() {
 
   // Client whose model portfolios are being managed (opens the shared editor modal).
   const [modelsClient, setModelsClient] = useState<Client | null>(null);
+
+  // Export-all-models download state.
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback((q: string) => {
     setLoading(true);
@@ -72,6 +75,25 @@ export default function ClientManagementTab() {
       );
     } finally {
       setRegBusy(false);
+    }
+  };
+
+  const handleExportModels = async () => {
+    setExporting(true);
+    try {
+      const blob = await exportClientModels();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `client-models-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Swallow — a failed download surfaces as no file; nothing to persist.
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -123,16 +145,27 @@ export default function ClientManagementTab() {
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or CRN..."
-          className="w-full pl-9 pr-3 py-2 bg-zinc-900/60 border border-zinc-800/50 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/30 transition-colors"
-        />
+      {/* Search + export */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="relative max-w-md flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or CRN..."
+            className="w-full pl-9 pr-3 py-2 bg-zinc-900/60 border border-zinc-800/50 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/30 transition-colors"
+          />
+        </div>
+        <button
+          onClick={handleExportModels}
+          disabled={exporting}
+          title="Download all clients' models as an Excel workbook"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted hover:text-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+        >
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          Export Models
+        </button>
       </div>
 
       {/* Register form */}
