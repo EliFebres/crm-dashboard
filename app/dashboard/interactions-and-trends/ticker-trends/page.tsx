@@ -15,6 +15,7 @@ import type { HotTicker } from '@/app/lib/types/trends';
 import type { BaseNote } from '@/app/lib/types/engagements';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
+import DummyDataModal from '@/app/components/dashboard/shared/DummyDataModal';
 import NotesModal, { type NoteSource } from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import LinkModal from '@/app/components/dashboard/interactions-and-trends/ticker-trends/LinkModal';
 import HotTickersTable from '@/app/components/dashboard/interactions-and-trends/ticker-trends/HotTickersTable';
@@ -225,6 +226,7 @@ export default function TickerTrendsDashboard() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      <DummyDataModal feature="Ticker Trends" />
       <DashboardHeader
         title="Ticker Trends"
         subtitle="What clients ask about — and how we answer"
