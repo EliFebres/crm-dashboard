@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, ReactNode } from 'react';
-import { X, Plus, Loader2, Pencil, Trash2, Check, XCircle, Folder } from 'lucide-react';
+import { X, Plus, Loader2, Pencil, Trash2, Check, XCircle, Folder, Pin } from 'lucide-react';
 import {
   getEngagementNotes,
   addEngagementNote,
@@ -10,16 +10,34 @@ import {
   updateEngagementFilepath,
 } from '@/app/lib/api/client-interactions';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import type { NoteEntry } from '@/app/lib/types/engagements';
+import type { BaseNote } from '@/app/lib/types/engagements';
 import RichTextEditor from '@/app/components/dashboard/shared/RichTextEditor';
 import RichTextDisplay from '@/app/components/dashboard/shared/RichTextDisplay';
+
+// Pluggable notes backend. Callers that don't pass one fall back to the
+// engagement REST endpoints (keyed by `engagementId`); Ticker Trends injects a
+// client-side store instead. Keeps this one modal reusable across resources.
+export interface NoteSource {
+  fetch: () => Promise<BaseNote[]>;
+  add: (text: string) => Promise<BaseNote>;
+  update: (noteId: number, text: string) => Promise<BaseNote>;
+  remove: (noteId: number) => Promise<void>;
+}
 
 interface NotesModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   subtitle: ReactNode;
-  engagementId: number;
+  engagementId?: number;
+  // Inject a notes backend; when omitted, the engagement endpoints are used.
+  notesSource?: NoteSource;
+  // Re-fetch trigger for injected sources (e.g. the selected ticker symbol).
+  resourceKey?: string | number;
+  // Optional "show this note on the panel" control. When provided, each note gets
+  // a pin button; `pinnedNoteId` marks the current one (defaults to newest).
+  pinnedNoteId?: number | null;
+  onPinNote?: (noteId: number) => void;
   readOnly?: boolean;
   filepath?: string | null;
   canEditFilepath?: boolean;
@@ -40,6 +58,10 @@ const NotesModal: React.FC<NotesModalProps> = ({
   title,
   subtitle,
   engagementId,
+  notesSource,
+  resourceKey,
+  pinnedNoteId = null,
+  onPinNote,
   readOnly = false,
   filepath = null,
   canEditFilepath = false,
@@ -49,7 +71,19 @@ const NotesModal: React.FC<NotesModalProps> = ({
 }) => {
   const { user } = useCurrentUser();
   const notesListRef = useRef<HTMLDivElement>(null);
-  const [notes, setNotes] = useState<NoteEntry[]>([]);
+  const [notes, setNotes] = useState<BaseNote[]>([]);
+
+  // Resolve the active notes backend: the injected source, or the engagement
+  // REST endpoints keyed by engagementId. Stored in a ref so it can change
+  // freely without churning the fetch effect's dependencies.
+  const source: NoteSource | null = notesSource ?? (engagementId != null ? {
+    fetch: () => getEngagementNotes(engagementId),
+    add: (text: string) => addEngagementNote(engagementId, text),
+    update: (noteId: number, text: string) => updateEngagementNote(engagementId, noteId, text),
+    remove: (noteId: number) => deleteEngagementNote(engagementId, noteId),
+  } : null);
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
   const [loading, setLoading] = useState(false);
   const [newText, setNewText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -68,18 +102,20 @@ const NotesModal: React.FC<NotesModalProps> = ({
 
   // Fetch notes when modal opens
   useEffect(() => {
-    if (!isOpen || !engagementId) return;
+    if (!isOpen) return;
+    const src = sourceRef.current;
+    if (!src) return;
     setLoading(true);
     setNewText('');
     setEditingNoteId(null);
     setEditingFilepath(false);
     setFilepathError(null);
     setFilepathFlash(null);
-    getEngagementNotes(engagementId)
+    src.fetch()
       .then(setNotes)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [isOpen, engagementId]);
+  }, [isOpen, engagementId, resourceKey]);
 
   // Clear the "Copied" / error flash after a short delay
   const showFlash = (msg: string) => {
@@ -101,10 +137,11 @@ const NotesModal: React.FC<NotesModalProps> = ({
   }, [isOpen, onClose]);
 
   const handleAddNote = async () => {
-    if (!newText.trim() || saving) return;
+    const src = sourceRef.current;
+    if (!newText.trim() || saving || !src) return;
     setSaving(true);
     try {
-      const entry = await addEngagementNote(engagementId, newText.trim());
+      const entry = await src.add(newText.trim());
       setNotes(prev => [...prev, entry]);
       setNewText('');
       onNoteAdded?.();
@@ -118,7 +155,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
     }
   };
 
-  const startEdit = (entry: NoteEntry) => {
+  const startEdit = (entry: BaseNote) => {
     setEditingNoteId(entry.id);
     setEditText(entry.noteText);
   };
@@ -129,10 +166,11 @@ const NotesModal: React.FC<NotesModalProps> = ({
   };
 
   const handleSaveEdit = async (noteId: number) => {
-    if (!editText.trim() || savingEdit) return;
+    const src = sourceRef.current;
+    if (!editText.trim() || savingEdit || !src) return;
     setSavingEdit(true);
     try {
-      const updated = await updateEngagementNote(engagementId, noteId, editText.trim());
+      const updated = await src.update(noteId, editText.trim());
       setNotes(prev => prev.map(n => n.id === noteId ? updated : n));
       setEditingNoteId(null);
       setEditText('');
@@ -156,7 +194,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
   };
 
   const handleSaveFilepath = async () => {
-    if (savingFilepath) return;
+    if (savingFilepath || engagementId == null) return;
     const trimmed = filepathDraft.trim();
     const next = trimmed.length === 0 ? null : trimmed;
     setSavingFilepath(true);
@@ -184,9 +222,11 @@ const NotesModal: React.FC<NotesModalProps> = ({
   };
 
   const handleDeleteNote = async (noteId: number) => {
+    const src = sourceRef.current;
+    if (!src) return;
     setDeletingNoteId(noteId);
     try {
-      await deleteEngagementNote(engagementId, noteId);
+      await src.remove(noteId);
       setNotes(prev => prev.filter(n => n.id !== noteId));
       onNoteDeleted?.();
     } catch (err) {
@@ -197,6 +237,12 @@ const NotesModal: React.FC<NotesModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+  // Which note is "on the panel": the explicit pin, or the newest note by default.
+  const newestNoteId = notes.length ? notes.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b)).id : null;
+  const effectivePinnedId = onPinNote && pinnedNoteId != null && notes.some(n => n.id === pinnedNoteId)
+    ? pinnedNoteId
+    : newestNoteId;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -313,38 +359,57 @@ const NotesModal: React.FC<NotesModalProps> = ({
               const isOwner = user?.id === entry.authorId;
               const isEditing = editingNoteId === entry.id;
               const isDeleting = deletingNoteId === entry.id;
+              const isPinned = !!onPinNote && entry.id === effectivePinnedId;
 
               return (
                 <div
                   key={entry.id}
-                  className="bg-zinc-800/50 border border-zinc-700/40 p-4"
+                  className={`bg-zinc-800/50 border p-4 ${isPinned ? 'border-cyan-500/40' : 'border-zinc-700/40'}`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between mb-2 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span className="text-xs font-medium text-cyan-400">{entry.authorName}</span>
                       <span className="text-muted text-xs">·</span>
                       <span className="text-xs text-muted">{formatNoteDate(entry.createdAt)}</span>
+                      {isPinned && (
+                        <span className="text-[10px] font-medium text-cyan-400 border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 flex-shrink-0">
+                          On panel
+                        </span>
+                      )}
                     </div>
-                    {isOwner && !isEditing && !readOnly && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => startEdit(entry)}
-                          className="p-1 text-muted hover:text-muted transition-colors"
-                          title="Edit note"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteNote(entry.id)}
-                          disabled={isDeleting}
-                          className="p-1 text-muted hover:text-red-400 transition-colors disabled:opacity-50"
-                          title="Delete note"
-                        >
-                          {isDeleting
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Trash2 className="w-3.5 h-3.5" />
-                          }
-                        </button>
+                    {!isEditing && (onPinNote || (isOwner && !readOnly)) && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {onPinNote && (
+                          <button
+                            onClick={() => onPinNote(entry.id)}
+                            className={`p-1 transition-colors ${isPinned ? 'text-cyan-400' : 'text-muted hover:text-cyan-400'}`}
+                            title={isPinned ? 'Shown on the panel' : 'Show this note on the panel'}
+                          >
+                            <Pin className="w-3.5 h-3.5" fill={isPinned ? 'currentColor' : 'none'} />
+                          </button>
+                        )}
+                        {isOwner && !readOnly && (
+                          <>
+                            <button
+                              onClick={() => startEdit(entry)}
+                              className="p-1 text-muted hover:text-muted transition-colors"
+                              title="Edit note"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteNote(entry.id)}
+                              disabled={isDeleting}
+                              className="p-1 text-muted hover:text-red-400 transition-colors disabled:opacity-50"
+                              title="Delete note"
+                            >
+                              {isDeleting
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />
+                              }
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

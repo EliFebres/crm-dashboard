@@ -98,19 +98,15 @@ export function DeleteOrgModal({
 
 /** Reusable admin manager for an editable list (Teams or Offices). */
 export function OrgSection({
-  title, singular, icon, api, align = 'left', liveEntities,
+  title, singular, icon, api, liveEntities,
 }: {
   title: string;
   singular: string;
   icon: React.ReactNode;
   api: OrgApi;
-  /** Horizontal alignment of the (capped-width) card within its container. */
-  align?: 'left' | 'right';
   /** entityTypes whose live change should refetch this list. Must be stable. */
   liveEntities?: readonly string[];
 }) {
-  // Pushes the max-w-md blocks to the right edge when the card is right-aligned.
-  const alignCls = align === 'right' ? 'ml-auto' : '';
   const [items, setItems] = useState<OrgItem[]>([]);
   const [loading, setLoading] = useState(true);
   const flashes = useRowFlashes(items, ORG_FLASH_SPECS);
@@ -207,7 +203,7 @@ export function OrgSection({
 
   return (
     <section className="space-y-4">
-      <div className={`flex items-end justify-between gap-4 max-w-md ${alignCls}`}>
+      <div className="flex items-end justify-between gap-4">
         <div className="flex items-center gap-2">
           {icon}
           <div>
@@ -225,7 +221,7 @@ export function OrgSection({
       </div>
 
       {showAdd && (
-        <div className={`max-w-md space-y-2 p-4 bg-zinc-900/60 border border-zinc-800/50 rounded-lg ${alignCls}`}>
+        <div className="space-y-2 p-4 bg-zinc-900/60 border border-zinc-800/50 rounded-lg">
           <p className="text-sm font-medium text-zinc-200">Add a new {singular}</p>
           <input
             type="text"
@@ -256,7 +252,7 @@ export function OrgSection({
       )}
 
       <SortableList ids={items.map(i => i.id)} onReorder={handleReorder}>
-      <div className={`bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-hidden max-w-md ${alignCls}`}>
+      <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-lg overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-zinc-800/50 text-left">

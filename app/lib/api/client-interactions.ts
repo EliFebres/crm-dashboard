@@ -576,3 +576,13 @@ export async function exportEngagements(filters: EngagementFilters = {}): Promis
   if (!response.ok) throw new Error('Failed to export engagements');
   return response.blob();
 }
+
+/**
+ * Exports every client's model portfolios as an .xlsx workbook (Models + Holdings sheets).
+ * Endpoint: GET /api/client-interactions/clients/models/export
+ */
+export async function exportClientModels(): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/clients/models/export`);
+  if (!response.ok) throw new Error('Failed to export client models');
+  return response.blob();
+}

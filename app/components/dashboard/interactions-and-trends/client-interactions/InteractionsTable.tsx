@@ -331,6 +331,15 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         </div>
       </td>
       <td className={`px-4 py-3 ${flashFor(engagement.id, 'teamMembers')}`}>
+        {engagement.teamMembers.length === 0 ? (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-400/15 border border-yellow-400/50 text-yellow-300 text-xs font-semibold whitespace-nowrap"
+            title="No team member is assigned to this project"
+          >
+            <AlertTriangle className="w-3 h-3" />
+            Unassigned
+          </span>
+        ) : (
         <div className="flex -space-x-1.5">
           {engagement.teamMembers.slice(0, 4).map((member, idx) => (
             <div
@@ -350,6 +359,7 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
             </div>
           )}
         </div>
+        )}
       </td>
       <td className="px-4 py-3">
         <span className="text-sm text-muted font-mono">{engagement.dateStarted}</span>

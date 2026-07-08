@@ -16,6 +16,14 @@ import {
   computeNnaConcentration,
   computeStaleEngagements,
   computeDormantClients,
+  computeWeeklyFlow,
+  computeMixDrift,
+  computeCycleTimes,
+  computeChainRolled,
+  computeSegmentMatrix,
+  computeChaseList,
+  computeSpawnRate,
+  computeClientBase,
 } from '@/app/lib/db/kpi-aggregations';
 import { resolveStaleThreshold, type KpiFilters } from '@/app/lib/api/kpi';
 
@@ -60,6 +68,15 @@ export async function POST(req: NextRequest) {
       nnaConcentration,
       staleEngagements,
       dormantClients,
+      // Extended "Briefing" metrics — scope(team)-only, fixed intrinsic windows.
+      weeklyFlow,
+      mixDrift,
+      cycleTimes,
+      chainRolled,
+      segmentMatrix,
+      chaseList,
+      spawnRate,
+      clientBaseResult,
     ] = await Promise.all([
       computeHeroKpis(filters, constraints),
       computeJourneySankey(filters, constraints),
@@ -68,6 +85,14 @@ export async function POST(req: NextRequest) {
       computeNnaConcentration(filters, constraints),
       computeStaleEngagements(filters, constraints),
       computeDormantClients(filters, constraints),
+      computeWeeklyFlow(constraints),
+      computeMixDrift(constraints),
+      computeCycleTimes(constraints),
+      computeChainRolled(constraints),
+      computeSegmentMatrix(constraints),
+      computeChaseList(constraints),
+      computeSpawnRate(constraints),
+      computeClientBase(constraints),
     ]);
 
     return NextResponse.json({
@@ -82,6 +107,17 @@ export async function POST(req: NextRequest) {
       nnaConcentration,
       staleEngagements,
       dormantClients,
+      extended: {
+        weeklyFlow,
+        mixDrift,
+        cycleTimes,
+        chainRolled,
+        segmentMatrix,
+        chaseList,
+        spawnRate,
+        clientBase: clientBaseResult.clientBase,
+        uniquePerDept: clientBaseResult.uniquePerDept,
+      },
     });
   } catch (err) {
     console.error('POST /api/kpi/dashboard error:', err);
