@@ -11,9 +11,9 @@
  */
 import { query } from './index';
 import { hasDb } from './connection';
-import { departmentColorMap } from './departments';
+import { departmentColorMap, listDepartmentNames } from './departments';
 import { intakeColorMap } from './intakeTypes';
-import { projectTypeColorMap } from './projectTypes';
+import { projectTypeColorMap, listProjectTypeNames } from './projectTypes';
 import type { ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
@@ -27,6 +27,15 @@ import type {
   NnaConcentration,
   StaleEngagement,
   DormantClient,
+  WeeklyFlowPoint,
+  MixDriftPoint,
+  CycleTimeRow,
+  ChainRolledRow,
+  SegmentMatrix,
+  ChaseRow,
+  SpawnRateRow,
+  ClientBasePoint,
+  UniquePerDeptRow,
 } from '../api/kpi';
 
 // =============================================================================
@@ -89,6 +98,17 @@ function pct(num: number, denom: number): number {
 function deltaPercent(curr: number, prev: number): number {
   if (prev === 0) return curr === 0 ? 0 : 100;
   return Math.round(((curr - prev) / prev) * 100);
+}
+
+/** Parse the engagements.team_members JSON column into a clean string[] of member names. */
+function parseAssignees(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : [];
+  } catch {
+    return [];
+  }
 }
 
 // =============================================================================
@@ -539,11 +559,479 @@ export async function computeDormantClients(
     params
   );
 
-  return rows.map(r => ({
+  const mapped = rows.map(r => ({
     clientName: String(r.client ?? ''),
     clientDept: String(r.dept ?? ''),
     historicalCount: Number(r.total_count ?? 0),
     lastEngagedDate: String(r.last_started ?? '').split('T')[0],
     daysSinceLast: Number(r.days_since ?? 0),
+    assignees: [] as string[],
   }));
+
+  // Attach the team member(s) from each dormant client's most recent engagement
+  // (the one that set their last-engaged date). Kept scope-consistent via `team`.
+  if (mapped.length) {
+    const names = mapped.map(m => m.clientName);
+    const placeholders = names.map(() => '?').join(', ');
+    const teamClause = constraints.team ? 'AND team = ?' : '';
+    const latestParams = constraints.team ? [...names, constraints.team] : names;
+    const latest = await query<Record<string, unknown>>(
+      `
+        SELECT name, team_members FROM (
+          SELECT internal_client_name AS name, team_members,
+                 ROW_NUMBER() OVER (PARTITION BY internal_client_name ORDER BY date_started DESC, id DESC) AS rn
+          FROM engagements
+          WHERE internal_client_name IN (${placeholders}) ${teamClause}
+        ) WHERE rn = 1
+      `,
+      latestParams
+    );
+    const byName = new Map<string, string[]>();
+    for (const r of latest) byName.set(String(r.name ?? ''), parseAssignees(r.team_members));
+    for (const m of mapped) m.assignees = byName.get(m.clientName) ?? [];
+  }
+
+  return mapped;
+}
+
+// =============================================================================
+// EXTENDED METRICS — the "Briefing" redesign (Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
+//
+// These are intentionally SCOPE(team)-ONLY. Per the redesign spec, each uses a
+// fixed intrinsic window (26 weeks / 12 months / all-completed / all-history) and
+// does not respond to the period, clientDepts, or intakeTypes filters. So the only
+// constraint applied is the team scope; `buildTeamWhere` emits exactly that.
+// =============================================================================
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Team-only WHERE clause (ignores period / dept / intake). */
+function buildTeamWhere(constraints: ServerConstraints, alias?: string): SqlClause {
+  const col = (c: string) => (alias ? `${alias}.${c}` : c);
+  if (constraints.team) {
+    return { whereClause: `WHERE ${col('team')} = ?`, params: [constraints.team] };
+  }
+  return { whereClause: '', params: [] };
+}
+
+/** Append an extra condition to a (possibly empty) WHERE clause. */
+function andWhere(base: string, condition: string): string {
+  return base ? `${base} AND ${condition}` : `WHERE ${condition}`;
+}
+
+/** Linear-interpolated quantile over a pre-sorted ascending array (matches the redesign spec). */
+function quantile(sorted: number[], q: number): number {
+  if (!sorted.length) return 0;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/** Month key = year*12 + month, derived from an ISO ("YYYY-MM-DD") or "YYYY-MM" string. */
+function isoMonthKey(iso: string): number {
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7)); // 1-based
+  return y * 12 + (m - 1);
+}
+
+// -----------------------------------------------------------------------------
+// Q2 — WEEKLY OPENED vs COMPLETED (last 26 weeks)
+// -----------------------------------------------------------------------------
+
+export async function computeWeeklyFlow(constraints: ServerConstraints): Promise<WeeklyFlowPoint[]> {
+  const WEEKS = 26;
+  const now = Date.now();
+  const DAY = 86400000;
+  // Pre-build 26 ordered buckets: index 0 = oldest, index 25 = current week.
+  const buckets: WeeklyFlowPoint[] = Array.from({ length: WEEKS }, (_, i) => {
+    const weeksAgo = WEEKS - 1 - i;
+    const d = new Date(now - weeksAgo * 7 * DAY);
+    return { weeksAgo: i, opened: 0, completed: 0, label: `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}` };
+  });
+  if (!hasDb()) return buckets;
+
+  const { whereClause, params } = buildTeamWhere(constraints);
+  const [openedRows, completedRows] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+        SELECT CAST((julianday('now') - julianday(date_started)) / 7 AS INTEGER) AS wk, COUNT(*) AS cnt
+        FROM engagements
+        ${andWhere(whereClause, `date_started >= date('now', '-183 days')`)}
+        GROUP BY wk
+      `,
+      params
+    ),
+    query<Record<string, unknown>>(
+      `
+        SELECT CAST((julianday('now') - julianday(date_finished)) / 7 AS INTEGER) AS wk, COUNT(*) AS cnt
+        FROM engagements
+        ${andWhere(whereClause, `date_finished IS NOT NULL AND date_finished >= date('now', '-183 days')`)}
+        GROUP BY wk
+      `,
+      params
+    ),
+  ]);
+
+  // wk = whole weeks ago (0 = current). Bucket index = WEEKS-1-wk.
+  for (const r of openedRows) {
+    const wk = Number(r.wk ?? -1);
+    if (wk >= 0 && wk < WEEKS) buckets[WEEKS - 1 - wk].opened = Number(r.cnt ?? 0);
+  }
+  for (const r of completedRows) {
+    const wk = Number(r.wk ?? -1);
+    if (wk >= 0 && wk < WEEKS) buckets[WEEKS - 1 - wk].completed = Number(r.cnt ?? 0);
+  }
+  return buckets;
+}
+
+// -----------------------------------------------------------------------------
+// Q3 — WORK-MIX DRIFT (high-touch vs data-task share, last 12 months)
+// -----------------------------------------------------------------------------
+
+export async function computeMixDrift(constraints: ServerConstraints): Promise<MixDriftPoint[]> {
+  const now = new Date();
+  // 12 ordered month buckets ending on the current month.
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
+    return { key: d.getFullYear() * 12 + d.getMonth(), label: MONTH_ABBR[d.getMonth()], high: 0, total: 0 };
+  });
+  const empty = months.map(m => ({ label: m.label, highPct: 0, lowPct: 0, total: 0 }));
+  if (!hasDb()) return empty;
+
+  // "High-touch" project types (relationship/advisory work); every other project
+  // type counts as a data task.
+  const highSet = ['Discovery Meeting', 'Meeting', 'Follow-up Meeting'];
+  const placeholders = highSet.map(() => '?').join(', ');
+
+  const { whereClause, params } = buildTeamWhere(constraints);
+  const rows = await query<Record<string, unknown>>(
+    `
+      SELECT strftime('%Y-%m', date_started) AS ym,
+             COUNT(*) FILTER (WHERE type IN (${placeholders})) AS high,
+             COUNT(*) AS total
+      FROM engagements
+      ${andWhere(whereClause, `date_started >= date('now', '-11 months', 'start of month')`)}
+      GROUP BY ym
+    `,
+    [...params, ...highSet]
+  );
+
+  const byKey = new Map(months.map(m => [m.key, m]));
+  for (const r of rows) {
+    const ym = String(r.ym ?? '');
+    if (!ym) continue;
+    const key = isoMonthKey(ym + '-01');
+    const m = byKey.get(key);
+    if (!m) continue;
+    m.high = Number(r.high ?? 0);
+    m.total = Number(r.total ?? 0);
+  }
+
+  return months.map(m => ({
+    label: m.label,
+    highPct: m.total ? (m.high / m.total) * 100 : 0,
+    lowPct: m.total ? ((m.total - m.high) / m.total) * 100 : 0,
+    total: m.total,
+  }));
+}
+
+// -----------------------------------------------------------------------------
+// Q4 — CYCLE TIME by project type (median + P90 days, completed work only)
+// -----------------------------------------------------------------------------
+
+export async function computeCycleTimes(constraints: ServerConstraints): Promise<CycleTimeRow[]> {
+  if (!hasDb()) return [];
+  const { whereClause, params } = buildTeamWhere(constraints);
+  const [rows, colors] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+        SELECT type, julianday(date_finished) - julianday(date_started) AS days
+        FROM engagements
+        ${andWhere(whereClause, `date_finished IS NOT NULL`)}
+      `,
+      params
+    ),
+    projectTypeColorMap(),
+  ]);
+
+  const byType = new Map<string, number[]>();
+  for (const r of rows) {
+    const type = String(r.type ?? '');
+    const days = Number(r.days ?? 0);
+    if (!type) continue;
+    const arr = byType.get(type) ?? [];
+    arr.push(days);
+    byType.set(type, arr);
+  }
+
+  return [...byType.entries()]
+    .map(([type, arr]) => {
+      arr.sort((a, b) => a - b);
+      return {
+        type,
+        count: arr.length,
+        median: quantile(arr, 0.5),
+        p90: quantile(arr, 0.9),
+        color: colors[type] || '#71717a',
+      };
+    })
+    .filter(c => c.count >= 5)
+    .sort((a, b) => b.median - a.median);
+}
+
+// -----------------------------------------------------------------------------
+// Q8 — CHAIN-ROLLED NNA attribution by originating type
+// -----------------------------------------------------------------------------
+
+export async function computeChainRolled(constraints: ServerConstraints): Promise<ChainRolledRow[]> {
+  if (!hasDb()) return [];
+  const { whereClause, params } = buildTeamWhere(constraints, 'e');
+  const rootExtra = whereClause ? `AND ${whereClause.slice(6)}` : ''; // strip leading "WHERE "
+
+  const [rows, colors] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+        WITH RECURSIVE chain AS (
+          SELECT e.id AS root_id, e.type AS root_type, e.id AS id, e.nna AS nna, 0 AS depth
+          FROM engagements e
+          WHERE e.linked_from_id IS NULL
+            ${rootExtra}
+
+          UNION ALL
+
+          SELECT c.root_id, c.root_type, ch.id, ch.nna, c.depth + 1
+          FROM engagements ch
+          JOIN chain c ON ch.linked_from_id = c.id
+          WHERE c.depth < 6
+        )
+        SELECT root_type AS type,
+               SUM(CASE WHEN depth = 0 THEN COALESCE(nna, 0) ELSE 0 END) AS direct_nna,
+               SUM(COALESCE(nna, 0)) AS rolled_nna
+        FROM chain
+        GROUP BY root_type
+      `,
+      params
+    ),
+    projectTypeColorMap(),
+  ]);
+
+  return rows
+    .map(r => {
+      const type = String(r.type ?? '');
+      const directNna = Number(r.direct_nna ?? 0);
+      const rolledNna = Number(r.rolled_nna ?? 0);
+      const downstream = rolledNna - directNna;
+      const uplift = directNna ? (rolledNna / directNna - 1) * 100 : (rolledNna > 0 ? 100 : 0);
+      return { type, directNna, rolledNna, downstream, uplift, color: colors[type] || '#71717a' };
+    })
+    .sort((a, b) => b.rolledNna - a.rolledNna);
+}
+
+// -----------------------------------------------------------------------------
+// Q9 — SEGMENT CONVERSION MATRIX (project type × client department)
+// -----------------------------------------------------------------------------
+
+export async function computeSegmentMatrix(constraints: ServerConstraints): Promise<SegmentMatrix> {
+  const [deptNames, typeNames] = await Promise.all([listDepartmentNames(), listProjectTypeNames()]);
+  const depts = deptNames;
+  const types = typeNames.filter(t => t !== 'Other');
+  const empty: SegmentMatrix = { depts, types, cells: {} };
+  if (!hasDb()) return empty;
+
+  const { whereClause, params } = buildTeamWhere(constraints);
+  // Strict Completed only (excludes Follow Up), matching the redesign spec.
+  const rows = await query<Record<string, unknown>>(
+    `
+      SELECT type, internal_client_dept AS dept, nna
+      FROM engagements
+      ${andWhere(whereClause, `status = 'Completed'`)}
+    `,
+    params
+  );
+
+  type Agg = { completed: number; hits: number; nnas: number[] };
+  const map = new Map<string, Agg>();
+  for (const r of rows) {
+    const type = String(r.type ?? '');
+    const dept = String(r.dept ?? '');
+    const nna = r.nna == null ? null : Number(r.nna);
+    const key = `${type}|${dept}`;
+    const g = map.get(key) ?? { completed: 0, hits: 0, nnas: [] };
+    g.completed++;
+    if (nna != null && nna > 0) {
+      g.hits++;
+      g.nnas.push(nna);
+    }
+    map.set(key, g);
+  }
+
+  const cells: SegmentMatrix['cells'] = {};
+  for (const t of types) {
+    for (const d of depts) {
+      const key = `${t}|${d}`;
+      const g = map.get(key);
+      cells[key] = g && g.completed >= 3
+        ? {
+            n: g.completed,
+            hitRate: (g.hits / g.completed) * 100,
+            medianNna: g.nnas.length ? quantile(g.nnas.sort((a, b) => a - b), 0.5) : 0,
+          }
+        : null;
+    }
+  }
+
+  return { depts, types, cells };
+}
+
+// -----------------------------------------------------------------------------
+// Q10 — CHASE LIST ("Follow Up" projects open 6+ months, NNA outcome still pending)
+//
+// "Follow Up" is the workflow flag for a delivered project whose NNA outcome hasn't
+// come back yet. Since results take a long time, we surface only those open 6+ months
+// — measured from the START date, because Follow Up items carry no completion date
+// (the app only stamps date_finished when a project is set to "Completed").
+// -----------------------------------------------------------------------------
+
+export async function computeChaseList(constraints: ServerConstraints): Promise<ChaseRow[]> {
+  if (!hasDb()) return [];
+  const { whereClause, params } = buildTeamWhere(constraints);
+  const rows = await query<Record<string, unknown>>(
+    `
+      SELECT internal_client_name AS client, internal_client_dept AS dept, type,
+             date_started AS started, team_members,
+             CAST(julianday('now') - julianday(date_started) AS INTEGER) AS days_since
+      FROM engagements
+      ${andWhere(whereClause, `status = 'Follow Up' AND date_started <= date('now', '-6 months')`)}
+      ORDER BY days_since DESC
+      LIMIT 10
+    `,
+    params
+  );
+
+  return rows.map(r => ({
+    clientName: String(r.client ?? ''),
+    clientDept: String(r.dept ?? ''),
+    type: String(r.type ?? ''),
+    started: String(r.started ?? '').split('T')[0],
+    daysSince: Number(r.days_since ?? 0),
+    assignees: parseAssignees(r.team_members),
+  }));
+}
+
+// -----------------------------------------------------------------------------
+// Q12 — FOLLOW-UP SPAWN RATE by originating type
+// -----------------------------------------------------------------------------
+
+export async function computeSpawnRate(constraints: ServerConstraints): Promise<SpawnRateRow[]> {
+  if (!hasDb()) return [];
+  const { whereClause, params } = buildTeamWhere(constraints, 'e');
+  const [rows, colors] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+        SELECT e.type AS type,
+               COUNT(*) AS cnt,
+               SUM(CASE WHEN EXISTS (SELECT 1 FROM engagements c WHERE c.linked_from_id = e.id) THEN 1 ELSE 0 END) AS spawned
+        FROM engagements e
+        ${whereClause}
+        GROUP BY e.type
+      `,
+      params
+    ),
+    projectTypeColorMap(),
+  ]);
+
+  return rows
+    .map(r => {
+      const type = String(r.type ?? '');
+      const count = Number(r.cnt ?? 0);
+      const spawned = Number(r.spawned ?? 0);
+      return { type, count, spawned, pct: count ? (spawned / count) * 100 : 0, color: colors[type] || '#71717a' };
+    })
+    .filter(g => g.count >= 8)
+    .sort((a, b) => b.pct - a.pct);
+}
+
+// -----------------------------------------------------------------------------
+// Q13 — CLIENT BASE (new vs returning per month, 12m) + unique clients per dept (1Y)
+// -----------------------------------------------------------------------------
+
+export async function computeClientBase(
+  constraints: ServerConstraints
+): Promise<{ clientBase: ClientBasePoint[]; uniquePerDept: UniquePerDeptRow[] }> {
+  const now = new Date();
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
+    return { key: d.getFullYear() * 12 + d.getMonth(), label: MONTH_ABBR[d.getMonth()], all: new Set<string>(), fresh: new Set<string>() };
+  });
+  const deptNames = await listDepartmentNames();
+  const deptColors = await departmentColorMap();
+
+  if (!hasDb()) {
+    return {
+      clientBase: months.map(m => ({ label: m.label, newN: 0, returningN: 0 })),
+      uniquePerDept: deptNames.map(d => ({ dept: d, color: deptColors[d] || '#71717a', unique: 0 })),
+    };
+  }
+
+  const { whereClause, params } = buildTeamWhere(constraints);
+
+  const [firstRows, scopeRows, uniqRows] = await Promise.all([
+    // First-ever engagement per client, across ALL teams (defines "new").
+    query<Record<string, unknown>>(
+      `SELECT internal_client_name AS name, MIN(date_started) AS first FROM engagements GROUP BY internal_client_name`
+    ),
+    // In-scope engagements over the last 12 months.
+    query<Record<string, unknown>>(
+      `
+        SELECT internal_client_name AS name, date_started AS ds
+        FROM engagements
+        ${andWhere(whereClause, `date_started >= date('now', '-11 months', 'start of month')`)}
+      `,
+      params
+    ),
+    // Unique clients per dept over the last year.
+    query<Record<string, unknown>>(
+      `
+        SELECT internal_client_dept AS dept, COUNT(DISTINCT internal_client_name) AS uniq
+        FROM engagements
+        ${andWhere(whereClause, `date_started >= date('now', '-365 days')`)}
+        GROUP BY internal_client_dept
+      `,
+      params
+    ),
+  ]);
+
+  const firstMonthByClient = new Map<string, number>();
+  for (const r of firstRows) {
+    const name = String(r.name ?? '');
+    const first = String(r.first ?? '');
+    if (name && first) firstMonthByClient.set(name, isoMonthKey(first));
+  }
+
+  const byKey = new Map(months.map(m => [m.key, m]));
+  for (const r of scopeRows) {
+    const name = String(r.name ?? '');
+    const ds = String(r.ds ?? '');
+    if (!name || !ds) continue;
+    const key = isoMonthKey(ds);
+    const m = byKey.get(key);
+    if (!m) continue;
+    m.all.add(name);
+    if (firstMonthByClient.get(name) === key) m.fresh.add(name);
+  }
+
+  const clientBase = months.map(m => ({
+    label: m.label,
+    newN: m.fresh.size,
+    returningN: m.all.size - m.fresh.size,
+  }));
+
+  const uniqByDept = new Map<string, number>();
+  for (const r of uniqRows) uniqByDept.set(String(r.dept ?? ''), Number(r.uniq ?? 0));
+  const uniquePerDept = deptNames
+    .map(d => ({ dept: d, color: deptColors[d] || '#71717a', unique: uniqByDept.get(d) ?? 0 }))
+    .sort((a, b) => b.unique - a.unique);
+
+  return { clientBase, uniquePerDept };
 }
