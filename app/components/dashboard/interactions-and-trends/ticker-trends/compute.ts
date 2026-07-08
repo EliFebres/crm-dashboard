@@ -175,7 +175,7 @@ export function extMetrics(t: HotTicker): ExtMetrics {
   return ext;
 }
 
-// ── Proof points (8 ordered comparison rows) ─────────────────────────────────
+// ── Proof points (7 ordered comparison rows) ─────────────────────────────────
 
 export interface ProofRow { label: string; c: string; f: string; cw: CSSProperties; fw: CSSProperties }
 
@@ -188,9 +188,7 @@ export function proofOf(t: HotTicker): ProofRow[] {
     return { label, c: cd, f: fd, cw: bar('#22d3ee', Math.abs(cv) / m), fw: bar('#fbbf24', Math.abs(fv) / m) };
   };
   const e = extMetrics(t);
-  const aC = parseB(t.aum.competitor), aF = parseB(t.aum.firm);
   return [
-    row('AUM', aC, aF, '$' + t.aum.competitor, '$' + t.aum.firm),
     row('Expense', t.expenseRatio.competitor, t.expenseRatio.firm, t.expenseRatio.competitor.toFixed(2) + '%', t.expenseRatio.firm.toFixed(2) + '%'),
     row('Holdings', e.holdC, e.holdF, e.holdC.toLocaleString(), e.holdF.toLocaleString()),
     row('Market Cap', e.mcC, e.mcF, '$' + Math.round(e.mcC) + 'B', '$' + Math.round(e.mcF) + 'B'),
