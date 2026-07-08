@@ -67,9 +67,15 @@ export interface HeaderTab {
 interface DashboardHeaderProps {
   title: string;
   subtitle: string;
-  searchPlaceholder: string;
-  searchValue: string;
-  onSearchChange: (value: string) => void;
+  searchPlaceholder?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  // Hide the search input entirely (e.g. pages that don't support text search).
+  // Pair with `alwaysShowFilters` to keep filter controls permanently visible.
+  hideSearch?: boolean;
+  // Place the filter/period controls on the same row as the title, right-aligned,
+  // instead of stacking them on a second row below the title.
+  filtersInline?: boolean;
   filters: FilterEntry[];
   tabs?: HeaderTab[];
   period?: string;
@@ -255,6 +261,8 @@ export default function DashboardHeader({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  hideSearch = false,
+  filtersInline = false,
   filters,
   tabs,
   period = '1Y',
@@ -344,54 +352,59 @@ export default function DashboardHeader({
   return (
     <header className={`flex-shrink-0 bg-transparent backdrop-blur-md border-b border-zinc-800/50 relative z-50 ${className}`}>
       <div className="px-6 py-4">
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-          <p className="text-muted text-sm">{subtitle}</p>
-        </div>
-        {/* Global Filters + Tabs */}
-        <div className="flex items-center gap-2 h-9">
-          <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden ${
-              filtersExpanded ? 'max-w-0 opacity-0' : 'max-w-[360px] opacity-100'
-            }`}
-          >
-            <div className="relative w-[360px]">
-              <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder={searchPlaceholder}
-                value={searchValue}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-zinc-900/50 backdrop-blur-sm border border-zinc-700/50 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-              />
-            </div>
+        <div className={filtersInline ? 'flex items-center justify-between gap-4' : ''}>
+          <div className={filtersInline ? '' : 'mb-4'}>
+            <h2 className="text-xl font-semibold text-white">{title}</h2>
+            <p className="text-muted text-sm">{subtitle}</p>
           </div>
+          {/* Global Filters + Tabs */}
+          <div className="flex items-center gap-2 h-9">
+          {!hideSearch && (
+            <div
+              className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                filtersExpanded ? 'max-w-0 opacity-0' : 'max-w-[360px] opacity-100'
+              }`}
+            >
+              <div className="relative w-[360px]">
+                <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder={searchPlaceholder}
+                  value={searchValue ?? ''}
+                  onChange={(e) => onSearchChange?.(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-zinc-900/50 backdrop-blur-sm border border-zinc-700/50 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
+              </div>
+            </div>
+          )}
 
-          {/* Filter Toggle Button */}
-          <button
-            onClick={() => { if (!alwaysShowFilters) setFiltersExpanded(!filtersExpanded); }}
-            className={`relative flex items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 text-white hover:from-blue-500 hover:to-cyan-400 transition-all duration-300 overflow-hidden group/filter ${
-              hasActiveFilters ? 'ring-2 ring-cyan-400/50' : ''
-            } ${filtersExpanded ? 'w-0 h-0 p-0 opacity-0 -ml-2' : 'w-9 h-9 opacity-100'}`}
-          >
-            {/* Glass shine animation */}
-            {!filtersExpanded && (
-              <span
-                className="absolute inset-0 pointer-events-none animate-[shine_3s_ease-in-out_infinite]"
-                style={{
-                  background: 'linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.35) 50%, transparent 80%)',
-                }}
-              />
-            )}
-            <Filter className={`relative z-10 w-4 h-4 transition-all duration-300 ${filtersExpanded ? 'scale-0' : 'scale-100'}`} />
-            {hasActiveFilters && !filtersExpanded && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full z-20" />
-            )}
-          </button>
+          {/* Filter Toggle Button — hidden when search is removed (nothing to toggle to) */}
+          {!hideSearch && (
+            <button
+              onClick={() => { if (!alwaysShowFilters) setFiltersExpanded(!filtersExpanded); }}
+              className={`relative flex items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 text-white hover:from-blue-500 hover:to-cyan-400 transition-all duration-300 overflow-hidden group/filter ${
+                hasActiveFilters ? 'ring-2 ring-cyan-400/50' : ''
+              } ${filtersExpanded ? 'w-0 h-0 p-0 opacity-0 -ml-2' : 'w-9 h-9 opacity-100'}`}
+            >
+              {/* Glass shine animation */}
+              {!filtersExpanded && (
+                <span
+                  className="absolute inset-0 pointer-events-none animate-[shine_3s_ease-in-out_infinite]"
+                  style={{
+                    background: 'linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.35) 50%, transparent 80%)',
+                  }}
+                />
+              )}
+              <Filter className={`relative z-10 w-4 h-4 transition-all duration-300 ${filtersExpanded ? 'scale-0' : 'scale-100'}`} />
+              {hasActiveFilters && !filtersExpanded && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-cyan-400 rounded-full z-20" />
+              )}
+            </button>
+          )}
 
           {/* Animated Filters Container */}
           <div
-            className={`flex items-center -ml-2 transition-all duration-1000 ease-out whitespace-nowrap ${
+            className={`flex items-center ${hideSearch ? '' : '-ml-2'} transition-all duration-1000 ease-out whitespace-nowrap ${
               filtersExpanded ? 'max-w-[1000px] opacity-100 gap-2 overflow-visible' : 'max-w-0 opacity-0 gap-0 overflow-hidden'
             }`}
             style={{
@@ -457,6 +470,7 @@ export default function DashboardHeader({
               )}
             </>
           )}
+          </div>
         </div>
       </div>
     </header>
