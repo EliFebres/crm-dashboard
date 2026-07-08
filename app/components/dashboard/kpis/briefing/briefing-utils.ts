@@ -182,7 +182,9 @@ export function verdictQ6(data: KpiDashboardData): string {
   const topVol = depts[0];
   const topEff = [...depts].sort((a, b) => b.nnaPerInteraction - a.nnaPerInteraction)[0];
   if (!topVol || !topEff) return '';
-  return `${topVol.dept} drives the most volume (${fmtInt(topVol.interactions)} interactions), but ${topEff.dept} is the most efficient at ${fmtCur(topEff.nnaPerInteraction)} per engagement. Toggle the metric to compare.`;
+  // "and" when one department leads on both metrics; "but" when they diverge.
+  const conj = topVol.dept === topEff.dept ? 'and' : 'but';
+  return `${topVol.dept} drives the most volume (${fmtInt(topVol.interactions)} interactions), ${conj} ${topEff.dept} is the most efficient at ${fmtCur(topEff.nnaPerInteraction)} per engagement. Toggle the metric to compare.`;
 }
 
 export function subtitleConc(data: KpiDashboardData): string {
@@ -216,9 +218,11 @@ export function verdictQ10(data: KpiDashboardData): string {
 
 export function verdictQ12(data: KpiDashboardData): string {
   const top = data.extended.spawnRate[0];
-  return top
-    ? `Yes ${DASH} ${Math.round(top.pct)}% of ${top.type.toLowerCase()}s spawn follow-up work, the highest of any type.`
-    : '';
+  if (!top) return `Not enough data yet ${DASH} no completed work to measure follow-up rates.`;
+  const pct = Math.round(top.pct);
+  return pct > 0
+    ? `Yes ${DASH} ${pct}% of ${top.type.toLowerCase()}s spawn follow-up work, the highest of any type.`
+    : `No ${DASH} no type spawns follow-up work yet.`;
 }
 
 export function verdictQ13(data: KpiDashboardData): string {

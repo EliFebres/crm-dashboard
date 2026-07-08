@@ -219,14 +219,25 @@ function bootstrap(db: DB): void {
 
   // Seed the canonical four departments FIRST, with the exact colors the department
   // breakdown chart used when they were hardcoded — so charts render identically
-  // after this migration. INSERT OR IGNORE keeps this idempotent.
-  db.exec(`
-    INSERT OR IGNORE INTO departments (id, name, color, sort_order) VALUES
-      (lower(hex(randomblob(16))), 'Advisory',      '#a5f3fc', 0),
-      (lower(hex(randomblob(16))), 'Brokerage',     '#22d3ee', 1),
-      (lower(hex(randomblob(16))), 'Institutional', '#0e7490', 2),
-      (lower(hex(randomblob(16))), 'Retirement',    '#67e8f9', 3);
-  `);
+  // after this migration. Gated by a one-time marker so it runs EXACTLY once: a
+  // bare INSERT OR IGNORE would resurrect a renamed built-in on the next restart
+  // (the unique-name index no longer collides once "Advisory" is renamed). Existing
+  // DBs (table already populated) just record the marker without re-seeding, so
+  // prior renames survive untouched.
+  const SEED_DEPARTMENTS = 'seed_canonical_departments_v1';
+  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [SEED_DEPARTMENTS])) {
+    const existing = dbGet<{ c: number }>(db, `SELECT COUNT(*) AS c FROM departments`);
+    if (!existing || existing.c === 0) {
+      db.exec(`
+        INSERT OR IGNORE INTO departments (id, name, color, sort_order) VALUES
+          (lower(hex(randomblob(16))), 'Advisory',      '#a5f3fc', 0),
+          (lower(hex(randomblob(16))), 'Brokerage',     '#22d3ee', 1),
+          (lower(hex(randomblob(16))), 'Institutional', '#0e7490', 2),
+          (lower(hex(randomblob(16))), 'Retirement',    '#67e8f9', 3);
+      `);
+    }
+    dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [SEED_DEPARTMENTS]);
+  }
 
   // Backfill any other department already present in real engagement data with a
   // neutral color, so it becomes a managed option instead of an orphan value.
@@ -282,12 +293,21 @@ function bootstrap(db: DB): void {
 
   // Seed the three canonical intake types with the exact colors the KPI charts used
   // when they were hardcoded (INTAKE_COLOR in app/components/dashboard/kpis/utils.ts).
-  db.exec(`
-    INSERT OR IGNORE INTO intake_types (id, name, color, sort_order, role) VALUES
-      (lower(hex(randomblob(16))), 'IRQ',    '#3b82f6', 0, 'irq'),
-      (lower(hex(randomblob(16))), 'SERF',   '#10b981', 1, 'serf'),
-      (lower(hex(randomblob(16))), 'Ad-Hoc', '#ec4899', 2, 'ad_hoc');
-  `);
+  // Gated by a one-time marker (see the departments seed above) so a renamed built-in
+  // is never resurrected on restart.
+  const SEED_INTAKE_TYPES = 'seed_canonical_intake_types_v1';
+  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [SEED_INTAKE_TYPES])) {
+    const existing = dbGet<{ c: number }>(db, `SELECT COUNT(*) AS c FROM intake_types`);
+    if (!existing || existing.c === 0) {
+      db.exec(`
+        INSERT OR IGNORE INTO intake_types (id, name, color, sort_order, role) VALUES
+          (lower(hex(randomblob(16))), 'IRQ',    '#3b82f6', 0, 'irq'),
+          (lower(hex(randomblob(16))), 'SERF',   '#10b981', 1, 'serf'),
+          (lower(hex(randomblob(16))), 'Ad-Hoc', '#ec4899', 2, 'ad_hoc');
+      `);
+    }
+    dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [SEED_INTAKE_TYPES]);
+  }
 
   // Backfill any other intake type already present in real engagement data as a
   // managed (custom) option, so it isn't an orphan value.
@@ -316,17 +336,26 @@ function bootstrap(db: DB): void {
 
   // Seed the canonical project types with the exact colors the KPI charts used when
   // they were hardcoded (PROJECT_TYPE_COLOR in app/components/dashboard/kpis/utils.ts).
-  db.exec(`
-    INSERT OR IGNORE INTO project_types (id, name, color, sort_order, role) VALUES
-      (lower(hex(randomblob(16))), 'Meeting',            '#8b5cf6', 0, NULL),
-      (lower(hex(randomblob(16))), 'Discovery Meeting',  '#22d3ee', 1, NULL),
-      (lower(hex(randomblob(16))), 'Data Request',       '#a5f3fc', 2, NULL),
-      (lower(hex(randomblob(16))), 'Data Update',        '#f97316', 3, NULL),
-      (lower(hex(randomblob(16))), 'PCR',                '#f43f5e', 4, 'pcr'),
-      (lower(hex(randomblob(16))), 'Follow-up Material', '#f59e0b', 5, NULL),
-      (lower(hex(randomblob(16))), 'Follow-up Meeting',  '#10b981', 6, NULL),
-      (lower(hex(randomblob(16))), 'Other',              '#71717a', 7, NULL);
-  `);
+  // Gated by a one-time marker (see the departments seed above) so a renamed built-in
+  // is never resurrected on restart.
+  const SEED_PROJECT_TYPES = 'seed_canonical_project_types_v1';
+  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [SEED_PROJECT_TYPES])) {
+    const existing = dbGet<{ c: number }>(db, `SELECT COUNT(*) AS c FROM project_types`);
+    if (!existing || existing.c === 0) {
+      db.exec(`
+        INSERT OR IGNORE INTO project_types (id, name, color, sort_order, role) VALUES
+          (lower(hex(randomblob(16))), 'Meeting',            '#8b5cf6', 0, NULL),
+          (lower(hex(randomblob(16))), 'Discovery Meeting',  '#22d3ee', 1, NULL),
+          (lower(hex(randomblob(16))), 'Data Request',       '#a5f3fc', 2, NULL),
+          (lower(hex(randomblob(16))), 'Data Update',        '#f97316', 3, NULL),
+          (lower(hex(randomblob(16))), 'PCR',                '#f43f5e', 4, 'pcr'),
+          (lower(hex(randomblob(16))), 'Follow-up Material', '#f59e0b', 5, NULL),
+          (lower(hex(randomblob(16))), 'Follow-up Meeting',  '#10b981', 6, NULL),
+          (lower(hex(randomblob(16))), 'Other',              '#71717a', 7, NULL);
+      `);
+    }
+    dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [SEED_PROJECT_TYPES]);
+  }
 
   // Backfill any other project type already present in real engagement data.
   db.exec(`
