@@ -36,7 +36,6 @@ export default function TeamOfficeTab() {
           singular="office"
           icon={<Building2 className="w-5 h-5 text-cyan-400" />}
           api={OFFICE_API}
-          align="right"
           liveEntities={OFFICE_LIVE}
         />
       </div>
