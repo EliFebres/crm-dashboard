@@ -6,6 +6,7 @@ import { rowToEngagement, CLIENT_JOIN, teamScopeClause } from '@/app/lib/db/quer
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, canDeleteEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
+import { normalizeProjectId } from '@/app/lib/utils/text';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
@@ -134,6 +135,10 @@ export async function PATCH(
     if (body.tickersMentioned !== undefined) {
       setClauses.push('tickers_mentioned = ?');
       values.push(body.tickersMentioned ? JSON.stringify(body.tickersMentioned) : null);
+    }
+    if (body.projectId !== undefined) {
+      setClauses.push('project_id = ?');
+      values.push(normalizeProjectId(body.projectId));
     }
     if (body.linkedFromId !== undefined) {
       // null explicitly clears the link; a number sets/changes it

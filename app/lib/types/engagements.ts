@@ -89,6 +89,8 @@ export interface PortfolioHolding {
 export interface ClientModel {
   id: string;                   // stable UUID
   name: string;                 // free-text label, e.g. "60/40 Model"
+  projectId?: string;           // optional free-text project identifier; leads both sheets of the
+                                // models export. Client-level and independent of Engagement.projectId.
   isMain: boolean;              // exactly one main per client
   aum?: number;                 // optional dollars (often unknown/empty)
   holdings: PortfolioHolding[]; // weights normalized to sum to 1
@@ -120,6 +122,7 @@ export interface Engagement {
   intakeType: string; // A managed intake-type name (IRQ/SERF/Ad-Hoc are built-in; admins can add more)
   adHocChannel?: AdHocChannel; // Only applicable when the intake type has the 'ad_hoc' role
   type: string; // Project Type
+  projectId?: string | null; // Optional free-text project identifier (ad-hoc projects often have none)
   teamMembers: string[];
   department: string;
   dateStarted: string;

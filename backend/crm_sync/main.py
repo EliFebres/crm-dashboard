@@ -53,7 +53,7 @@ _log = logging.getLogger("crm_sync")
 #: Only the columns this function has an opinion about. Every other column in `engagements`
 #: — ad_hoc_channel, portfolio_logged, portfolio, nna, notes, tickers_mentioned,
 #: linked_from_id, team, filepath, and the retired external_client — is left to its schema
-#: default (NULL, or 0 for portfolio_logged).
+#: default (NULL, or 0 for portfolio_logged). `project_id` is NULL unless supplied.
 #:
 #: `team` stays NULL on purpose: that is the dashboard's unassigned inbox. The row shows up
 #: for every user with a yellow "Unassigned" badge and is claimable by whoever picks it up.
@@ -63,8 +63,8 @@ INSERT INTO {TABLE_ENGAGEMENTS} (
   client_crn, internal_client_name, internal_client_dept,
   intake_type, type, team_members, department,
   date_started, date_finished, status,
-  created_by_id, created_by_name
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  created_by_id, created_by_name, project_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -76,6 +76,7 @@ def create_client_engagement(
     date_started: Optional[datetime] = None,
     date_finished: str = "",
     crn: str = "",
+    project_id: str = "",
 ) -> int:
     """
     Create one client engagement and return its new record ID.
@@ -112,6 +113,8 @@ def create_client_engagement(
             in the dashboard, where the rename cascades properly.
 
             Omit it and an unregistered client gets a `PENDING-######` placeholder instead.
+        project_id: Optional free-text project identifier. Blank by default, stored as NULL —
+            ad-hoc work often has no assigned ID.
 
     Always inserted, never parameters:
         status — always ``"In Progress"`` (see `config.DEFAULT_STATUS`).
@@ -162,6 +165,9 @@ def create_client_engagement(
     started = _coerce_start_date(date_started)
     finished = _coerce_finish_date(date_finished)
     supplied_crn = _coerce_crn(crn)
+    # Blank must land as NULL, not '' — the dashboard's search and export both treat an
+    # empty string as a real, searchable value.
+    cleaned_project_id = (project_id or "").strip() or None
 
     # ---- the write. Atomic, and retried as a whole if the Node server holds the lock. --
     conn = open_engagements(cfg)
@@ -169,7 +175,7 @@ def create_client_engagement(
         engagement_id, client = run_with_retry(
             lambda: _insert(
                 conn, cfg, external_client, supplied_crn, internal_client,
-                intake_name, type_name, started, finished,
+                intake_name, type_name, started, finished, cleaned_project_id,
             ),
             cfg,
         )
@@ -234,6 +240,7 @@ def _insert(
     type_name: str,
     started: str,
     finished: Optional[str],
+    project_id: Optional[str],
 ) -> Tuple[int, ResolvedClient]:
     """
     The atomic part: resolve the client, look up the internal client, insert the engagement.
@@ -264,6 +271,7 @@ def _insert(
                 DEFAULT_STATUS,
                 cfg.bot_user_id,
                 cfg.bot_display_name,
+                project_id,
             ),
         )
         return int(cur.lastrowid), client

@@ -27,6 +27,7 @@ export interface InteractionFormData {
   intakeType: string;          // A managed intake-type name, or '' when unset
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
+  projectId?: string;          // Optional free-text project identifier; blank for ad-hoc work
   teamMembers: string[];
   dateStarted: string;
   dateFinished?: string;
@@ -76,6 +77,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     internalClientDept: '',
     intakeType: '',
     projectType: '',
+    projectId: '',
     teamMembers: [],
     dateStarted: new Date().toISOString().split('T')[0],
     status: 'In Progress',
@@ -558,6 +560,20 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     {errors.adHocChannel && <p className="mt-1 text-xs text-red-400">{errors.adHocChannel}</p>}
                   </div>
                 )}
+              </div>
+
+              {/* Project ID — optional; ad-hoc work often has none */}
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1.5">
+                  Project ID <span className="text-muted font-normal text-xs">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.projectId ?? ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, projectId: e.target.value }))}
+                  placeholder="e.g. PRJ-1042"
+                  className="w-full px-3 h-[38px] bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder:text-muted focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
               </div>
 
               {/* Linked From Previous Interaction */}

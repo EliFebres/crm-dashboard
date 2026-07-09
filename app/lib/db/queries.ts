@@ -195,8 +195,9 @@ export function buildFilterClause(
       OR lower(${col('intake_type')}) LIKE ?
       OR lower(${col('type')}) LIKE ?
       OR lower(${col('department')}) LIKE ?
+      OR lower(${col('project_id')}) LIKE ?
     )`);
-    params.push(s, s, s, s, s, s);
+    params.push(s, s, s, s, s, s, s);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -222,6 +223,7 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
     intakeType: row.intake_type as string,
     adHocChannel: (row.ad_hoc_channel as string | undefined) as import('../types/engagements').AdHocChannel | undefined,
     type: row.type as string,
+    projectId: (row.project_id as string | null) ?? null,
     teamMembers: JSON.parse((row.team_members as string) || '[]') as string[],
     department: row.department as string,
     dateStarted: toDisplayDate(row.date_started as string),

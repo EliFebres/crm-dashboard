@@ -348,6 +348,7 @@ export default function EngagementsDashboard() {
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'Ad-Hoc',
         adHocChannel: data.adHocChannel,
         type: data.projectType,
+        projectId: data.projectId,
         teamMembers: data.teamMembers,
         department: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional',
         dateStarted: formatDisplayDate(data.dateStarted),
@@ -447,6 +448,7 @@ export default function EngagementsDashboard() {
         intakeType: engagement.intakeType,
         adHocChannel: engagement.adHocChannel,
         projectType: engagement.type,
+        projectId: engagement.projectId ?? '',
         teamMembers: engagement.teamMembers,
         dateStarted: parseISODate(engagement.dateStarted),
         dateFinished: engagement.dateFinished && engagement.dateFinished !== '—'
@@ -486,6 +488,9 @@ export default function EngagementsDashboard() {
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'Ad-Hoc',
         adHocChannel: data.adHocChannel,
         type: data.projectType,
+        // Sent as '' rather than undefined so clearing the field persists as NULL
+        // (PATCH treats undefined as "leave unchanged").
+        projectId: data.projectId ?? '',
         teamMembers: data.teamMembers,
         department: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional',
         dateStarted: dateStartedChanged ? formatDisplayDate(data.dateStarted) : (originalDateStarted || undefined),
@@ -551,7 +556,7 @@ export default function EngagementsDashboard() {
       <DashboardHeader
         title="Client Interactions"
         subtitle="Track and manage client interactions across all departments"
-        searchPlaceholder="Search external clients, internal clients..."
+        searchPlaceholder="Search external clients, internal clients, project ID..."
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
         className="sticky top-0 z-10"

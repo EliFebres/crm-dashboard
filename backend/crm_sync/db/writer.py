@@ -50,8 +50,8 @@ INSERT INTO {TABLE_ENGAGEMENTS} (
   intake_type, ad_hoc_channel, type, team_members, department,
   date_started, date_finished, status, portfolio_logged, portfolio,
   nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
-  linked_from_id, filepath
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  linked_from_id, filepath, project_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -228,6 +228,7 @@ class EngagementWriter:
                     created_by_name,
                     n.linked_from_id,
                     n.filepath,
+                    (n.project_id or "").strip() or None,
                 ),
             )
             engagement_id = int(cur.lastrowid)

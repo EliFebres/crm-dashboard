@@ -367,6 +367,8 @@ function generateEngagements(): Engagement[] {
       const portfolio = hasPortfolio ? generatePortfolio(seed + 20) : undefined;
 
       const projectClient = mockClient(seed + 6);
+      // ~15% of tracked projects have no Project ID assigned yet.
+      const projectId = seededRandom(seed + 21) < 0.15 ? undefined : `PRJ-${String(1000 + id).padStart(4, '0')}`;
       engagements.push({
         id: id++,
         clientCrn: projectClient.crn,
@@ -374,6 +376,7 @@ function generateEngagements(): Engagement[] {
         internalClient,
         intakeType,
         type: projectType,
+        projectId,
         teamMembers: selectedTeam,
         department: dept,
         dateStarted: dateStr,
@@ -410,6 +413,7 @@ function generateEngagements(): Engagement[] {
     startDate.setDate(startDate.getDate() - startOffset);
 
     const recentClient = mockClient(seed + 6);
+    const projectId = `PRJ-${String(1000 + id).padStart(4, '0')}`;
     engagements.push({
       id: id++,
       clientCrn: recentClient.crn,
@@ -417,6 +421,7 @@ function generateEngagements(): Engagement[] {
       internalClient,
       intakeType,
       type: projectTypes[Math.floor(seededRandom(seed + 3) * projectTypes.length)],
+      projectId,
       teamMembers: selectedTeam,
       department: dept,
       dateStarted: startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),

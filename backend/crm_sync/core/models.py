@@ -158,6 +158,10 @@ class ClientInteraction:
     linked_from_id: Optional[int] = None
     filepath: Optional[str] = None
     notes: Optional[str] = None
+    #: Free-text project identifier. Blank/None for ad-hoc work with no assigned ID.
+    #: Deliberately excluded from the dedupe key — back-filling it later must not
+    #: create a duplicate interaction.
+    project_id: Optional[str] = None
 
     # --- attribution + idempotency ---
     created_by_id: Optional[str] = None

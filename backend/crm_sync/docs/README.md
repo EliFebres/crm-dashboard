@@ -64,6 +64,7 @@ engagement_id = create_client_engagement(
     project_type="Data Request",
     internal_client="Acme 401k",       # optional; blank when omitted or unregistered
     crn="CRN-000042",                  # optional; only used to register a NEW client
+    project_id="PRJ-1042",             # optional; blank => NULL (ad-hoc work often has none)
 )
 ```
 
@@ -71,6 +72,9 @@ engagement_id = create_client_engagement(
   value raises `ValueError` naming it and listing the valid options, and inserts nothing.
 * `external_client` is matched against the `clients` registry, case-insensitively.
 * `date_started` defaults to today; `date_finished` is blank (NULL).
+* `project_id` is a free-text project identifier, blank by default and stored as NULL. It is
+  deliberately excluded from the dedupe key, so back-filling one later never creates a
+  duplicate interaction.
 * `status` is always `"In Progress"`, `team_members` always `[]`, and every other column is
   left blank or NULL.
 

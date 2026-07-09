@@ -139,6 +139,12 @@ function bootstrap(db: DB): void {
     db.exec(`ALTER TABLE engagements ADD COLUMN filepath TEXT`);
   }
 
+  // One-time migration: optional free-text project identifier. Nullable — ad-hoc
+  // interactions often have none, and every pre-existing row predates the column.
+  if (!columnExists(db, 'engagements', 'project_id')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN project_id TEXT`);
+  }
+
   // Client registry link: every engagement references its external client by CRN.
   // foreign_keys = ON (see connection.ts) rejects inserts without a valid CRN.
   // The legacy free-text `external_client` column is retired — kept physically to
@@ -167,6 +173,13 @@ function bootstrap(db: DB): void {
     );
     CREATE INDEX IF NOT EXISTS idx_client_models_crn ON client_models (crn);
   `);
+
+  // One-time migration: optional project identifier carried by the model itself.
+  // Leads both sheets of the client-models export. Deliberately separate from
+  // engagements.project_id — models are client-level, not per-interaction.
+  if (!columnExists(db, 'client_models', 'project_id')) {
+    db.exec(`ALTER TABLE client_models ADD COLUMN project_id TEXT`);
+  }
 
   // One-time seed: fold each client's most-recent non-empty legacy engagement
   // portfolio into a single main model named "Logged Portfolio". Gated by a

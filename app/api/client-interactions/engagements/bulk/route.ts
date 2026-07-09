@@ -10,6 +10,7 @@ import { listIntakeTypeNames, intakeNameForRole } from '@/app/lib/db/intakeTypes
 import { listProjectTypeNames } from '@/app/lib/db/projectTypes';
 import type { ParsedRow } from '@/app/lib/bulk-upload/parser';
 import { crnConfig, normalizeCrn, generateNextCrn } from '@/app/lib/config/crn';
+import { normalizeProjectId } from '@/app/lib/utils/text';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 
@@ -196,8 +197,8 @@ export async function POST(req: NextRequest) {
             client_crn, internal_client_name, internal_client_dept,
             intake_type, ad_hoc_channel, type, team_members, department,
             date_started, date_finished, status, portfolio_logged, portfolio,
-            nna, notes, tickers_mentioned, team
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            nna, notes, tickers_mentioned, team, project_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             clientCrn,
             row.internalClientName,
@@ -216,6 +217,7 @@ export async function POST(req: NextRequest) {
             row.structuredNotes ? null : (row.notes ?? null),
             row.tickersMentioned.length > 0 ? JSON.stringify(row.tickersMentioned) : null,
             auth.payload.team,
+            normalizeProjectId(row.projectId),
           ]
         );
         const id = Number(result.lastInsertRowid);
@@ -273,5 +275,6 @@ function buildPreview(rows: ParsedRow[]) {
     notes: row.notes,
     portfolio: row.portfolio,
     structuredNotes: row.structuredNotes,
+    projectId: row.projectId,
   }));
 }
