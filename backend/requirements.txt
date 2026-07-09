@@ -1,0 +1,23 @@
+# crm_sync has no third-party runtime dependencies.
+#
+# Every module under backend/ imports only the Python standard library — sqlite3, json,
+# pathlib, urllib, dataclasses, logging, hashlib, uuid. There is nothing to pin, so this
+# file is intentionally empty of requirements.
+#
+#   pip install -r requirements.txt      # succeeds, installs nothing
+#
+# It is kept because tooling and humans both expect it, and because its absence is
+# ambiguous: an empty file says "audited, no dependencies", a missing file says nothing.
+#
+# What you actually need to run this:
+#
+#   1. Python >= 3.9                     (see .python-version; developed on 3.14)
+#   2. pip install -e .                  (see pyproject.toml — puts `crm_sync` on sys.path
+#                                         so `import crm_sync` works from any directory)
+#   3. SQLITE_DIR=/path/to/db            (the folder holding engagements.sqlite and
+#                                         users.sqlite — the same one the Next.js app uses)
+#
+# SQLITE_DIR is read from the environment, or from a .env file beside this folder or at the
+# repo root. In a checkout it is already configured; nothing to export by hand.
+#
+# If you add a dependency, pin it exactly (package==1.2.3) and say why in a comment.
