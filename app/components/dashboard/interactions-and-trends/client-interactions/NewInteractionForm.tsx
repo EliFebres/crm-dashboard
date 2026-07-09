@@ -39,6 +39,9 @@ export interface InteractionFormData {
   tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
   linkedFromId?: number | null; // Parent engagement this one is the result of (funnel KPIs)
   linkedFromPreview?: EngagementLinkSummary | null; // Cached preview so we can render the chip without re-fetching
+  // Create mode only: models logged from this form before the interaction existed.
+  // The caller attributes them once it has an id (edit mode attributes inline).
+  pendingModelIds?: string[];
 }
 
 export interface EditingEngagement {
@@ -88,6 +91,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     tickersMentioned: [],
     linkedFromId: null,
     linkedFromPreview: null,
+    pendingModelIds: [],
   });
 
   const [formData, setFormData] = useState<InteractionFormData>(getDefaultFormData());
@@ -1179,9 +1183,18 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
           onClose={() => setIsPortfolioModalOpen(false)}
           clientCrn={formData.clientCrn}
           clientName={formData.externalClient}
-          onSaved={(models) => {
+          // Edit mode: the server attributes logged models to this interaction inline.
+          // Create mode: it has no id yet, so collect the ids and attribute after save.
+          loggedEngagementId={editingEngagement?.id ?? null}
+          onSaved={(models, loggedModelIds) => {
             setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name });
-            setFormData(prev => ({ ...prev, portfolioLogged: models.length > 0 }));
+            setFormData(prev => ({
+              ...prev,
+              portfolioLogged: models.length > 0,
+              pendingModelIds: isEditMode
+                ? prev.pendingModelIds
+                : [...new Set([...(prev.pendingModelIds ?? []), ...loggedModelIds])],
+            }));
           }}
         />
       )}

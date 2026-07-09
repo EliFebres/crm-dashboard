@@ -17,6 +17,7 @@ import {
   updateEngagementNNA,
   assignEngagement,
   addEngagementNote,
+  attributeClientModels,
   exportEngagements,
   ConflictError,
 } from '@/app/lib/api/client-interactions';
@@ -363,6 +364,12 @@ export default function EngagementsDashboard() {
       });
       if (data.notes?.trim()) {
         await addEngagementNote(newEngagement.id, data.notes.trim());
+      }
+      // Models logged from the form before this interaction existed are unattributed;
+      // claim them now that it has an id. Scoped by CRN server-side, so ids left over
+      // from a client the user switched away from are a no-op.
+      if (data.pendingModelIds?.length) {
+        await attributeClientModels(data.clientCrn, newEngagement.id, data.pendingModelIds);
       }
       await reloadData();
     } catch (err) {

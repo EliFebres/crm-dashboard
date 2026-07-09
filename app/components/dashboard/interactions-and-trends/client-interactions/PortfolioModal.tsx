@@ -11,8 +11,15 @@ interface PortfolioModalProps {
   onClose: () => void;
   clientCrn: string;
   clientName?: string;
-  /** Called after a successful save with the persisted models. */
-  onSaved?: (models: ClientModel[]) => void;
+  /**
+   * The interaction this save is being made from, when there is one. Models logged by
+   * the save are attributed to it; the export reads its Project ID through that link.
+   * Null from Settings → Client Management, and from a new interaction that has no id
+   * yet — in the latter case the caller replays `loggedModelIds` once it does.
+   */
+  loggedEngagementId?: number | null;
+  /** Called after a successful save with the persisted models and the ids it logged. */
+  onSaved?: (models: ClientModel[], loggedModelIds: string[]) => void;
 }
 
 // Outer wrapper keeps the body unmounted while closed — each reopen is a fresh
@@ -22,7 +29,7 @@ const PortfolioModal: React.FC<PortfolioModalProps> = (props) => {
   return <PortfolioModalBody {...props} />;
 };
 
-const PortfolioModalBody: React.FC<PortfolioModalProps> = ({ onClose, clientCrn, clientName, onSaved }) => {
+const PortfolioModalBody: React.FC<PortfolioModalProps> = ({ onClose, clientCrn, clientName, loggedEngagementId, onSaved }) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [seed, setSeed] = useState<ClientModel[]>([]);
@@ -51,8 +58,8 @@ const PortfolioModalBody: React.FC<PortfolioModalProps> = ({ onClose, clientCrn,
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await saveClientModels(clientCrn, draft);
-      onSaved?.(saved);
+      const { models, loggedModelIds } = await saveClientModels(clientCrn, draft, loggedEngagementId ?? null);
+      onSaved?.(models, loggedModelIds);
       onClose();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save models.');

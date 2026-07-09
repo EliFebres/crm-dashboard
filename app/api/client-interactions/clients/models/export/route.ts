@@ -12,10 +12,11 @@ import type { PortfolioHolding } from '@/app/lib/types/engagements';
 //   - "Models"   — one row per model (holdings collapsed to readable text)
 //   - "Holdings" — one row per holding (exploded, for pivot-table analysis)
 //
-// Project ID leads both sheets. Models are keyed by client CRN and carry no project
-// identity of their own, so it is resolved from the client's interactions: the most
-// recent one (by date_started) that has a Project ID, or blank when none does. A
-// client running several projects therefore shows only its latest.
+// Project ID leads both sheets. It is the Project ID of the interaction that logged the
+// model (client_models.logged_engagement_id), read live through the link — so correcting
+// a Project ID on the interaction updates the export. Blank when the model predates
+// attribution, was last saved from Settings → Client Management, or its interaction
+// carries no Project ID.
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -29,15 +30,10 @@ export async function GET(req: NextRequest) {
                   m.id AS id, m.name AS name, m.is_main AS is_main, m.aum AS aum,
                   m.holdings AS holdings, m.sort_order AS sort_order,
                   m.created_at AS created_at, m.updated_at AS updated_at,
-                  (SELECT e.project_id
-                     FROM engagements e
-                    WHERE e.client_crn = c.crn
-                      AND e.project_id IS NOT NULL
-                      AND e.project_id != ''
-                    ORDER BY e.date_started DESC, e.id DESC
-                    LIMIT 1) AS project_id
+                  e.project_id AS project_id
              FROM client_models m
              JOIN clients c ON c.crn = m.crn
+             LEFT JOIN engagements e ON e.id = m.logged_engagement_id
             ORDER BY c.name COLLATE NOCASE, m.sort_order, m.name COLLATE NOCASE`
         )
       : [];

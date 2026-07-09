@@ -339,7 +339,10 @@ async function seedClientModels() {
       models.push({ name: 'Conservative 60/40', isMain: false, holdings: synthHoldings(seed + 11, 'conservative'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 11) * 180) + 15) });
     }
 
-    await replaceClientModels(c.crn, models);
+    // Attribute the client's models to the interaction their portfolio was captured
+    // in, so the export shows that project's ID. Clients with no such interaction stay
+    // unattributed and export a blank Project ID — the real default for existing data.
+    await replaceClientModels(c.crn, models, legacy?.id ?? null);
     modelCount += models.length;
     if (models.length > 1) multiModelClients++;
   }

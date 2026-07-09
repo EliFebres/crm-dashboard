@@ -9,6 +9,11 @@
  *
  * Invariant: at most one model per client carries `isMain`. replaceClientModels
  * enforces it (promotes the first when several — or none — are flagged).
+ *
+ * Attribution: a model records the interaction that logged it (`logged_engagement_id`).
+ * The export reads that interaction's Project ID through the link. A model is
+ * considered "logged" when it is created, or when its content (name, AUM, holdings)
+ * changes — flipping `isMain` or reordering is not a re-log.
  */
 import { query, executeTransaction } from './index';
 import { randomUUID } from 'crypto';
@@ -36,6 +41,7 @@ function parseHoldings(raw: unknown): PortfolioHolding[] {
 interface ClientModelRow {
   id: string;
   name: string;
+  logged_engagement_id: number | null;
   is_main: number;
   aum: number | null;
   holdings: string;
@@ -60,7 +66,7 @@ function rowToModel(r: ClientModelRow): ClientModel {
 /** List a client's models, ordered by sort_order then name. */
 export async function listClientModels(crn: string): Promise<ClientModel[]> {
   const rows = await query<ClientModelRow>(
-    `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
+    `SELECT id, name, logged_engagement_id, is_main, aum, holdings, sort_order, created_at, updated_at
        FROM client_models
       WHERE crn = ?
       ORDER BY sort_order, name COLLATE NOCASE`,
@@ -77,13 +83,33 @@ function normalizeAum(raw: unknown): number | null {
   return Math.round(n);
 }
 
+/** What a save persisted, plus which models it counted as freshly logged. */
+export interface ReplaceClientModelsResult {
+  models: ClientModel[];
+  /**
+   * Models created or content-changed by this save. When `loggedEngagementId` is
+   * given they have already been attributed to it; when it is null (a brand-new
+   * interaction, whose id does not exist yet) the caller attributes them afterwards
+   * via `attributeClientModels`.
+   */
+  loggedModelIds: string[];
+}
+
 /**
  * Atomically replace a client's entire model set. Validates the client exists,
  * normalizes each model (name required, holding weights summed to 1, AUM coerced),
  * enforces the single-main invariant, then re-inserts with sort_order = index.
- * Returns the persisted models.
+ *
+ * `loggedEngagementId` is the interaction the save was made from, or null when there
+ * is none (Settings → Client Management, or an unsaved new interaction). Models that
+ * are created or content-changed are attributed to it; untouched models keep whatever
+ * interaction logged them.
  */
-export async function replaceClientModels(crn: string, input: unknown): Promise<ClientModel[]> {
+export async function replaceClientModels(
+  crn: string,
+  input: unknown,
+  loggedEngagementId: number | null = null
+): Promise<ReplaceClientModelsResult> {
   if (!Array.isArray(input)) {
     throw new ClientModelError(400, 'Expected an array of models.');
   }
@@ -113,15 +139,30 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
   });
   if (!mainSeen && cleaned.length > 0) cleaned[0].isMain = true;
 
-  return executeTransaction<ClientModel[]>((tx) => {
+  return executeTransaction<ReplaceClientModelsResult>((tx) => {
     const client = tx.get<{ x: number }>(`SELECT 1 AS x FROM clients WHERE crn = ?`, [crn]);
     if (!client) throw new ClientModelError(404, 'Client not found.');
+
+    // The attributing interaction must belong to this client, or the export would
+    // report a Project ID from someone else's project.
+    if (loggedEngagementId != null) {
+      const owner = tx.get<{ client_crn: string | null }>(
+        `SELECT client_crn FROM engagements WHERE id = ?`,
+        [loggedEngagementId]
+      );
+      if (!owner) throw new ClientModelError(404, 'Interaction not found.');
+      if (owner.client_crn !== crn) {
+        throw new ClientModelError(400, 'Interaction belongs to a different client.');
+      }
+    }
+
+    const loggedModelIds: string[] = [];
 
     // Snapshot existing rows so we can preserve created_at and only bump updated_at
     // when a model's content actually changed (so "logged" dates stay meaningful).
     const existing = new Map(
       tx.all<ClientModelRow>(
-        `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
+        `SELECT id, name, logged_engagement_id, is_main, aum, holdings, sort_order, created_at, updated_at
            FROM client_models WHERE crn = ?`,
         [crn]
       ).map((r) => [r.id, r])
@@ -144,37 +185,82 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
       const prev = existing.get(m.id);
       if (!prev) {
         // New model: created_at/updated_at land on loggedAt (seed) or now.
+        loggedModelIds.push(m.id);
         tx.run(
           `INSERT INTO client_models
-             (id, crn, name, is_main, aum, holdings, sort_order, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
-          [m.id, crn, m.name, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.loggedAt]
+             (id, crn, name, logged_engagement_id, is_main, aum, holdings, sort_order, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+          [m.id, crn, m.name, loggedEngagementId, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.loggedAt]
         );
       } else {
-        const changed =
+        // A re-log is a content change: name, AUM or holdings. Flipping isMain or
+        // reordering is bookkeeping, not a new logging of the model, so it neither
+        // re-attributes nor (for sort_order) bumps updated_at.
+        const contentChanged =
           prev.name !== m.name ||
-          Boolean(prev.is_main) !== m.isMain ||
           (prev.aum == null ? null : Number(prev.aum)) !== (m.aum == null ? null : m.aum) ||
           prev.holdings !== holdingsJson;
+        const changed = contentChanged || Boolean(prev.is_main) !== m.isMain;
+        if (contentChanged) loggedModelIds.push(m.id);
+        // Re-attribute only a re-logged model, and only when we know the interaction.
+        // Otherwise keep whichever interaction logged it originally.
+        const attributed =
+          contentChanged && loggedEngagementId != null ? loggedEngagementId : prev.logged_engagement_id;
         // Preserve created_at; advance updated_at only on a real content change
         // (a seed loggedAt override still wins when provided).
         tx.run(
           `UPDATE client_models
-              SET name = ?, is_main = ?, aum = ?, holdings = ?, sort_order = ?,
+              SET name = ?, logged_engagement_id = ?, is_main = ?, aum = ?, holdings = ?, sort_order = ?,
                   updated_at = COALESCE(?, ${changed ? `datetime('now')` : 'updated_at'})
             WHERE id = ?`,
-          [m.name, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.id]
+          [m.name, attributed, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.id]
         );
       }
     });
 
     // Re-select so the response carries accurate persisted timestamps.
-    return tx.all<ClientModelRow>(
-      `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
+    const models = tx.all<ClientModelRow>(
+      `SELECT id, name, logged_engagement_id, is_main, aum, holdings, sort_order, created_at, updated_at
          FROM client_models
         WHERE crn = ?
         ORDER BY sort_order, name COLLATE NOCASE`,
       [crn]
     ).map(rowToModel);
+    return { models, loggedModelIds };
+  });
+}
+
+/**
+ * Attribute already-saved models to the interaction that logged them.
+ *
+ * Needed only for the create path: models can be logged from the new-interaction form
+ * before that interaction exists, so they are saved unattributed and claimed here once
+ * it has an id. Returns how many rows were updated.
+ */
+export async function attributeClientModels(
+  crn: string,
+  engagementId: number,
+  modelIds: string[]
+): Promise<number> {
+  if (modelIds.length === 0) return 0;
+
+  return executeTransaction<number>((tx) => {
+    const owner = tx.get<{ client_crn: string | null }>(
+      `SELECT client_crn FROM engagements WHERE id = ?`,
+      [engagementId]
+    );
+    if (!owner) throw new ClientModelError(404, 'Interaction not found.');
+    if (owner.client_crn !== crn) {
+      throw new ClientModelError(400, 'Interaction belongs to a different client.');
+    }
+
+    // Scoped by crn as well as id, so a caller cannot attribute another client's models.
+    const placeholders = modelIds.map(() => '?').join(', ');
+    const res = tx.run(
+      `UPDATE client_models SET logged_engagement_id = ?
+        WHERE crn = ? AND id IN (${placeholders})`,
+      [engagementId, crn, ...modelIds]
+    );
+    return Number(res.changes ?? 0);
   });
 }

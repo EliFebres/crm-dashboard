@@ -176,6 +176,23 @@ function bootstrap(db: DB): void {
     CREATE INDEX IF NOT EXISTS idx_client_models_crn ON client_models (crn);
   `);
 
+  // One-time migration: which interaction logged this model. The models export reads
+  // that engagement's project_id through this link, so correcting a Project ID on the
+  // interaction flows to the export with no stale copies. NULL until a model is logged
+  // from an interaction (models predating this column, and saves made from
+  // Settings → Client Management, have no interaction context). ON DELETE SET NULL so
+  // deleting an interaction un-attributes its models rather than removing them.
+  if (!columnExists(db, 'client_models', 'logged_engagement_id')) {
+    db.exec(
+      `ALTER TABLE client_models
+         ADD COLUMN logged_engagement_id INTEGER REFERENCES engagements(id) ON DELETE SET NULL`
+    );
+  }
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_client_models_logged_engagement_id
+       ON client_models (logged_engagement_id)`
+  );
+
   // One-time seed: fold each client's most-recent non-empty legacy engagement
   // portfolio into a single main model named "Logged Portfolio". Gated by a
   // migration marker so it runs EXACTLY once — a per-crn guard would resurrect the
