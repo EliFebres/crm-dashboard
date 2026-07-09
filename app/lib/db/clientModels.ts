@@ -14,7 +14,6 @@ import { query, executeTransaction } from './index';
 import { randomUUID } from 'crypto';
 import type { ClientModel, PortfolioHolding } from '@/app/lib/types/engagements';
 import { normalizeHoldingWeights } from '@/app/lib/utils/portfolioHoldings';
-import { normalizeProjectId } from '@/app/lib/utils/text';
 
 /** Carries an HTTP status so route handlers can translate it to a response. */
 export class ClientModelError extends Error {
@@ -37,7 +36,6 @@ function parseHoldings(raw: unknown): PortfolioHolding[] {
 interface ClientModelRow {
   id: string;
   name: string;
-  project_id: string | null;
   is_main: number;
   aum: number | null;
   holdings: string;
@@ -50,7 +48,6 @@ function rowToModel(r: ClientModelRow): ClientModel {
   return {
     id: r.id,
     name: r.name,
-    projectId: r.project_id ?? undefined,
     isMain: Boolean(r.is_main),
     aum: r.aum == null ? undefined : Number(r.aum),
     holdings: parseHoldings(r.holdings),
@@ -63,7 +60,7 @@ function rowToModel(r: ClientModelRow): ClientModel {
 /** List a client's models, ordered by sort_order then name. */
 export async function listClientModels(crn: string): Promise<ClientModel[]> {
   const rows = await query<ClientModelRow>(
-    `SELECT id, name, project_id, is_main, aum, holdings, sort_order, created_at, updated_at
+    `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
        FROM client_models
       WHERE crn = ?
       ORDER BY sort_order, name COLLATE NOCASE`,
@@ -100,7 +97,6 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
     return {
       id: typeof m.id === 'string' && m.id.trim() ? m.id : randomUUID(),
       name,
-      projectId: normalizeProjectId(m.projectId),
       isMain: Boolean(m.isMain),
       aum: normalizeAum(m.aum),
       holdings: normalizeHoldingWeights(Array.isArray(m.holdings) ? m.holdings : []),
@@ -125,7 +121,7 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
     // when a model's content actually changed (so "logged" dates stay meaningful).
     const existing = new Map(
       tx.all<ClientModelRow>(
-        `SELECT id, name, project_id, is_main, aum, holdings, sort_order, created_at, updated_at
+        `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
            FROM client_models WHERE crn = ?`,
         [crn]
       ).map((r) => [r.id, r])
@@ -150,14 +146,13 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
         // New model: created_at/updated_at land on loggedAt (seed) or now.
         tx.run(
           `INSERT INTO client_models
-             (id, crn, name, project_id, is_main, aum, holdings, sort_order, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
-          [m.id, crn, m.name, m.projectId, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.loggedAt]
+             (id, crn, name, is_main, aum, holdings, sort_order, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))`,
+          [m.id, crn, m.name, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.loggedAt]
         );
       } else {
         const changed =
           prev.name !== m.name ||
-          (prev.project_id ?? null) !== m.projectId ||
           Boolean(prev.is_main) !== m.isMain ||
           (prev.aum == null ? null : Number(prev.aum)) !== (m.aum == null ? null : m.aum) ||
           prev.holdings !== holdingsJson;
@@ -165,17 +160,17 @@ export async function replaceClientModels(crn: string, input: unknown): Promise<
         // (a seed loggedAt override still wins when provided).
         tx.run(
           `UPDATE client_models
-              SET name = ?, project_id = ?, is_main = ?, aum = ?, holdings = ?, sort_order = ?,
+              SET name = ?, is_main = ?, aum = ?, holdings = ?, sort_order = ?,
                   updated_at = COALESCE(?, ${changed ? `datetime('now')` : 'updated_at'})
             WHERE id = ?`,
-          [m.name, m.projectId, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.id]
+          [m.name, m.isMain ? 1 : 0, m.aum, holdingsJson, i, m.loggedAt, m.id]
         );
       }
     });
 
     // Re-select so the response carries accurate persisted timestamps.
     return tx.all<ClientModelRow>(
-      `SELECT id, name, project_id, is_main, aum, holdings, sort_order, created_at, updated_at
+      `SELECT id, name, is_main, aum, holdings, sort_order, created_at, updated_at
          FROM client_models
         WHERE crn = ?
         ORDER BY sort_order, name COLLATE NOCASE`,

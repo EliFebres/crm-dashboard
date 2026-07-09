@@ -20,7 +20,6 @@ interface EditableHolding {
 interface EditableModel {
   id: string;
   name: string;
-  projectId: string; // optional free-text; leads both sheets of the models export
   isMain: boolean;
   aum: string;       // free-form, accepts shorthand like "200M"
   holdings: EditableHolding[];
@@ -84,7 +83,6 @@ const holdingToEditable = (h: PortfolioHolding): EditableHolding => ({
 const modelToEditable = (m: ClientModel): EditableModel => ({
   id: m.id || generateId(),
   name: m.name,
-  projectId: m.projectId ?? '',
   isMain: m.isMain,
   aum: m.aum != null ? m.aum.toLocaleString('en-US') : '',
   holdings: m.holdings.length > 0 ? [...m.holdings.map(holdingToEditable), createEmptyRow()] : [createEmptyRow()],
@@ -109,11 +107,9 @@ const toClientModels = (models: EditableModel[]): ClientModel[] =>
   models.map((m, i) => {
     const typed = m.holdings.map(editableToHolding).filter((h): h is PortfolioHolding => h !== null);
     const aum = parseAumInput(m.aum);
-    const projectId = m.projectId.trim();
     return {
       id: m.id,
       name: m.name.trim(),
-      ...(projectId ? { projectId } : {}),
       isMain: m.isMain,
       ...(aum != null ? { aum } : {}),
       holdings: normalizeHoldingWeights(typed),
@@ -130,7 +126,7 @@ interface ClientModelsEditorProps {
 
 const ClientModelsEditor: React.FC<ClientModelsEditorProps> = ({ models: seed, onChange }) => {
   const [models, setModels] = useState<EditableModel[]>(() =>
-    seed.length > 0 ? seed.map(modelToEditable) : [{ id: generateId(), name: 'Main Model', projectId: '', isMain: true, aum: '', holdings: [createEmptyRow()] }]
+    seed.length > 0 ? seed.map(modelToEditable) : [{ id: generateId(), name: 'Main Model', isMain: true, aum: '', holdings: [createEmptyRow()] }]
   );
   const [selectedId, setSelectedId] = useState<string>(() =>
     (seed.find(m => m.isMain)?.id) || seed[0]?.id || ''
@@ -157,7 +153,6 @@ const ClientModelsEditor: React.FC<ClientModelsEditorProps> = ({ models: seed, o
     const m: EditableModel = {
       id: generateId(),
       name: `Model ${models.length + 1}`,
-      projectId: '',
       isMain: models.length === 0,
       aum: '',
       holdings: [createEmptyRow()],
@@ -287,17 +282,6 @@ const ClientModelsEditor: React.FC<ClientModelsEditorProps> = ({ models: seed, o
                 value={selected.name}
                 onChange={(e) => patchSelected({ name: e.target.value })}
                 placeholder="e.g. 60/40 Model"
-                className="w-full px-2.5 py-1.5 bg-zinc-800/50 border border-zinc-700/50 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50"
-              />
-            </div>
-            <div className="w-40">
-              <label className="block text-[11px] font-medium text-muted uppercase tracking-wider mb-1">Project ID</label>
-              <input
-                type="text"
-                value={selected.projectId}
-                onChange={(e) => patchSelected({ projectId: e.target.value })}
-                placeholder="e.g. PRJ-1042"
-                title="Optional. Exported as the first column of both sheets."
                 className="w-full px-2.5 py-1.5 bg-zinc-800/50 border border-zinc-700/50 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50"
               />
             </div>

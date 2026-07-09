@@ -321,12 +321,9 @@ async function seedClientModels() {
     const seed = (idx + 1) * 13;
     const legacy = legacyByCrn.get(c.crn);
 
-    const models: Array<{ name: string; projectId?: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[]; loggedAt?: string }> = [
+    const models: Array<{ name: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[]; loggedAt?: string }> = [
       {
         name: 'Core Model', isMain: true, aum: seededAum(seed),
-        // Every 4th client's core model is left without a Project ID, so the export's
-        // first column is exercised both populated and blank.
-        projectId: idx % 4 === 3 ? undefined : `PRJ-${String(1000 + idx).padStart(4, '0')}`,
         holdings: legacy?.holdings ?? synthHoldings(seed, 'balanced'),
         // Prefer the source interaction's date; else a now-relative logged date.
         loggedAt: legacy?.loggedAt ?? isoDaysAgo(Math.floor(rng(seed) * 120) + 5),
@@ -334,7 +331,7 @@ async function seedClientModels() {
     ];
     if (idx % 5 < 2) {
       // ~40% of clients also run an equity-tilted growth model.
-      models.push({ name: 'Growth Model', projectId: `PRJ-${String(2000 + idx).padStart(4, '0')}`, isMain: false, aum: seededAum(seed + 7), holdings: synthHoldings(seed + 7, 'growth'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 7) * 150) + 10) });
+      models.push({ name: 'Growth Model', isMain: false, aum: seededAum(seed + 7), holdings: synthHoldings(seed + 7, 'growth'), loggedAt: isoDaysAgo(Math.floor(rng(seed + 7) * 150) + 10) });
     }
     if (idx % 5 === 0) {
       // ~20% additionally run a 60/40 — AUM intentionally left blank to exercise

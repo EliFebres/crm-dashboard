@@ -11,6 +11,11 @@ import type { PortfolioHolding } from '@/app/lib/types/engagements';
 // Exports every client's model portfolios as a two-sheet .xlsx:
 //   - "Models"   — one row per model (holdings collapsed to readable text)
 //   - "Holdings" — one row per holding (exploded, for pivot-table analysis)
+//
+// Project ID leads both sheets. Models are keyed by client CRN and carry no project
+// identity of their own, so it is resolved from the client's interactions: the most
+// recent one (by date_started) that has a Project ID, or blank when none does. A
+// client running several projects therefore shows only its latest.
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -21,10 +26,16 @@ export async function GET(req: NextRequest) {
     const rows = hasDb()
       ? await query<ModelExportRow>(
           `SELECT c.crn AS crn, c.name AS client_name,
-                  m.id AS id, m.name AS name, m.project_id AS project_id,
-                  m.is_main AS is_main, m.aum AS aum,
+                  m.id AS id, m.name AS name, m.is_main AS is_main, m.aum AS aum,
                   m.holdings AS holdings, m.sort_order AS sort_order,
-                  m.created_at AS created_at, m.updated_at AS updated_at
+                  m.created_at AS created_at, m.updated_at AS updated_at,
+                  (SELECT e.project_id
+                     FROM engagements e
+                    WHERE e.client_crn = c.crn
+                      AND e.project_id IS NOT NULL
+                      AND e.project_id != ''
+                    ORDER BY e.date_started DESC, e.id DESC
+                    LIMIT 1) AS project_id
              FROM client_models m
              JOIN clients c ON c.crn = m.crn
             ORDER BY c.name COLLATE NOCASE, m.sort_order, m.name COLLATE NOCASE`

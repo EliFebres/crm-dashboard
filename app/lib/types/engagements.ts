@@ -89,8 +89,6 @@ export interface PortfolioHolding {
 export interface ClientModel {
   id: string;                   // stable UUID
   name: string;                 // free-text label, e.g. "60/40 Model"
-  projectId?: string;           // optional free-text project identifier; leads both sheets of the
-                                // models export. Client-level and independent of Engagement.projectId.
   isMain: boolean;              // exactly one main per client
   aum?: number;                 // optional dollars (often unknown/empty)
   holdings: PortfolioHolding[]; // weights normalized to sum to 1
