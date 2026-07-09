@@ -181,8 +181,12 @@ export default function Sidebar({ className = '' }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="relative flex-1 px-1.5 py-2 ${isCollapsed ? '' : 'overflow-y-auto overflow-x-hidden'}">
-        {navSections.map((section) => (
+        {navSections.map((section, sectionIndex) => (
           <div key={section.title} className="mb-3">
+            {/* Collapsed mode hides the section titles, so stand in a divider */}
+            {isCollapsed && sectionIndex > 0 && (
+              <div className="border-t border-zinc-700/60 mx-1.5 mb-3" />
+            )}
             {!isCollapsed && (
               <p className="px-2 text-xs font-medium text-muted uppercase tracking-wider mb-1 opacity-70">
                 {section.title}
@@ -321,6 +325,7 @@ export default function Sidebar({ className = '' }: SidebarProps) {
       {user?.role === 'admin' && (
         <div className="px-1.5 pb-1">
           <div className="mb-1">
+            {isCollapsed && <div className="border-t border-zinc-700/60 mx-1.5 mb-2" />}
             {!isCollapsed && (
               <p className="px-2 text-xs font-medium text-muted uppercase tracking-wider mb-0.5 opacity-70">Admin</p>
             )}
