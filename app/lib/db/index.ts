@@ -225,6 +225,36 @@ function bootstrap(db: DB): void {
     dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [SEED_CLIENT_MODELS]);
   }
 
+  // One-time backfill: models logged before `logged_engagement_id` existed carry no
+  // attribution, so the export has nothing to read a Project ID through. Link each to
+  // the client's interaction nearest the model's logged date (created_at), preferring
+  // one at or before it — the best available guess at which interaction logged it.
+  //
+  // The interaction is NOT required to have a Project ID: the link is what's being
+  // restored, so adding a Project ID to that interaction later flows into the export.
+  //
+  // Gated by a migration marker so it runs EXACTLY once. A bare `IS NULL` guard would
+  // re-guess attribution that was deliberately cleared — a model whose interaction was
+  // deleted (ON DELETE SET NULL) must stay unattributed, not silently adopt a neighbour.
+  const BACKFILL_MODEL_ATTRIBUTION = 'backfill_client_model_attribution_v1';
+  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [BACKFILL_MODEL_ATTRIBUTION])) {
+    db.exec(`
+      UPDATE client_models
+         SET logged_engagement_id = (
+           SELECT e.id
+             FROM engagements e
+            WHERE e.client_crn = client_models.crn
+            ORDER BY
+              CASE WHEN e.date_started <= date(client_models.created_at) THEN 0 ELSE 1 END,
+              ABS(julianday(e.date_started) - julianday(date(client_models.created_at))),
+              e.id DESC
+            LIMIT 1
+         )
+       WHERE logged_engagement_id IS NULL
+    `);
+    dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [BACKFILL_MODEL_ATTRIBUTION]);
+  }
+
   // Managed internal-client departments. The department NAME lives denormalized on
   // engagements.internal_client_dept; this table makes the set editable (add/rename/
   // delete + a chart color) and a rename cascades into engagements + internal_clients
