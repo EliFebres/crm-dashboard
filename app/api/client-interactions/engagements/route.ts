@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, hasDb } from '@/app/lib/db';
-import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
+import { rowToEngagement, CLIENT_JOIN, teamScopeClause } from '@/app/lib/db/queries';
 import { computeEngagementsList } from '@/app/lib/db/aggregations';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
 import { normalizeCrn } from '@/app/lib/config/crn';
@@ -89,9 +89,12 @@ export async function POST(req: NextRequest) {
       if (!Number.isFinite(n) || n <= 0) {
         return NextResponse.json({ error: 'Invalid linkedFromId' }, { status: 400 });
       }
+      // Parent must be visible to the creator: their own team, or unassigned.
+      const { clause: parentTeamClause, params: parentTeamParams } =
+        teamScopeClause(teamConstraint(auth.payload));
       const parent = await query<{ id: number }>(
-        `SELECT id FROM engagements WHERE id = ? AND team = ?`,
-        [n, auth.payload.team]
+        `SELECT id FROM engagements WHERE id = ? ${parentTeamClause}`,
+        [n, ...parentTeamParams]
       );
       if (parent.length === 0) {
         return NextResponse.json({ error: 'Linked engagement not found' }, { status: 400 });

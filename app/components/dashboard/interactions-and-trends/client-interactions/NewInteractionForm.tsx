@@ -374,9 +374,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       newErrors.projectType = 'Project type is required';
     }
 
-    if (formData.teamMembers.length === 0) {
-      newErrors.teamMembers = 'At least one team member is required';
-    }
+    // Team members are intentionally optional: an interaction may be logged before
+    // anyone is staffed on it. It renders as "Unassigned" and anyone can claim it.
 
     if (!formData.dateStarted) {
       newErrors.dateStarted = 'Start date is required';
@@ -942,7 +941,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               {/* Row 3: Team Members (4 columns, grouped by office) */}
               <div>
                 <label className="block text-sm font-medium text-muted mb-1.5">
-                  Team Members <span className="text-red-400">*</span>
+                  Team Members <span className="text-xs font-normal text-zinc-500">(optional — leave empty to log as Unassigned)</span>
                 </label>
                 {Object.keys(teamMembersByOffice).length === 0 ? (
                   <p className="text-xs text-muted py-2">No team members configured yet.</p>

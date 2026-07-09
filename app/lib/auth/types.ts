@@ -24,7 +24,23 @@ export function isReadOnlyUser(user: Pick<User, 'team'> | null | undefined): boo
   return (READ_ONLY_TEAMS as readonly string[]).includes(user.team);
 }
 
+/**
+ * Client-side mirror of `canEditEngagement` in app/lib/auth/require-auth.ts.
+ * Keep the two in lockstep or the UI's affordances will disagree with the API.
+ */
 export function canUserEditEngagement(
+  user: Pick<User, 'firstName' | 'lastName' | 'role' | 'team'> | null | undefined,
+  teamMembers: string[]
+): boolean {
+  if (!user || isReadOnlyUser(user)) return false;
+  if (user.role === 'admin') return true;
+  // Unassigned (empty roster) → claimable by anyone who can see it.
+  if (teamMembers.length === 0) return true;
+  return teamMembers.includes(toDisplayName(user.firstName, user.lastName));
+}
+
+/** Client-side mirror of `canDeleteEngagement` — admin or actual assignee only. */
+export function canUserDeleteEngagement(
   user: Pick<User, 'firstName' | 'lastName' | 'role' | 'team'> | null | undefined,
   teamMembers: string[]
 ): boolean {

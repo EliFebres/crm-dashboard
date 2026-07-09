@@ -26,8 +26,9 @@ export async function GET(req: NextRequest) {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
+    // Unassigned engagements (team IS NULL) are searchable by everyone.
     if (sc.team) {
-      conditions.push('e.team = ?');
+      conditions.push('(e.team = ? OR e.team IS NULL)');
       params.push(sc.team);
     }
 

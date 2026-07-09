@@ -335,6 +335,33 @@ export async function updateEngagementStatus(
 }
 
 /**
+ * Staffs (or un-staffs) an engagement. The server derives the engagement's `team`
+ * from the assignees, so this is the only way to move a row out of — or back into —
+ * the unassigned inbox. Pass an empty array to un-assign.
+ * Endpoint: PATCH /api/client-interactions/engagements/:id/assign
+ */
+export async function assignEngagement(
+  id: number,
+  teamMembers: string[],
+  version?: number
+): Promise<{ id: number; teamMembers: string[]; team: string | null }> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/${id}/assign`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamMembers, version }),
+  });
+  if (response.status === 409) {
+    const data = await response.json();
+    throw new ConflictError(data.error ?? 'This engagement was modified by someone else. Refresh and try again.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error ?? 'Failed to assign engagement');
+  }
+  return response.json();
+}
+
+/**
  * Optimized endpoint for quick NNA updates.
  * Endpoint: PATCH /api/client-interactions/engagements/:id/nna
  */

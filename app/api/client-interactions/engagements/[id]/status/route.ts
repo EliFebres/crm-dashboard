@@ -3,6 +3,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, query, hasDb } from '@/app/lib/db';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
+import { teamScopeClause } from '@/app/lib/db/queries';
 import { toDisplayDate, localTodayISO } from '@/app/lib/db/dateUtils';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
@@ -43,8 +44,7 @@ export async function PATCH(
     const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
     if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
 
-    const teamClause = sc.team ? 'AND team = ?' : '';
-    const teamParams = sc.team ? [sc.team] : [];
+    const { clause: teamClause, params: teamParams } = teamScopeClause(sc);
 
     // Completing an interaction with no finish date defaults it to today. An existing
     // finish date is left untouched, and non-Completed statuses never set a date.

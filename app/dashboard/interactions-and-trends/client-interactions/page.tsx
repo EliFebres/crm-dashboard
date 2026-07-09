@@ -15,6 +15,7 @@ import {
   deleteEngagement,
   updateEngagementStatus,
   updateEngagementNNA,
+  assignEngagement,
   addEngagementNote,
   exportEngagements,
   ConflictError,
@@ -398,6 +399,22 @@ export default function EngagementsDashboard() {
       .catch(console.error);
   };
 
+  // Claim an unassigned interaction (one created by automation, or deliberately left
+  // unstaffed). The server derives the engagement's team from the assignee, so this
+  // also lifts the row out of the global inbox and into the claimer's team.
+  const handleAssignSelf = (engagementId: number) => {
+    const target = engagements.find(e => e.id === engagementId);
+    if (!user || !target || target.teamMembers.length > 0) return;
+    const me = toDisplayName(user.firstName, user.lastName);
+    patchEngagements(e => ({ ...e, teamMembers: [me] }), engagementId);
+    assignEngagement(engagementId, [me]).catch(err => {
+      console.error(err);
+      // Roll the optimistic claim back — someone else likely took it first.
+      patchEngagements(e => ({ ...e, teamMembers: [] }), engagementId);
+      reloadData();
+    });
+  };
+
   const handleNoteAdded = (engagementId: number) => {
     patchEngagements(e => ({ ...e, noteCount: (e.noteCount ?? 0) + 1 }), engagementId);
   };
@@ -678,6 +695,7 @@ export default function EngagementsDashboard() {
               onNoteDeleted={handleNoteDeleted}
               onFilepathSaved={handleFilepathSaved}
               onNNAChange={handleNNAChange}
+              onAssignSelf={handleAssignSelf}
               onRowClick={handleRowClick}
               onExport={handleExport}
               isExporting={isExporting}
