@@ -562,7 +562,7 @@ export default function EngagementsDashboard() {
 
       <DashboardHeader
         title="Client Interactions"
-        subtitle="Track and manage client interactions across all departments"
+        subtitle="Log, track, and export client engagements"
         searchPlaceholder="Search external clients, internal clients, project ID..."
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}

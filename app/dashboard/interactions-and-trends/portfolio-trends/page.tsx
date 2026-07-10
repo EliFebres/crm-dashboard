@@ -737,7 +737,7 @@ export default function PortfolioTrendsDashboard() {
         {/* Top Bar with Filters */}
         <DashboardHeader
           title="Portfolio Trends"
-          subtitle="Portfolio construction insights and client analytics"
+          subtitle="Compare client portfolio characteristics against benchmarks"
           searchPlaceholder=""
           searchValue=""
           onSearchChange={() => {}}

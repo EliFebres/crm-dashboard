@@ -229,7 +229,7 @@ export default function TickerTrendsDashboard() {
       <DummyDataModal feature="Ticker Trends" />
       <DashboardHeader
         title="Ticker Trends"
-        subtitle="What clients ask about — and how we answer"
+        subtitle="Track ticker demand and competitor matchups"
         hideSearch
         alwaysShowFilters
         filtersInline
