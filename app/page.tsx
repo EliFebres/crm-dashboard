@@ -90,7 +90,7 @@ export default function Home() {
       <FeatureSections
         className="scroll-fade-in"
         dashboardHeading={<>Every insight,<br />one dashboard</>}
-        dashboardDescription="Track client interactions, analyze portfolio characteristics, and identify competitive opportunities all from a single platform."
+        dashboardDescription="Track client interactions, analyze portfolio characteristics, and see the tickers clients are using most all from a single platform."
         cards={[
           {
             title: 'Client Interaction Tracking',
@@ -143,7 +143,7 @@ export default function Home() {
             },
           },
           {
-            title: 'Competitive Analysis',
+            title: 'Ticker Trends',
             description: 'Track the tickers clients are using most and easily identify opportunities for NNA',
             visual: { type: 'bars', widths: [100, 86, 73, 54, 45] },
           },

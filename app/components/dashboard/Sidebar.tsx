@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Swords, Landmark, Bell, Activity, FileChartPie, ChartCandlestick, Settings } from 'lucide-react';
+import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Bell, Activity, FileChartPie, Settings } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { useAlerts } from '@/app/lib/hooks/useAlerts';
 import { NotificationsPopover } from '@/app/components/dashboard/NotificationsPopover';
@@ -35,14 +35,6 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Portfolio Trends', href: '/dashboard/interactions-and-trends/portfolio-trends', icon: PieChart },
       { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame },
-    ],
-  },
-  {
-    title: 'Competitive Landscape',
-    items: [
-      { label: 'Equity', href: '/dashboard/competitive-landscape/equity', icon: ChartCandlestick, disabled: true },
-      { label: 'Fixed Income', href: '/dashboard/competitive-landscape/fixed-income', icon: Landmark, disabled: true },
-      { label: 'vs. Competitor', href: '/dashboard/competitive-landscape/vs-competitor', icon: Swords, disabled: true },
     ],
   },
 ];
