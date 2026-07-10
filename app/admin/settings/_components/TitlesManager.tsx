@@ -29,6 +29,7 @@ const TITLE_FLASH_SPECS: FieldSpec<TitleItem>[] = [
 export default function TitlesManager() {
   const [items, setItems] = useState<TitleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
@@ -42,7 +43,9 @@ export default function TitlesManager() {
 
   const [deleting, setDeleting] = useState<TitleItem | null>(null);
 
-  const flashes = useRowFlashes(items, TITLE_FLASH_SPECS);
+  // Withhold rows until the first fetch lands, so the empty initial array isn't
+  // taken as the flash baseline and light up every row on mount.
+  const flashes = useRowFlashes(loaded ? items : undefined, TITLE_FLASH_SPECS);
   const cellFlash = (id: string, key: string) => {
     const t = flashes.cells.get(id)?.[key];
     return t ? FLASH_TEXT_CLASS[t.kind] : '';
@@ -51,12 +54,16 @@ export default function TitlesManager() {
 
   const load = useCallback(() => {
     setLoading(true);
-    getTitles().then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
+    getTitles()
+      .then(rows => { setItems(rows); setLoaded(true); })
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
   }, []);
 
   // Silent refetch (no loading flicker) for live updates, so the flash shows.
+  // Also marks loaded, so flashes still work if the initial load failed.
   const refetch = useCallback(() => {
-    getTitles().then(setItems).catch(() => {});
+    getTitles().then(rows => { setItems(rows); setLoaded(true); }).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
