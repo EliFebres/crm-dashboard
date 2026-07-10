@@ -225,6 +225,7 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
     type: row.type as string,
     projectId: (row.project_id as string | null) ?? null,
     teamMembers: JSON.parse((row.team_members as string) || '[]') as string[],
+    office: (row.office as string | null) ?? null,
     department: row.department as string,
     dateStarted: toDisplayDate(row.date_started as string),
     dateFinished: toDisplayDate(row.date_finished as string | null),

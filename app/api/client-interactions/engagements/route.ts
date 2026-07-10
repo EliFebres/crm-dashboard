@@ -12,6 +12,7 @@ import type { EngagementFilters, SortSpec } from '@/app/lib/api/client-interacti
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
+import { getUserOffice } from '@/app/lib/db/users';
 
 // Parses repeated `sort=col:dir` params into a SortSpec[] (preserves order).
 function parseSortParams(sp: URLSearchParams): SortSpec[] {
@@ -103,14 +104,18 @@ export async function POST(req: NextRequest) {
       linkedFromId = n;
     }
 
+    // Stamp the creator's office onto the interaction so "which office logged this"
+    // stays true even after they transfer. Null when the account has no office set.
+    const office = await getUserOffice(auth.payload.sub);
+
     const insertRows = await queryWrite<{ id: number }>(
       `INSERT INTO engagements (
         client_crn, internal_client_name, internal_client_dept,
-        intake_type, ad_hoc_channel, type, team_members, department,
+        intake_type, ad_hoc_channel, type, team_members, office, department,
         date_started, date_finished, status, portfolio_logged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
         linked_from_id, project_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`,
       [
         clientCrn,
@@ -120,6 +125,7 @@ export async function POST(req: NextRequest) {
         body.adHocChannel ?? null,
         body.type,
         JSON.stringify(body.teamMembers || []),
+        office,
         department,
         toISODate(body.dateStarted),
         toISODate(body.dateFinished),

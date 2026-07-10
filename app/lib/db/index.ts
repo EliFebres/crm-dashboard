@@ -122,6 +122,17 @@ function bootstrap(db: DB): void {
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_team ON engagements (team)`);
 
+  // One-time migration: the office an interaction was logged from, captured once at
+  // creation. Deliberately NOT derived from the assigned members' offices on read:
+  // members can span offices, and offices live on the person (users.sqlite), so a
+  // transfer would retroactively rewrite the office on every past interaction.
+  // Nullable — rows predating this column stay NULL until scripts/sync-portfolio.ts
+  // backfills them, and NULL simply never matches an office filter.
+  if (!columnExists(db, 'engagements', 'office')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN office TEXT`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_office ON engagements (office)`);
+
   // One-time migration: creator tracking columns
   if (!columnExists(db, 'engagements', 'created_by_id')) {
     db.exec(`ALTER TABLE engagements ADD COLUMN created_by_id TEXT`);

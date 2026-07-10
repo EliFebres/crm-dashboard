@@ -29,6 +29,7 @@ import { randomUUID } from 'crypto';
 import { query, executeTransaction } from '../app/lib/db';
 import { engagements, clients, teamMemberOffices } from '../app/lib/data/engagements';
 import { replaceClientModels } from '../app/lib/db/clientModels';
+import { syncPortfolio } from '../app/lib/db/portfolioSync';
 import { queryUsers, executeUsers, DEFAULT_TITLES } from '../app/lib/db/users';
 import { executeActivity } from '../app/lib/db/activity';
 import { hashPassword } from '../app/lib/auth/password';
@@ -47,6 +48,24 @@ function parseDisplayDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toISOString().split('T')[0];
 }
+
+/** The office an interaction is logged from — the first assigned member's, in mock data. */
+function officeOf(e: { teamMembers: string[] }): string | null {
+  return teamMemberOffices[e.teamMembers[0]] ?? null;
+}
+
+/**
+ * Portfolio Trends' headline question is "Brokerage models over $1B logged out of a
+ * given office". Nothing in the generated mock data guarantees such a row — seeded AUM
+ * tops out at $500M — so one interaction is pinned as the fixture that satisfies it.
+ * Prefer a Brokerage interaction already logged from Office A that captured a
+ * portfolio; if the generator produced none, take any Brokerage one and pin its office.
+ */
+const FLAGSHIP_AUM = 1_250_000_000;
+const FLAGSHIP_OFFICE = 'Office A';
+const flagship =
+  engagements.find(e => e.internalClient.clientDept === 'Brokerage' && officeOf(e) === FLAGSHIP_OFFICE && !!e.portfolio?.length) ??
+  engagements.find(e => e.internalClient.clientDept === 'Brokerage' && !!e.portfolio?.length);
 
 async function main() {
   const dbDir = process.env.SQLITE_DIR || process.env.DUCKDB_DIR;
@@ -87,6 +106,12 @@ async function main() {
   // Users/activity are their own databases with their own emptiness guard, so
   // they seed independently of the engagement guard above.
   await seedUsersAndActivity();
+
+  // Last: the projection reads engagements (Part A) AND the offices/roster (Part B),
+  // so it can only run once both exist.
+  console.log('Syncing portfolio.sqlite...');
+  const p = await syncPortfolio();
+  console.log(`  ${p.models} model(s) across ${p.clients} client(s).`);
 
   console.log('Done.');
 }
@@ -134,11 +159,11 @@ async function seedEngagements() {
       tx.run(
         `INSERT INTO engagements (
           id, client_crn, internal_client_name, internal_client_dept,
-          intake_type, ad_hoc_channel, type, team_members, department,
+          intake_type, ad_hoc_channel, type, team_members, office, department,
           date_started, date_finished, status, portfolio_logged, portfolio,
           nna, notes, tickers_mentioned, team, filepath, linked_from_id,
           created_by_name, project_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           e.id,
           e.clientCrn,
@@ -148,6 +173,7 @@ async function seedEngagements() {
           e.adHocChannel ?? null,
           e.type,
           JSON.stringify(e.teamMembers),
+          e.id === flagship?.id ? FLAGSHIP_OFFICE : officeOf(e),
           e.department,
           dateStarted,
           dateFinished,
@@ -314,16 +340,28 @@ async function seedClientModels() {
     }
   }
 
+  // Pin the flagship's main model to the interaction that carries its Brokerage
+  // department and office, overriding the most-recent-portfolio rule above, so the
+  // >$1B AUM below lands on an interaction the acceptance query can actually find.
+  if (flagship?.portfolio?.length) {
+    legacyByCrn.set(flagship.clientCrn, {
+      id: flagship.id,
+      holdings: flagship.portfolio,
+      loggedAt: parseDisplayDate(flagship.dateStarted),
+    });
+  }
+
   let modelCount = 0;
   let multiModelClients = 0;
   for (let idx = 0; idx < clients.length; idx++) {
     const c = clients[idx];
     const seed = (idx + 1) * 13;
     const legacy = legacyByCrn.get(c.crn);
+    const isFlagship = c.crn === flagship?.clientCrn;
 
     const models: Array<{ name: string; isMain: boolean; aum?: number; holdings: PortfolioHolding[]; loggedAt?: string }> = [
       {
-        name: 'Core Model', isMain: true, aum: seededAum(seed),
+        name: 'Core Model', isMain: true, aum: isFlagship ? FLAGSHIP_AUM : seededAum(seed),
         holdings: legacy?.holdings ?? synthHoldings(seed, 'balanced'),
         // Prefer the source interaction's date; else a now-relative logged date.
         loggedAt: legacy?.loggedAt ?? isoDaysAgo(Math.floor(rng(seed) * 120) + 5),

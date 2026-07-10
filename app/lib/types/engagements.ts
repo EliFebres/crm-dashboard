@@ -122,6 +122,7 @@ export interface Engagement {
   type: string; // Project Type
   projectId?: string | null; // Optional free-text project identifier (ad-hoc projects often have none)
   teamMembers: string[];
+  office?: string | null; // Office the interaction was logged from, captured at creation
   department: string;
   dateStarted: string;
   dateFinished: string;

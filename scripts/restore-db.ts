@@ -10,6 +10,7 @@
  *   npm run db:restore -- --backup 2026-03-27_02-00-00
  *   npm run db:restore -- --db engagements
  *   npm run db:restore -- --db users
+ *   npm run db:restore -- --db portfolio
  *   npm run db:restore -- --yes                     # Skip the y/N prompt
  *   npm run db:restore -- --force                   # Bypass the size-check guard
  *
@@ -120,8 +121,10 @@ async function main() {
     filesToRestore = ['users.sqlite'];
   } else if (dbArg === 'activity') {
     filesToRestore = ['activity.sqlite'];
+  } else if (dbArg === 'portfolio') {
+    filesToRestore = ['portfolio.sqlite'];
   } else {
-    console.error(`ERROR: Unknown --db value "${dbArg}". Use: engagements, users, activity, or all`);
+    console.error(`ERROR: Unknown --db value "${dbArg}". Use: engagements, users, activity, portfolio, or all`);
     process.exit(1);
   }
 
