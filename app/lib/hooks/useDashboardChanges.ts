@@ -17,6 +17,7 @@ export type EngagementField =
   | 'noteCount'
   | 'nna'
   | 'portfolioLogged'
+  | 'portfolioUnchanged'
   | 'intakeType'
   | 'type'
   | 'dateFinished'
@@ -72,6 +73,10 @@ function diffEngagementField(
       if (prev.portfolioLogged === next.portfolioLogged) return null;
       return { kind: next.portfolioLogged ? 'green' : 'neutral', nonce: mkNonce() };
     }
+    case 'portfolioUnchanged': {
+      if (prev.portfolioUnchanged === next.portfolioUnchanged) return null;
+      return { kind: next.portfolioUnchanged ? 'blue' : 'neutral', nonce: mkNonce() };
+    }
     case 'intakeType': {
       if (prev.intakeType === next.intakeType) return null;
       return { kind: 'amber', nonce: mkNonce() };
@@ -96,6 +101,7 @@ const TRACKED_FIELDS: EngagementField[] = [
   'noteCount',
   'nna',
   'portfolioLogged',
+  'portfolioUnchanged',
   'intakeType',
   'type',
   'dateFinished',

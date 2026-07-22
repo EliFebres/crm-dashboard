@@ -407,6 +407,11 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
             <Check className="w-4 h-4" />
             <span className="text-xs font-medium">Yes</span>
           </div>
+        ) : engagement.portfolioUnchanged ? (
+          <div className={`flex items-center gap-1.5 text-sky-400 ${flashTextFor(engagement.id, 'portfolioUnchanged')}`} title="Model carried over unchanged from a prior interaction">
+            <Check className="w-4 h-4" />
+            <span className="text-xs font-medium">Unchanged</span>
+          </div>
         ) : (
           <div className={`flex items-center gap-1.5 text-muted ${flashTextFor(engagement.id, 'portfolioLogged')}`}>
             <X className="w-4 h-4" />

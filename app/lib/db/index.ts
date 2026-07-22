@@ -30,6 +30,7 @@ function bootstrap(db: DB): void {
       date_finished        TEXT,
       status               TEXT    NOT NULL,
       portfolio_logged     INTEGER NOT NULL DEFAULT 0,
+      portfolio_unchanged  INTEGER NOT NULL DEFAULT 0,
       portfolio            TEXT,
       nna                  INTEGER,
       notes                TEXT,
@@ -166,6 +167,13 @@ function bootstrap(db: DB): void {
     db.exec(`ALTER TABLE engagements ADD COLUMN client_crn TEXT REFERENCES clients(crn)`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_client_crn ON engagements (client_crn)`);
+
+  // One-time migration: portfolio_unchanged marks a follow-up interaction where the
+  // client's model carried over with no change. Drives the "Unchanged" state in the
+  // Model Logged column so a carry-over never reads as an un-logged model.
+  if (!columnExists(db, 'engagements', 'portfolio_unchanged')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN portfolio_unchanged INTEGER NOT NULL DEFAULT 0`);
+  }
 
   // Client-level model portfolios. A client (CRN) can run several models (large- vs
   // small-client, per-office, 60/40 vs 100/0); exactly one is flagged is_main. These

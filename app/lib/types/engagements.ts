@@ -128,6 +128,7 @@ export interface Engagement {
   dateFinished: string;
   status: string;
   portfolioLogged: boolean;
+  portfolioUnchanged: boolean; // Model carried over unchanged from a prior interaction (follow-up)
   portfolio?: PortfolioHolding[]; // Optional client portfolio holdings
   nna?: number; // Net New Assets - dollar amount of AUM moved into funds (optional)
   notes?: string; // Optional notes field (legacy — used by engagement form)

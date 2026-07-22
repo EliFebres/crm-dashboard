@@ -120,6 +120,10 @@ export async function PATCH(
       setClauses.push('portfolio_logged = ?');
       values.push(Boolean(body.portfolioLogged));
     }
+    if (body.portfolioUnchanged !== undefined) {
+      setClauses.push('portfolio_unchanged = ?');
+      values.push(Boolean(body.portfolioUnchanged));
+    }
     if (body.portfolio !== undefined) {
       setClauses.push('portfolio = ?');
       values.push(body.portfolio ? JSON.stringify(body.portfolio) : null);

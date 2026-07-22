@@ -329,6 +329,7 @@ function generateEngagements(): Engagement[] {
         dateFinished: finishStr,
         status: isAfterCutoff ? 'In Progress' : 'Completed',
         portfolioLogged: false, // Ad-Hoc don't have logged portfolios
+        portfolioUnchanged: false,
         nna: nnaValue,
         notes: seededRandom(seed + 6) > 0.6 ? sampleNotes[Math.floor(seededRandom(seed + 14) * sampleNotes.length)] : undefined,
         tickersMentioned,
@@ -383,6 +384,7 @@ function generateEngagements(): Engagement[] {
         dateFinished: finishStr,
         status: isAfterCutoff ? 'In Progress' : 'Completed',
         portfolioLogged: hasPortfolio,
+        portfolioUnchanged: false,
         portfolio,
         nna: nnaValue,
         notes: seededRandom(seed + 8) > 0.5 ? sampleNotes[Math.floor(seededRandom(seed + 13) * sampleNotes.length)] : undefined,
@@ -428,6 +430,7 @@ function generateEngagements(): Engagement[] {
       dateFinished: '—',
       status,
       portfolioLogged: false,
+      portfolioUnchanged: false,
       nna: undefined, // In-progress items don't have NNA yet
       notes: seededRandom(seed + 8) > 0.5 ? sampleNotes[Math.floor(seededRandom(seed + 13) * sampleNotes.length)] : undefined,
     });

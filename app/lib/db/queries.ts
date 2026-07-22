@@ -231,6 +231,7 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
     dateFinished: toDisplayDate(row.date_finished as string | null),
     status: row.status as string,
     portfolioLogged: Boolean(row.portfolio_logged),
+    portfolioUnchanged: Boolean(row.portfolio_unchanged),
     portfolio: row.portfolio
       ? JSON.parse(row.portfolio as string)
       : undefined,

@@ -36,6 +36,7 @@ export interface InteractionFormData {
   status?: string;
   notes: string;
   portfolioLogged: boolean;
+  portfolioUnchanged: boolean; // "Same model, carried over" — follow-up with no change
   portfolio?: PortfolioHolding[];
   nna: number | null;
   tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
@@ -89,6 +90,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     status: 'In Progress',
     notes: '',
     portfolioLogged: false,
+    portfolioUnchanged: false,
     portfolio: undefined,
     nna: null,
     tickersMentioned: [],
@@ -1092,6 +1094,35 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   </button>
                     );
                   })()}
+                  {/* Carry-over flag: mark a follow-up where the client's model is
+                      unchanged, so the Model Logged column reads "Unchanged" rather
+                      than a misleading "No". Only meaningful once a client is chosen;
+                      logging an actual model clears it (see onSaved below). */}
+                  <label
+                    className={`mt-1.5 flex items-center gap-2 text-xs ${
+                      !formData.clientCrn || formData.portfolioLogged
+                        ? 'text-zinc-600 cursor-not-allowed'
+                        : 'text-muted cursor-pointer'
+                    }`}
+                    title={
+                      formData.portfolioLogged
+                        ? 'A model was logged for this interaction'
+                        : !formData.clientCrn
+                          ? 'Select a client first'
+                          : undefined
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-sky-500"
+                      disabled={!formData.clientCrn || formData.portfolioLogged}
+                      checked={formData.portfolioUnchanged}
+                      onChange={(e) =>
+                        setFormData(prev => ({ ...prev, portfolioUnchanged: e.target.checked }))
+                      }
+                    />
+                    Same model as before (carried over — no change)
+                  </label>
                 </div>
               </div>
 
@@ -1197,6 +1228,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
             setFormData(prev => ({
               ...prev,
               portfolioLogged: models.length > 0,
+              // Logging a real model supersedes the carry-over flag.
+              portfolioUnchanged: models.length > 0 ? false : prev.portfolioUnchanged,
               pendingModelIds: isEditMode
                 ? prev.pendingModelIds
                 : [...new Set([...(prev.pendingModelIds ?? []), ...loggedModelIds])],

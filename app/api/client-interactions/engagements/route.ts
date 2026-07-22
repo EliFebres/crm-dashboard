@@ -112,10 +112,10 @@ export async function POST(req: NextRequest) {
       `INSERT INTO engagements (
         client_crn, internal_client_name, internal_client_dept,
         intake_type, ad_hoc_channel, type, team_members, office, department,
-        date_started, date_finished, status, portfolio_logged, portfolio,
+        date_started, date_finished, status, portfolio_logged, portfolio_unchanged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
         linked_from_id, project_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`,
       [
         clientCrn,
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
         toISODate(body.dateFinished),
         body.status,
         body.portfolioLogged ? true : false,
+        body.portfolioUnchanged ? true : false,
         body.portfolio ? JSON.stringify(body.portfolio) : null,
         body.nna ?? null,
         body.notes ?? null,
