@@ -666,7 +666,9 @@ export default function EngagementsDashboard() {
               metricChanges={dashboardChanges.metricChanges}
             />
 
-            <div className="grid grid-cols-3 gap-4" style={{ height: '340px' }}>
+            {/* 340px is the floor; the row grows past it as the Client Department
+                legend gains rows, so more departments never squeeze the chart. */}
+            <div className="grid grid-cols-3 gap-4" style={{ minHeight: '340px' }}>
               <div className="col-span-2 relative overflow-hidden bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-5 h-full rounded-xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent pointer-events-none" />
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />

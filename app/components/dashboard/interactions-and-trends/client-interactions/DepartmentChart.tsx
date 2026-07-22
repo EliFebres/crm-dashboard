@@ -13,11 +13,14 @@ interface DepartmentChartProps {
 }
 
 const DepartmentChart = React.memo<DepartmentChartProps>(({ data, departmentChanges }) => {
+  // Reserve ~25px of chart per department (floor 80px) so each added department grows
+  // the chart — and therefore the whole row — instead of crowding the bars together.
+  const chartMinHeight = Math.max(80, data.length * 25);
   return (
     <>
-      <div className="flex-1 mb-3 min-h-[80px]">
+      <div className="flex-1 mb-3" style={{ minHeight: chartMinHeight }}>
         <ClientOnlyChart>
-          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={80}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={chartMinHeight}>
             <BarChart data={data} layout="vertical" barSize={16}>
               <XAxis type="number" domain={[0, 100]} hide />
               <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 11 }} width={85} />
