@@ -17,6 +17,8 @@ import { getDepartments } from '@/app/lib/api/internal-clients';
 import { getIntakeTypes, getProjectTypes, type IntakeTypeItem, type ProjectTypeItem } from '@/app/lib/api/types';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { canUserEditEngagement, type TeamMember } from '@/app/lib/auth/types';
+import { useResizableModal } from '@/app/lib/hooks/useResizableModal';
+import { ResizeHandle } from '@/app/components/ui/ResizeHandle';
 
 export interface InteractionFormData {
   clientCrn: string;          // CRN of the selected registered external client (required)
@@ -71,6 +73,7 @@ interface NewInteractionFormProps {
 export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onFilepathSaved, onBulkUploadClick }: NewInteractionFormProps) {
   const isEditMode = !!editingEngagement;
   const { user: currentUser } = useCurrentUser();
+  const { panelRef, panelStyle, startResize, resetSize } = useResizableModal('new-interaction');
 
   const getDefaultFormData = (): InteractionFormData => ({
     clientCrn: '',
@@ -468,9 +471,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         className="fixed inset-0 z-[100] flex items-center justify-center p-8 pointer-events-none"
       >
         <div
-          className="w-full max-w-2xl max-h-[90vh] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
+          ref={panelRef}
+          style={panelStyle}
+          className="relative w-full max-w-2xl max-h-[90vh] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
         >
-        <div className="flex flex-col max-h-[90vh]">
+        <div className="flex flex-col h-full max-h-[90vh]">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
             <div>
@@ -1160,6 +1165,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
             </div>
           </div>
         </div>
+        <ResizeHandle startResize={startResize} resetSize={resetSize} />
         </div>
       </div>
 

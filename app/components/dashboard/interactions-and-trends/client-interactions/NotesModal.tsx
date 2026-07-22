@@ -13,6 +13,8 @@ import { useCurrentUser } from '@/app/lib/auth/context';
 import type { BaseNote } from '@/app/lib/types/engagements';
 import RichTextEditor from '@/app/components/dashboard/shared/RichTextEditor';
 import RichTextDisplay from '@/app/components/dashboard/shared/RichTextDisplay';
+import { useResizableModal } from '@/app/lib/hooks/useResizableModal';
+import { ResizeHandle } from '@/app/components/ui/ResizeHandle';
 
 // Pluggable notes backend. Callers that don't pass one fall back to the
 // engagement REST endpoints (keyed by `engagementId`); Ticker Trends injects a
@@ -70,6 +72,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
   onNoteDeleted,
 }) => {
   const { user } = useCurrentUser();
+  const { panelRef, panelStyle, startResize, resetSize } = useResizableModal('notes');
   const notesListRef = useRef<HTMLDivElement>(null);
   const [notes, setNotes] = useState<BaseNote[]>([]);
 
@@ -250,7 +253,11 @@ const NotesModal: React.FC<NotesModalProps> = ({
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-700/50 shadow-2xl flex flex-col max-h-[85vh]">
+      <div
+        ref={panelRef}
+        style={panelStyle}
+        className="relative w-full max-w-2xl max-h-[85vh] bg-zinc-900 border border-zinc-700/50 shadow-2xl flex flex-col"
+      >
         {/* Gradient border effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent pointer-events-none" />
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
@@ -498,6 +505,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
             </div>
           </div>
         )}
+        <ResizeHandle startResize={startResize} resetSize={resetSize} />
       </div>
     </div>
   );
