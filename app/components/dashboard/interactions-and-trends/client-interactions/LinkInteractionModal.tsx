@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Loader2, Link2 } from 'lucide-react';
 import { searchEngagementsForLink } from '@/app/lib/api/client-interactions';
 import type { EngagementLinkSummary } from '@/app/lib/types/engagements';
+import { useResizableModal } from '@/app/lib/hooks/useResizableModal';
+import { ResizeHandle } from '@/app/components/ui/ResizeHandle';
 
 interface LinkInteractionModalProps {
   isOpen: boolean;
@@ -27,6 +29,7 @@ export default function LinkInteractionModal({
   const [results, setResults] = useState<EngagementLinkSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { panelRef, panelStyle, startResize, resetSize } = useResizableModal('link-interaction');
 
   // Reset state each time the modal opens
   useEffect(() => {
@@ -83,7 +86,7 @@ export default function LinkInteractionModal({
         onClick={onClose}
       />
       <div className="fixed inset-0 z-[110] flex items-center justify-center p-8 pointer-events-none">
-        <div className="w-full max-w-xl max-h-[80vh] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl pointer-events-auto overflow-hidden flex flex-col">
+        <div ref={panelRef} style={panelStyle} className="relative w-full max-w-xl max-h-[80vh] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl pointer-events-auto overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
             <div className="flex items-center gap-2">
@@ -175,6 +178,7 @@ export default function LinkInteractionModal({
               </ul>
             )}
           </div>
+          <ResizeHandle startResize={startResize} resetSize={resetSize} />
         </div>
       </div>
     </>

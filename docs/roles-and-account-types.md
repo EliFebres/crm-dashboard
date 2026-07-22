@@ -54,7 +54,7 @@ The default role for all approved accounts.
 - Promote, approve, or manage other users.
 
 **Sees:**
-- The standard sidebar (Interactions & Trends, Competitive Landscape) — no admin section, no Admin badge.
+- The standard sidebar (Interactions & Trends) — no admin section, no Admin badge.
 - Data filtered by their team (see Teams below).
 
 ---
@@ -150,9 +150,6 @@ Only the **Client Interactions** dashboard is active today. The following pages 
 
 - Portfolio Trends
 - Ticker Trends
-- Competitive Landscape · Equity
-- Competitive Landscape · Fixed Income
-- Competitive Landscape · vs. Competitor
 
 This means the role/team differences described above materialize only on the Client Interactions dashboard and the admin pages. When the other dashboards ship, they will inherit the same permission model.
 

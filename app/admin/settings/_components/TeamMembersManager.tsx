@@ -286,6 +286,7 @@ export default function TeamMembersManager() {
   const [members, setMembers] = useState<TeamMemberWithLinked[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -302,7 +303,9 @@ export default function TeamMembersManager() {
     getTitles().then(items => setTitles(items.map(t => t.name))).catch(() => setTitles([]));
   }, []);
 
-  const flashes = useRowFlashes(members, ROSTER_FLASH_SPECS);
+  // Withhold rows until the first fetch lands, so the empty initial array isn't
+  // taken as the flash baseline and light up every row on mount.
+  const flashes = useRowFlashes(loaded ? members : undefined, ROSTER_FLASH_SPECS);
   const cellFlash = (id: string, key: string) => {
     const t = flashes.cells.get(id)?.[key];
     return t ? FLASH_TEXT_CLASS[t.kind] : '';
@@ -321,6 +324,7 @@ export default function TeamMembersManager() {
       }
       setMembers(await membersRes.json());
       setUsers(await usersRes.json());
+      setLoaded(true);
     } catch {
       setError('Unable to connect.');
     } finally {
@@ -336,7 +340,7 @@ export default function TeamMembersManager() {
         fetch('/api/admin/team-members'),
         fetch('/api/admin/users'),
       ]);
-      if (membersRes.ok) setMembers(await membersRes.json());
+      if (membersRes.ok) { setMembers(await membersRes.json()); setLoaded(true); }
       if (usersRes.ok) setUsers(await usersRes.json());
     } catch {
       /* transient — keep showing current data */

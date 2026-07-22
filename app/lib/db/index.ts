@@ -30,6 +30,7 @@ function bootstrap(db: DB): void {
       date_finished        TEXT,
       status               TEXT    NOT NULL,
       portfolio_logged     INTEGER NOT NULL DEFAULT 0,
+      portfolio_unchanged  INTEGER NOT NULL DEFAULT 0,
       portfolio            TEXT,
       nna                  INTEGER,
       notes                TEXT,
@@ -122,6 +123,17 @@ function bootstrap(db: DB): void {
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_team ON engagements (team)`);
 
+  // One-time migration: the office an interaction was logged from, captured once at
+  // creation. Deliberately NOT derived from the assigned members' offices on read:
+  // members can span offices, and offices live on the person (users.sqlite), so a
+  // transfer would retroactively rewrite the office on every past interaction.
+  // Nullable — rows predating this column stay NULL until scripts/sync-portfolio.ts
+  // backfills them, and NULL simply never matches an office filter.
+  if (!columnExists(db, 'engagements', 'office')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN office TEXT`);
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_office ON engagements (office)`);
+
   // One-time migration: creator tracking columns
   if (!columnExists(db, 'engagements', 'created_by_id')) {
     db.exec(`ALTER TABLE engagements ADD COLUMN created_by_id TEXT`);
@@ -139,6 +151,14 @@ function bootstrap(db: DB): void {
     db.exec(`ALTER TABLE engagements ADD COLUMN filepath TEXT`);
   }
 
+  // One-time migration: optional free-text project identifier. Nullable — ad-hoc
+  // interactions often have none, and every pre-existing row predates the column.
+  // The client-models export surfaces it by looking up the client's most recent
+  // interaction that carries one (models themselves have no project identity).
+  if (!columnExists(db, 'engagements', 'project_id')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN project_id TEXT`);
+  }
+
   // Client registry link: every engagement references its external client by CRN.
   // foreign_keys = ON (see connection.ts) rejects inserts without a valid CRN.
   // The legacy free-text `external_client` column is retired — kept physically to
@@ -147,6 +167,13 @@ function bootstrap(db: DB): void {
     db.exec(`ALTER TABLE engagements ADD COLUMN client_crn TEXT REFERENCES clients(crn)`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_client_crn ON engagements (client_crn)`);
+
+  // One-time migration: portfolio_unchanged marks a follow-up interaction where the
+  // client's model carried over with no change. Drives the "Unchanged" state in the
+  // Model Logged column so a carry-over never reads as an un-logged model.
+  if (!columnExists(db, 'engagements', 'portfolio_unchanged')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN portfolio_unchanged INTEGER NOT NULL DEFAULT 0`);
+  }
 
   // Client-level model portfolios. A client (CRN) can run several models (large- vs
   // small-client, per-office, 60/40 vs 100/0); exactly one is flagged is_main. These
@@ -167,6 +194,23 @@ function bootstrap(db: DB): void {
     );
     CREATE INDEX IF NOT EXISTS idx_client_models_crn ON client_models (crn);
   `);
+
+  // One-time migration: which interaction logged this model. The models export reads
+  // that engagement's project_id through this link, so correcting a Project ID on the
+  // interaction flows to the export with no stale copies. NULL until a model is logged
+  // from an interaction (models predating this column, and saves made from
+  // Settings → Client Management, have no interaction context). ON DELETE SET NULL so
+  // deleting an interaction un-attributes its models rather than removing them.
+  if (!columnExists(db, 'client_models', 'logged_engagement_id')) {
+    db.exec(
+      `ALTER TABLE client_models
+         ADD COLUMN logged_engagement_id INTEGER REFERENCES engagements(id) ON DELETE SET NULL`
+    );
+  }
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_client_models_logged_engagement_id
+       ON client_models (logged_engagement_id)`
+  );
 
   // One-time seed: fold each client's most-recent non-empty legacy engagement
   // portfolio into a single main model named "Logged Portfolio". Gated by a
@@ -198,6 +242,36 @@ function bootstrap(db: DB): void {
       WHERE t.rn = 1
     `);
     dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [SEED_CLIENT_MODELS]);
+  }
+
+  // One-time backfill: models logged before `logged_engagement_id` existed carry no
+  // attribution, so the export has nothing to read a Project ID through. Link each to
+  // the client's interaction nearest the model's logged date (created_at), preferring
+  // one at or before it — the best available guess at which interaction logged it.
+  //
+  // The interaction is NOT required to have a Project ID: the link is what's being
+  // restored, so adding a Project ID to that interaction later flows into the export.
+  //
+  // Gated by a migration marker so it runs EXACTLY once. A bare `IS NULL` guard would
+  // re-guess attribution that was deliberately cleared — a model whose interaction was
+  // deleted (ON DELETE SET NULL) must stay unattributed, not silently adopt a neighbour.
+  const BACKFILL_MODEL_ATTRIBUTION = 'backfill_client_model_attribution_v1';
+  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [BACKFILL_MODEL_ATTRIBUTION])) {
+    db.exec(`
+      UPDATE client_models
+         SET logged_engagement_id = (
+           SELECT e.id
+             FROM engagements e
+            WHERE e.client_crn = client_models.crn
+            ORDER BY
+              CASE WHEN e.date_started <= date(client_models.created_at) THEN 0 ELSE 1 END,
+              ABS(julianday(e.date_started) - julianday(date(client_models.created_at))),
+              e.id DESC
+            LIMIT 1
+         )
+       WHERE logged_engagement_id IS NULL
+    `);
+    dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [BACKFILL_MODEL_ATTRIBUTION]);
   }
 
   // Managed internal-client departments. The department NAME lives denormalized on

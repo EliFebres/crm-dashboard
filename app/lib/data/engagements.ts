@@ -15,11 +15,23 @@ const sampleTickers = [
 
 const assetClasses: AssetClass[] = ['Equity', 'Fixed Income', 'Alternatives'];
 
+// Money-market, crypto, multi-asset, and fund-of-funds sleeves so seeded
+// portfolios exercise every asset class — not just Equity/Fixed Income/Alternatives.
+const CASH_TICKERS = ['VMFXX', 'SPAXX'];
+const CRYPTO_TICKERS = ['IBIT', 'FBTC'];
+const MULTI_TICKERS = ['AOR', 'AOA'];
+const FOF_TICKERS = ['FOF'];
+const newClassTickers = [...CASH_TICKERS, ...CRYPTO_TICKERS, ...MULTI_TICKERS, ...FOF_TICKERS];
+
 // Generate a random portfolio with 3-8 holdings
 function generatePortfolio(seed: number): PortfolioHolding[] {
   const numHoldings = 3 + Math.floor(seededRandom(seed) * 6); // 3-8 holdings
   const holdings: PortfolioHolding[] = [];
   const usedTickers = new Set<string>();
+
+  // Blend a few newer-class tickers (Cash/Crypto/Multi-Asset/Fund of Funds) into
+  // the selectable pool so logged portfolios surface those classes too.
+  const tickerPool = [...sampleTickers, ...newClassTickers];
 
   // Generate random weights that will be normalized
   const rawWeights: number[] = [];
@@ -32,14 +44,22 @@ function generatePortfolio(seed: number): PortfolioHolding[] {
     let ticker: string;
     let attempts = 0;
     do {
-      ticker = sampleTickers[Math.floor(seededRandom(seed + i * 7 + attempts) * sampleTickers.length)];
+      ticker = tickerPool[Math.floor(seededRandom(seed + i * 7 + attempts) * tickerPool.length)];
       attempts++;
     } while (usedTickers.has(ticker) && attempts < 100);
     usedTickers.add(ticker);
 
-    // Determine asset class based on ticker prefix
+    // Determine asset class based on ticker prefix / membership
     let assetClass: AssetClass;
-    if (ticker.startsWith('FM') || ticker.startsWith('FI') || ticker.startsWith('FS') || ['VTI', 'VOO', 'VEA', 'VWO', 'VIG', 'VXUS', 'VGT', 'VNQ'].includes(ticker)) {
+    if (CASH_TICKERS.includes(ticker)) {
+      assetClass = 'Cash';
+    } else if (CRYPTO_TICKERS.includes(ticker)) {
+      assetClass = 'Crypto';
+    } else if (MULTI_TICKERS.includes(ticker)) {
+      assetClass = 'Multi-Asset';
+    } else if (FOF_TICKERS.includes(ticker)) {
+      assetClass = 'Fund of Funds';
+    } else if (ticker.startsWith('FM') || ticker.startsWith('FI') || ticker.startsWith('FS') || ['VTI', 'VOO', 'VEA', 'VWO', 'VIG', 'VXUS', 'VGT', 'VNQ'].includes(ticker)) {
       assetClass = 'Equity';
     } else if (['AGG', 'LQD', 'HYG', 'TIP', 'MUB', 'SHY', 'IEF', 'TLT', 'EMB', 'VCIT', 'BND', 'BNDX'].includes(ticker)) {
       assetClass = 'Fixed Income';
@@ -329,6 +349,7 @@ function generateEngagements(): Engagement[] {
         dateFinished: finishStr,
         status: isAfterCutoff ? 'In Progress' : 'Completed',
         portfolioLogged: false, // Ad-Hoc don't have logged portfolios
+        portfolioUnchanged: false,
         nna: nnaValue,
         notes: seededRandom(seed + 6) > 0.6 ? sampleNotes[Math.floor(seededRandom(seed + 14) * sampleNotes.length)] : undefined,
         tickersMentioned,
@@ -366,7 +387,14 @@ function generateEngagements(): Engagement[] {
       const hasPortfolio = isAfterCutoff || projectType === 'PCR' ? false : seededRandom(seed + 7) > 0.15;
       const portfolio = hasPortfolio ? generatePortfolio(seed + 20) : undefined;
 
+      // Completed follow-ups that log no fresh model often carry the prior model
+      // over unchanged — this drives the sky-blue "Unchanged" Model Logged state.
+      // Mutually exclusive with a logged portfolio (only fires when hasPortfolio is false).
+      const carriedOver = !hasPortfolio && !isAfterCutoff && projectType !== 'PCR' && seededRandom(seed + 30) > 0.5;
+
       const projectClient = mockClient(seed + 6);
+      // ~15% of tracked projects have no Project ID assigned yet.
+      const projectId = seededRandom(seed + 21) < 0.15 ? undefined : `PRJ-${String(1000 + id).padStart(4, '0')}`;
       engagements.push({
         id: id++,
         clientCrn: projectClient.crn,
@@ -374,12 +402,14 @@ function generateEngagements(): Engagement[] {
         internalClient,
         intakeType,
         type: projectType,
+        projectId,
         teamMembers: selectedTeam,
         department: dept,
         dateStarted: dateStr,
         dateFinished: finishStr,
         status: isAfterCutoff ? 'In Progress' : 'Completed',
         portfolioLogged: hasPortfolio,
+        portfolioUnchanged: carriedOver,
         portfolio,
         nna: nnaValue,
         notes: seededRandom(seed + 8) > 0.5 ? sampleNotes[Math.floor(seededRandom(seed + 13) * sampleNotes.length)] : undefined,
@@ -410,6 +440,7 @@ function generateEngagements(): Engagement[] {
     startDate.setDate(startDate.getDate() - startOffset);
 
     const recentClient = mockClient(seed + 6);
+    const projectId = `PRJ-${String(1000 + id).padStart(4, '0')}`;
     engagements.push({
       id: id++,
       clientCrn: recentClient.crn,
@@ -417,16 +448,105 @@ function generateEngagements(): Engagement[] {
       internalClient,
       intakeType,
       type: projectTypes[Math.floor(seededRandom(seed + 3) * projectTypes.length)],
+      projectId,
       teamMembers: selectedTeam,
       department: dept,
       dateStarted: startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       dateFinished: '—',
       status,
       portfolioLogged: false,
+      portfolioUnchanged: false,
       nna: undefined, // In-progress items don't have NNA yet
       notes: seededRandom(seed + 8) > 0.5 ? sampleNotes[Math.floor(seededRandom(seed + 13) * sampleNotes.length)] : undefined,
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // KPI fixtures. The 11-name roster above is engaged continuously, so it always
+  // reads as "returning" (Q13) and never "dormant" (Q14). Append internal clients
+  // OUTSIDE that roster with date-scoped histories so the KPI briefing lights up:
+  //   • "new" clients    → first (and only) engagements inside the last ~11 months,
+  //     <3 each, so Q13's client base flips to "Growing".
+  //   • "dormant" clients → 3+ engagements that all stopped >60 days ago (earliest
+  //     older than a year), so Q14 lists them, longest-silent first.
+  // Both KPIs key on internal_client_name, so these must be INTERNAL relationship
+  // names — new external companies would not move either metric.
+  // ---------------------------------------------------------------------------
+  type FixtureDept = 'Advisory' | 'Brokerage' | 'Institutional' | 'Retirement';
+  const fixtureDate = (daysAgo: number): string => {
+    const d = new Date(endDate);
+    d.setDate(d.getDate() - Math.max(0, daysAgo));
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  const pushFixture = (
+    internalClient: { name: string; clientDept: FixtureDept },
+    daysAgo: number,
+    withPortfolio: boolean
+  ) => {
+    const seed = id * 29;
+    const teamCount = 1 + Math.floor(seededRandom(seed + 4) * 3);
+    const selectedTeam: string[] = [];
+    for (let t = 0; t < teamCount; t++) {
+      const member = teamMembers[Math.floor(seededRandom(seed + 5 + t) * teamMembers.length)];
+      if (!selectedTeam.includes(member)) selectedTeam.push(member);
+    }
+    const duration = 2 + Math.floor(seededRandom(seed + 10) * 4);
+    const client = mockClient(seed + 6);
+    const portfolio = withPortfolio ? generatePortfolio(seed + 20) : undefined;
+    engagements.push({
+      id: id++,
+      clientCrn: client.crn,
+      externalClient: client.name,
+      internalClient,
+      intakeType: seededRandom(seed + 2) > 0.5 ? 'IRQ' : 'SERF',
+      type: projectTypes[Math.floor(seededRandom(seed + 3) * projectTypes.length)],
+      projectId: `PRJ-${String(1000 + id).padStart(4, '0')}`,
+      teamMembers: selectedTeam,
+      department: internalClient.clientDept,
+      dateStarted: fixtureDate(daysAgo),
+      dateFinished: fixtureDate(daysAgo - duration),
+      status: 'Completed',
+      portfolioLogged: withPortfolio,
+      portfolioUnchanged: false,
+      portfolio,
+      nna: withPortfolio ? generateNNA(internalClient.clientDept, seed + 12) : undefined,
+      notes: seededRandom(seed + 8) > 0.5 ? sampleNotes[Math.floor(seededRandom(seed + 13) * sampleNotes.length)] : undefined,
+    });
+  };
+
+  // ~10 brand-new internal clients: first engagement staggered across the last
+  // ~11 months (all <365 days so each counts as "new"), plus one recent touch so
+  // they read as active. Two engagements each (<3) keeps them out of the dormant set.
+  const newClients: Array<{ name: string; clientDept: FixtureDept }> = [
+    { name: 'Reese Calder', clientDept: 'Advisory' },
+    { name: 'Sage Monroe', clientDept: 'Advisory' },
+    { name: 'Teagan Wolfe', clientDept: 'Advisory' },
+    { name: 'Presley Vance', clientDept: 'Brokerage' },
+    { name: 'Oakley Shaw', clientDept: 'Brokerage' },
+    { name: 'Micah Dunn', clientDept: 'Brokerage' },
+    { name: 'Larkin Pace', clientDept: 'Institutional' },
+    { name: 'Ira Boone', clientDept: 'Institutional' },
+    { name: 'Wren Halloway', clientDept: 'Retirement' },
+    { name: 'Sol Kramer', clientDept: 'Retirement' },
+  ];
+  newClients.forEach((c, i) => {
+    pushFixture(c, 300 - i * 28, i % 3 === 0); // first appearance, distinct recent months
+    pushFixture(c, 8 + (i % 3) * 4, false);     // recent activity — still active
+  });
+
+  // ~3 "gone quiet" internal clients: 4 engagements each, earliest >365 days (so
+  // NOT counted as new), latest >60 days ago (dormant). Varied latest dates make
+  // the "longest silent first" ordering visible; the most recent one logs a model
+  // so they surface as valuable clients that went quiet.
+  const dormantClients: Array<{ name: string; clientDept: FixtureDept; latest: number }> = [
+    { name: 'Blaine Ortiz', clientDept: 'Brokerage', latest: 75 },
+    { name: 'Rowan Pierce', clientDept: 'Advisory', latest: 130 },
+    { name: 'Quinn Vega', clientDept: 'Institutional', latest: 210 },
+  ];
+  dormantClients.forEach((c) => {
+    const days = [400, 300, Math.round((c.latest + 300) / 2), c.latest];
+    days.forEach((d, i) => pushFixture(c, d, i === days.length - 1));
+  });
 
   return engagements;
 }

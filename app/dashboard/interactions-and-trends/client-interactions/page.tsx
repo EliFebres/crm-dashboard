@@ -15,7 +15,9 @@ import {
   deleteEngagement,
   updateEngagementStatus,
   updateEngagementNNA,
+  assignEngagement,
   addEngagementNote,
+  attributeClientModels,
   exportEngagements,
   ConflictError,
 } from '@/app/lib/api/client-interactions';
@@ -347,12 +349,14 @@ export default function EngagementsDashboard() {
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'Ad-Hoc',
         adHocChannel: data.adHocChannel,
         type: data.projectType,
+        projectId: data.projectId,
         teamMembers: data.teamMembers,
         department: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional',
         dateStarted: formatDisplayDate(data.dateStarted),
         dateFinished: data.dateFinished ? formatDisplayDate(data.dateFinished) : '—',
         status: data.status ?? 'In Progress',
         portfolioLogged: data.portfolioLogged,
+        portfolioUnchanged: data.portfolioUnchanged,
         portfolio: data.portfolio,
         nna: data.nna || undefined,
         notes: data.notes?.trim() || undefined,
@@ -361,6 +365,12 @@ export default function EngagementsDashboard() {
       });
       if (data.notes?.trim()) {
         await addEngagementNote(newEngagement.id, data.notes.trim());
+      }
+      // Models logged from the form before this interaction existed are unattributed;
+      // claim them now that it has an id. Scoped by CRN server-side, so ids left over
+      // from a client the user switched away from are a no-op.
+      if (data.pendingModelIds?.length) {
+        await attributeClientModels(data.clientCrn, newEngagement.id, data.pendingModelIds);
       }
       await reloadData();
     } catch (err) {
@@ -398,6 +408,28 @@ export default function EngagementsDashboard() {
       .catch(console.error);
   };
 
+  // Claim an unassigned interaction (one created by automation, or deliberately left
+  // unstaffed). The server derives the engagement's team from the assignee, so this
+  // also lifts the row out of the global inbox and into the claimer's team.
+  const handleAssignSelf = (engagementId: number) => {
+    const target = engagements.find(e => e.id === engagementId);
+    if (!user || !target || target.teamMembers.length > 0) return;
+    const me = toDisplayName(user.firstName, user.lastName);
+    patchEngagements(e => ({ ...e, teamMembers: [me] }), engagementId);
+    assignEngagement(engagementId, [me]).catch(err => {
+      console.error(err);
+      // Roll the optimistic claim back — someone else took it first, or the server
+      // rejected the claim (e.g. you're not on the active roster for this team).
+      patchEngagements(e => ({ ...e, teamMembers: [] }), engagementId);
+      reloadData();
+      // Surface the server's reason instead of failing silently, so a rejected claim
+      // explains itself instead of just flashing on and vanishing.
+      if (conflictTimeoutRef.current) clearTimeout(conflictTimeoutRef.current);
+      setConflictError(err instanceof Error ? err.message : 'Failed to assign to yourself.');
+      conflictTimeoutRef.current = setTimeout(() => setConflictError(null), 6000);
+    });
+  };
+
   const handleNoteAdded = (engagementId: number) => {
     patchEngagements(e => ({ ...e, noteCount: (e.noteCount ?? 0) + 1 }), engagementId);
   };
@@ -430,6 +462,7 @@ export default function EngagementsDashboard() {
         intakeType: engagement.intakeType,
         adHocChannel: engagement.adHocChannel,
         projectType: engagement.type,
+        projectId: engagement.projectId ?? '',
         teamMembers: engagement.teamMembers,
         dateStarted: parseISODate(engagement.dateStarted),
         dateFinished: engagement.dateFinished && engagement.dateFinished !== '—'
@@ -438,6 +471,7 @@ export default function EngagementsDashboard() {
         status: engagement.status,
         notes: engagement.notes || '',
         portfolioLogged: engagement.portfolioLogged,
+        portfolioUnchanged: engagement.portfolioUnchanged,
         portfolio: engagement.portfolio,
         nna: engagement.nna || null,
         tickersMentioned: engagement.tickersMentioned || [],
@@ -469,6 +503,9 @@ export default function EngagementsDashboard() {
         intakeType: data.intakeType as 'IRQ' | 'SERF' | 'Ad-Hoc',
         adHocChannel: data.adHocChannel,
         type: data.projectType,
+        // Sent as '' rather than undefined so clearing the field persists as NULL
+        // (PATCH treats undefined as "leave unchanged").
+        projectId: data.projectId ?? '',
         teamMembers: data.teamMembers,
         department: data.internalClientDept as 'Advisory' | 'Brokerage' | 'Institutional',
         dateStarted: dateStartedChanged ? formatDisplayDate(data.dateStarted) : (originalDateStarted || undefined),
@@ -478,6 +515,7 @@ export default function EngagementsDashboard() {
         status: data.status,
         notes: data.notes || undefined,
         portfolioLogged: data.portfolioLogged,
+        portfolioUnchanged: data.portfolioUnchanged,
         portfolio: data.portfolio,
         nna: data.nna ?? undefined,
         tickersMentioned: data.tickersMentioned?.length ? data.tickersMentioned : undefined,
@@ -533,8 +571,8 @@ export default function EngagementsDashboard() {
 
       <DashboardHeader
         title="Client Interactions"
-        subtitle="Track and manage client interactions across all departments"
-        searchPlaceholder="Search external clients, internal clients..."
+        subtitle="Log, track, and export client engagements"
+        searchPlaceholder="Search external clients, internal clients, project ID..."
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
         className="sticky top-0 z-10"
@@ -631,7 +669,9 @@ export default function EngagementsDashboard() {
               metricChanges={dashboardChanges.metricChanges}
             />
 
-            <div className="grid grid-cols-3 gap-4" style={{ height: '340px' }}>
+            {/* 340px is the floor; the row grows past it as the Client Department
+                legend gains rows, so more departments never squeeze the chart. */}
+            <div className="grid grid-cols-3 gap-4" style={{ minHeight: '340px' }}>
               <div className="col-span-2 relative overflow-hidden bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 p-5 h-full rounded-xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent pointer-events-none" />
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -678,6 +718,7 @@ export default function EngagementsDashboard() {
               onNoteDeleted={handleNoteDeleted}
               onFilepathSaved={handleFilepathSaved}
               onNNAChange={handleNNAChange}
+              onAssignSelf={handleAssignSelf}
               onRowClick={handleRowClick}
               onExport={handleExport}
               isExporting={isExporting}

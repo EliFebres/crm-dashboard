@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 
-export const DB_FILES = ['engagements.sqlite', 'users.sqlite', 'activity.sqlite'] as const;
+export const DB_FILES = ['engagements.sqlite', 'users.sqlite', 'activity.sqlite', 'portfolio.sqlite'] as const;
 
 // Folder-name pattern for auto-backups. pre-restore-* snapshots and any other
 // human-named folders intentionally don't match this and are never auto-pruned.

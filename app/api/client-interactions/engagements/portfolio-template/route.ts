@@ -44,7 +44,7 @@ export async function GET() {
   };
 
   addValidation('B', '"Portfolio,Morningstar-Fund,Security,Index"');
-  addValidation('C', '"Equity,Fixed Income,Alternatives,Crypto,Fund of Funds,Multi-Asset"');
+  addValidation('C', '"Equity,Fixed Income,Alternatives,Crypto,Fund of Funds,Multi-Asset,Cash"');
 
   // Example rows
   const examples: Record<string, unknown>[] = [
@@ -80,7 +80,7 @@ export async function GET() {
   const refData: [string, string][] = [
     ['Identifier',       'Ticker, ISIN, or CUSIP. Will be auto-uppercased.'],
     ['Constituent Type', 'Portfolio | Morningstar-Fund | Security | Index'],
-    ['Asset Class',      'Equity | Fixed Income | Alternatives | Crypto | Fund of Funds | Multi-Asset'],
+    ['Asset Class',      'Equity | Fixed Income | Alternatives | Crypto | Fund of Funds | Multi-Asset | Cash'],
     ['Weight (%)',       'Enter as a percentage (e.g. 25 = 25%). Weights are auto-normalized to sum to 100%.'],
     ['', ''],
     ['How to use', 'Fill in your holdings, select all data rows (not the header), copy (Ctrl+C), then paste directly into the Client Portfolio form.'],

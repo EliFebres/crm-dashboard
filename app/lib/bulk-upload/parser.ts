@@ -21,6 +21,7 @@ export interface ParsedRow {
   tickersMentioned: string[];
   portfolio: string | null; // JSON string of PortfolioHolding[] or null
   structuredNotes: string | null; // JSON string of note entries with metadata or null
+  projectId: string | null; // Optional free-text project identifier
 }
 
 export interface ParseResult {
@@ -144,6 +145,7 @@ export async function parseUploadedFile(buffer: Buffer, filename: string): Promi
       const portfolioLoggedRaw = get(15);
       const portfolioRaw = str(get(16)) || null;
       const structuredNotesRaw = str(get(17)) || null;
+      const projectId = str(get(18)) || null;
 
       const dateStarted = parseDate(dateStartedRaw);
       const dateFinished = parseDate(dateFinishedRaw);
@@ -180,6 +182,7 @@ export async function parseUploadedFile(buffer: Buffer, filename: string): Promi
         tickersMentioned,
         portfolio: portfolioRaw,
         structuredNotes: structuredNotesRaw,
+        projectId,
       });
     } catch (e) {
       parseErrors.push({ rowNumber, message: `Unexpected parse error: ${e instanceof Error ? e.message : String(e)}` });

@@ -10,8 +10,10 @@ import { listIntakeTypeNames, intakeNameForRole } from '@/app/lib/db/intakeTypes
 import { listProjectTypeNames } from '@/app/lib/db/projectTypes';
 import type { ParsedRow } from '@/app/lib/bulk-upload/parser';
 import { crnConfig, normalizeCrn, generateNextCrn } from '@/app/lib/config/crn';
+import { normalizeProjectId } from '@/app/lib/utils/text';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
+import { getUserOffice } from '@/app/lib/db/users';
 
 // POST /api/client-interactions/engagements/bulk
 // Query: ?commit=true to actually insert (otherwise returns preview/errors only)
@@ -152,7 +154,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Commit — insert all valid rows atomically
+  // Commit — insert all valid rows atomically. Resolved before the transaction
+  // opens: executeTransaction's callback is synchronous.
+  const office = await getUserOffice(auth.payload.sub);
+
   try {
     await executeTransaction((tx) => {
       const creatorId = auth.payload.sub;
@@ -194,10 +199,10 @@ export async function POST(req: NextRequest) {
         const result = tx.run(
           `INSERT INTO engagements (
             client_crn, internal_client_name, internal_client_dept,
-            intake_type, ad_hoc_channel, type, team_members, department,
+            intake_type, ad_hoc_channel, type, team_members, office, department,
             date_started, date_finished, status, portfolio_logged, portfolio,
-            nna, notes, tickers_mentioned, team
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            nna, notes, tickers_mentioned, team, project_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             clientCrn,
             row.internalClientName,
@@ -206,6 +211,7 @@ export async function POST(req: NextRequest) {
             row.adHocChannel ?? null,
             row.type,
             JSON.stringify(row.teamMembers),
+            office,
             row.department,
             row.dateStarted,
             row.dateFinished ?? null,
@@ -216,6 +222,7 @@ export async function POST(req: NextRequest) {
             row.structuredNotes ? null : (row.notes ?? null),
             row.tickersMentioned.length > 0 ? JSON.stringify(row.tickersMentioned) : null,
             auth.payload.team,
+            normalizeProjectId(row.projectId),
           ]
         );
         const id = Number(result.lastInsertRowid);
@@ -273,5 +280,6 @@ function buildPreview(rows: ParsedRow[]) {
     notes: row.notes,
     portfolio: row.portfolio,
     structuredNotes: row.structuredNotes,
+    projectId: row.projectId,
   }));
 }

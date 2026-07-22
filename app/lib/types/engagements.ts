@@ -72,7 +72,7 @@ export interface Client {
   crnPending?: boolean; // true when `crn` is a placeholder awaiting the real value
 }
 
-export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds' | 'Multi-Asset';
+export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds' | 'Multi-Asset' | 'Cash';
 export type ConstituentType = 'Portfolio' | 'Morningstar-Fund' | 'Security' | 'Index';
 
 export interface PortfolioHolding {
@@ -120,12 +120,15 @@ export interface Engagement {
   intakeType: string; // A managed intake-type name (IRQ/SERF/Ad-Hoc are built-in; admins can add more)
   adHocChannel?: AdHocChannel; // Only applicable when the intake type has the 'ad_hoc' role
   type: string; // Project Type
+  projectId?: string | null; // Optional free-text project identifier (ad-hoc projects often have none)
   teamMembers: string[];
+  office?: string | null; // Office the interaction was logged from, captured at creation
   department: string;
   dateStarted: string;
   dateFinished: string;
   status: string;
   portfolioLogged: boolean;
+  portfolioUnchanged: boolean; // Model carried over unchanged from a prior interaction (follow-up)
   portfolio?: PortfolioHolding[]; // Optional client portfolio holdings
   nna?: number; // Net New Assets - dollar amount of AUM moved into funds (optional)
   notes?: string; // Optional notes field (legacy — used by engagement form)

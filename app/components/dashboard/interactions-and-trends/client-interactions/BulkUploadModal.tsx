@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Upload, Download, AlertTriangle, CheckCircle, AlertCircle, Loader2, FileSpreadsheet } from 'lucide-react';
+import { useResizableModal } from '@/app/lib/hooks/useResizableModal';
+import { ResizeHandle } from '@/app/components/ui/ResizeHandle';
 
 interface PreviewRow {
   rowNumber: number;
@@ -52,6 +54,7 @@ const BulkUploadModal: React.FC<BulkUploadModalProps> = ({ isOpen, onClose, onIm
   const [isDragging, setIsDragging] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { panelRef, panelStyle, startResize, resetSize } = useResizableModal('bulk-upload');
 
   // Reset state when modal closes
   useEffect(() => {
@@ -175,7 +178,7 @@ const BulkUploadModal: React.FC<BulkUploadModalProps> = ({ isOpen, onClose, onIm
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-4xl max-h-[90vh] flex flex-col bg-zinc-900 border border-zinc-700/50 shadow-2xl mx-4">
+      <div ref={panelRef} style={panelStyle} className="relative z-10 w-full max-w-4xl max-h-[90vh] flex flex-col bg-zinc-900 border border-zinc-700/50 shadow-2xl mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/50 flex-shrink-0">
           <div>
@@ -435,6 +438,7 @@ const BulkUploadModal: React.FC<BulkUploadModalProps> = ({ isOpen, onClose, onIm
             )}
           </div>
         )}
+        <ResizeHandle startResize={startResize} resetSize={resetSize} />
       </div>
     </div>
   );

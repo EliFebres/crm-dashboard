@@ -11,6 +11,12 @@ import type { PortfolioHolding } from '@/app/lib/types/engagements';
 // Exports every client's model portfolios as a two-sheet .xlsx:
 //   - "Models"   — one row per model (holdings collapsed to readable text)
 //   - "Holdings" — one row per holding (exploded, for pivot-table analysis)
+//
+// Project ID leads both sheets. It is the Project ID of the interaction that logged the
+// model (client_models.logged_engagement_id), read live through the link — so correcting
+// a Project ID on the interaction updates the export. Blank when the model predates
+// attribution, was last saved from Settings → Client Management, or its interaction
+// carries no Project ID.
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -23,9 +29,11 @@ export async function GET(req: NextRequest) {
           `SELECT c.crn AS crn, c.name AS client_name,
                   m.id AS id, m.name AS name, m.is_main AS is_main, m.aum AS aum,
                   m.holdings AS holdings, m.sort_order AS sort_order,
-                  m.created_at AS created_at, m.updated_at AS updated_at
+                  m.created_at AS created_at, m.updated_at AS updated_at,
+                  e.project_id AS project_id
              FROM client_models m
              JOIN clients c ON c.crn = m.crn
+             LEFT JOIN engagements e ON e.id = m.logged_engagement_id
             ORDER BY c.name COLLATE NOCASE, m.sort_order, m.name COLLATE NOCASE`
         )
       : [];
@@ -56,6 +64,7 @@ interface ModelExportRow {
   client_name: string;
   id: string;
   name: string;
+  project_id: string | null;
   is_main: number;
   aum: number | null;
   holdings: string;
@@ -93,6 +102,7 @@ async function buildXlsx(rows: ModelExportRow[]): Promise<Buffer> {
   // ── Sheet 1: Models — one row per model ──────────────────────────────────
   const models = workbook.addWorksheet('Models');
   models.columns = [
+    { key: 'projectId',     width: 18 },
     { key: 'crn',           width: 16 },
     { key: 'client',        width: 28 },
     { key: 'model',         width: 24 },
@@ -104,12 +114,13 @@ async function buildXlsx(rows: ModelExportRow[]): Promise<Buffer> {
     { key: 'updatedAt',     width: 18 },
   ];
   styleHeader(models.addRow([
-    'CRN', 'Client', 'Model', 'Main?', 'AUM', '# Holdings', 'Holdings', 'Created', 'Updated',
+    'Project ID', 'CRN', 'Client', 'Model', 'Main?', 'AUM', '# Holdings', 'Holdings', 'Created', 'Updated',
   ]));
 
   // ── Sheet 2: Holdings — one row per exploded holding ─────────────────────
   const holdingsSheet = workbook.addWorksheet('Holdings');
   holdingsSheet.columns = [
+    { key: 'projectId',  width: 18 },
     { key: 'crn',        width: 16 },
     { key: 'client',     width: 28 },
     { key: 'model',      width: 24 },
@@ -119,7 +130,7 @@ async function buildXlsx(rows: ModelExportRow[]): Promise<Buffer> {
     { key: 'weight',     width: 12 },
   ];
   styleHeader(holdingsSheet.addRow([
-    'CRN', 'Client', 'Model', 'Identifier', 'Constituent Type', 'Asset Class', 'Weight %',
+    'Project ID', 'CRN', 'Client', 'Model', 'Identifier', 'Constituent Type', 'Asset Class', 'Weight %',
   ]));
 
   for (const row of rows) {
@@ -127,6 +138,7 @@ async function buildXlsx(rows: ModelExportRow[]): Promise<Buffer> {
     const aum = row.aum;
 
     models.addRow({
+      projectId:     row.project_id ?? '',
       crn:           row.crn,
       client:        row.client_name,
       model:         row.name,
@@ -142,6 +154,7 @@ async function buildXlsx(rows: ModelExportRow[]): Promise<Buffer> {
 
     for (const h of holdings) {
       holdingsSheet.addRow({
+        projectId:  row.project_id ?? '',
         crn:        row.crn,
         client:     row.client_name,
         model:      row.name,

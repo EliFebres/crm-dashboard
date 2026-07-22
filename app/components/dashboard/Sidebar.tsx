@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Swords, Landmark, Bell, Activity, FileChartPie, ChartCandlestick, Settings } from 'lucide-react';
+import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Bell, Activity, FileChartPie, Settings } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { useAlerts } from '@/app/lib/hooks/useAlerts';
 import { NotificationsPopover } from '@/app/components/dashboard/NotificationsPopover';
@@ -35,14 +35,6 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Portfolio Trends', href: '/dashboard/interactions-and-trends/portfolio-trends', icon: PieChart },
       { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame },
-    ],
-  },
-  {
-    title: 'Competitive Landscape',
-    items: [
-      { label: 'Equity', href: '/dashboard/competitive-landscape/equity', icon: ChartCandlestick, disabled: true },
-      { label: 'Fixed Income', href: '/dashboard/competitive-landscape/fixed-income', icon: Landmark, disabled: true },
-      { label: 'vs. Competitor', href: '/dashboard/competitive-landscape/vs-competitor', icon: Swords, disabled: true },
     ],
   },
 ];
@@ -181,8 +173,12 @@ export default function Sidebar({ className = '' }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="relative flex-1 px-1.5 py-2 ${isCollapsed ? '' : 'overflow-y-auto overflow-x-hidden'}">
-        {navSections.map((section) => (
+        {navSections.map((section, sectionIndex) => (
           <div key={section.title} className="mb-3">
+            {/* Collapsed mode hides the section titles, so stand in a divider */}
+            {isCollapsed && sectionIndex > 0 && (
+              <div className="border-t border-zinc-700/60 mx-1.5 mb-3" />
+            )}
             {!isCollapsed && (
               <p className="px-2 text-xs font-medium text-muted uppercase tracking-wider mb-1 opacity-70">
                 {section.title}
@@ -321,6 +317,7 @@ export default function Sidebar({ className = '' }: SidebarProps) {
       {user?.role === 'admin' && (
         <div className="px-1.5 pb-1">
           <div className="mb-1">
+            {isCollapsed && <div className="border-t border-zinc-700/60 mx-1.5 mb-2" />}
             {!isCollapsed && (
               <p className="px-2 text-xs font-medium text-muted uppercase tracking-wider mb-0.5 opacity-70">Admin</p>
             )}
@@ -340,20 +337,6 @@ export default function Sidebar({ className = '' }: SidebarProps) {
             </div>
             <div className="relative group">
               <Link
-                href="/admin/users"
-                className={`w-full flex items-center transition-colors border-l-2 ${isCollapsed ? `justify-center px-0 py-2 ${pathname === '/admin/users' ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/10 text-cyan-400 border-cyan-400 backdrop-blur-sm' : 'text-muted hover:bg-white/[0.03] hover:text-zinc-200 border-transparent'}` : `px-2 py-2 gap-2.5 ${pathname === '/admin/users' ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/10 text-cyan-400 border-cyan-400 backdrop-blur-sm' : 'text-muted hover:bg-white/[0.03] hover:text-zinc-200 border-transparent'}`}`}
-              >
-                <Users className="w-5 h-5 flex-shrink-0" />
-                {!isCollapsed && <span className="text-[0.9rem] font-semibold tracking-wide">User Management</span>}
-              </Link>
-              {isCollapsed && (
-                <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 transition-opacity">
-                  User Management
-                </span>
-              )}
-            </div>
-            <div className="relative group">
-              <Link
                 href="/admin/settings"
                 className={`w-full flex items-center transition-colors border-l-2 ${isCollapsed ? `justify-center px-0 py-2 ${pathname === '/admin/settings' ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/10 text-cyan-400 border-cyan-400 backdrop-blur-sm' : 'text-muted hover:bg-white/[0.03] hover:text-zinc-200 border-transparent'}` : `px-2 py-2 gap-2.5 ${pathname === '/admin/settings' ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/10 text-cyan-400 border-cyan-400 backdrop-blur-sm' : 'text-muted hover:bg-white/[0.03] hover:text-zinc-200 border-transparent'}`}`}
               >
@@ -363,6 +346,20 @@ export default function Sidebar({ className = '' }: SidebarProps) {
               {isCollapsed && (
                 <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 transition-opacity">
                   Settings
+                </span>
+              )}
+            </div>
+            <div className="relative group">
+              <Link
+                href="/admin/users"
+                className={`w-full flex items-center transition-colors border-l-2 ${isCollapsed ? `justify-center px-0 py-2 ${pathname === '/admin/users' ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/10 text-cyan-400 border-cyan-400 backdrop-blur-sm' : 'text-muted hover:bg-white/[0.03] hover:text-zinc-200 border-transparent'}` : `px-2 py-2 gap-2.5 ${pathname === '/admin/users' ? 'bg-gradient-to-r from-blue-600/20 to-cyan-600/10 text-cyan-400 border-cyan-400 backdrop-blur-sm' : 'text-muted hover:bg-white/[0.03] hover:text-zinc-200 border-transparent'}`}`}
+              >
+                <Users className="w-5 h-5 flex-shrink-0" />
+                {!isCollapsed && <span className="text-[0.9rem] font-semibold tracking-wide">User Management</span>}
+              </Link>
+              {isCollapsed && (
+                <span className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 transition-opacity">
+                  User Management
                 </span>
               )}
             </div>

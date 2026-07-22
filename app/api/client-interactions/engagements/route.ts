@@ -2,15 +2,17 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, hasDb } from '@/app/lib/db';
-import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
+import { rowToEngagement, CLIENT_JOIN, teamScopeClause } from '@/app/lib/db/queries';
 import { computeEngagementsList } from '@/app/lib/db/aggregations';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
 import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
+import { normalizeProjectId } from '@/app/lib/utils/text';
 import type { EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
+import { getUserOffice } from '@/app/lib/db/users';
 
 // Parses repeated `sort=col:dir` params into a SortSpec[] (preserves order).
 function parseSortParams(sp: URLSearchParams): SortSpec[] {
@@ -89,9 +91,12 @@ export async function POST(req: NextRequest) {
       if (!Number.isFinite(n) || n <= 0) {
         return NextResponse.json({ error: 'Invalid linkedFromId' }, { status: 400 });
       }
+      // Parent must be visible to the creator: their own team, or unassigned.
+      const { clause: parentTeamClause, params: parentTeamParams } =
+        teamScopeClause(teamConstraint(auth.payload));
       const parent = await query<{ id: number }>(
-        `SELECT id FROM engagements WHERE id = ? AND team = ?`,
-        [n, auth.payload.team]
+        `SELECT id FROM engagements WHERE id = ? ${parentTeamClause}`,
+        [n, ...parentTeamParams]
       );
       if (parent.length === 0) {
         return NextResponse.json({ error: 'Linked engagement not found' }, { status: 400 });
@@ -99,14 +104,18 @@ export async function POST(req: NextRequest) {
       linkedFromId = n;
     }
 
+    // Stamp the creator's office onto the interaction so "which office logged this"
+    // stays true even after they transfer. Null when the account has no office set.
+    const office = await getUserOffice(auth.payload.sub);
+
     const insertRows = await queryWrite<{ id: number }>(
       `INSERT INTO engagements (
         client_crn, internal_client_name, internal_client_dept,
-        intake_type, ad_hoc_channel, type, team_members, department,
-        date_started, date_finished, status, portfolio_logged, portfolio,
+        intake_type, ad_hoc_channel, type, team_members, office, department,
+        date_started, date_finished, status, portfolio_logged, portfolio_unchanged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
-        linked_from_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        linked_from_id, project_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`,
       [
         clientCrn,
@@ -116,11 +125,13 @@ export async function POST(req: NextRequest) {
         body.adHocChannel ?? null,
         body.type,
         JSON.stringify(body.teamMembers || []),
+        office,
         department,
         toISODate(body.dateStarted),
         toISODate(body.dateFinished),
         body.status,
         body.portfolioLogged ? true : false,
+        body.portfolioUnchanged ? true : false,
         body.portfolio ? JSON.stringify(body.portfolio) : null,
         body.nna ?? null,
         body.notes ?? null,
@@ -129,6 +140,7 @@ export async function POST(req: NextRequest) {
         auth.payload.sub,
         `${auth.payload.firstName} ${auth.payload.lastName}`,
         linkedFromId,
+        normalizeProjectId(body.projectId),
       ]
     );
     const id = Number(insertRows[0].id);

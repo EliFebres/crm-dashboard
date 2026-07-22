@@ -76,6 +76,30 @@ export interface ServerConstraints {
 }
 
 /**
+ * Team-scope SQL for a team-constrained user.
+ *
+ * An engagement with `team IS NULL` is UNASSIGNED — it belongs to no team yet and
+ * sits in a global inbox every user can see and claim (see the /assign route).
+ * Automation writes land here: a scheduled job has no idea who should own a new
+ * interaction, so a human picks it up afterwards. Once claimed, `team` is set and
+ * normal team isolation applies from then on.
+ *
+ * Returns an empty clause for unconstrained callers (admins / read-only teams),
+ * matching the `if (sc.team)` shape the routes used before.
+ *
+ * NOTE: kpi-aggregations.ts deliberately does NOT use this — unassigned work is
+ * nobody's work yet and must not inflate every team's KPIs at once.
+ */
+export function teamScopeClause(
+  serverConstraints: ServerConstraints,
+  tableAlias = ''
+): { clause: string; params: unknown[] } {
+  if (!serverConstraints.team) return { clause: '', params: [] };
+  const col = tableAlias ? `${tableAlias}.team` : 'team';
+  return { clause: `AND (${col} = ? OR ${col} IS NULL)`, params: [serverConstraints.team] };
+}
+
+/**
  * Builds a parameterized WHERE clause from EngagementFilters.
  * All user-supplied values go through params — no string interpolation of user data.
  * serverConstraints are enforced server-side and cannot be overridden by clients.
@@ -89,9 +113,10 @@ export function buildFilterClause(
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  // Server-enforced team isolation — applied before all client filters
+  // Server-enforced team isolation — applied before all client filters. Rows with
+  // team IS NULL are unassigned and visible to everyone (see teamScopeClause).
   if (serverConstraints.team) {
-    conditions.push(`${col('team')} = ?`);
+    conditions.push(`(${col('team')} = ? OR ${col('team')} IS NULL)`);
     params.push(serverConstraints.team);
   }
 
@@ -170,8 +195,9 @@ export function buildFilterClause(
       OR lower(${col('intake_type')}) LIKE ?
       OR lower(${col('type')}) LIKE ?
       OR lower(${col('department')}) LIKE ?
+      OR lower(${col('project_id')}) LIKE ?
     )`);
-    params.push(s, s, s, s, s, s);
+    params.push(s, s, s, s, s, s, s);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -197,12 +223,15 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
     intakeType: row.intake_type as string,
     adHocChannel: (row.ad_hoc_channel as string | undefined) as import('../types/engagements').AdHocChannel | undefined,
     type: row.type as string,
+    projectId: (row.project_id as string | null) ?? null,
     teamMembers: JSON.parse((row.team_members as string) || '[]') as string[],
+    office: (row.office as string | null) ?? null,
     department: row.department as string,
     dateStarted: toDisplayDate(row.date_started as string),
     dateFinished: toDisplayDate(row.date_finished as string | null),
     status: row.status as string,
     portfolioLogged: Boolean(row.portfolio_logged),
+    portfolioUnchanged: Boolean(row.portfolio_unchanged),
     portfolio: row.portfolio
       ? JSON.parse(row.portfolio as string)
       : undefined,

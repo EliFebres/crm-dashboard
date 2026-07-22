@@ -21,7 +21,7 @@
 
 ## Overview
 
-A Next.js CRM and insights dashboard for logging, tracking, and analyzing client engagements across teams. The **Client Interactions** dashboard is fully live, backed by SQLite (better-sqlite3) with real-time cross-user updates. The Portfolio Trends, Ticker Trends, and Competitive Landscape sections are scaffolded and disabled in the sidebar pending a future re-enable.
+A Next.js CRM and insights dashboard for logging, tracking, and analyzing client engagements across teams. The **Client Interactions** dashboard is fully live, backed by SQLite (better-sqlite3) with real-time cross-user updates. The Portfolio Trends and Ticker Trends sections are scaffolded and disabled in the sidebar pending a future re-enable.
 
 **Key Capabilities:**
 
@@ -85,7 +85,7 @@ Open [http://localhost:3000](http://localhost:3000) and sign up.
 - **`/admin/team-members`** — manage the team member directory used throughout the dashboard
 
 > [!NOTE]
-> The **Portfolio Trends**, **Ticker Trends**, and **Competitive Landscape** sections are scaffolded but greyed out in the sidebar. Their page code exists under `app/dashboard/`, pending a future re-enable.
+> The **Portfolio Trends** and **Ticker Trends** sections are scaffolded but greyed out in the sidebar. Their page code exists under `app/dashboard/`, pending a future re-enable.
 
 ## Configuration
 

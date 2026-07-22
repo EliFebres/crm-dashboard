@@ -31,7 +31,11 @@ export async function GET(
 }
 
 // PUT /api/client-interactions/clients/:crn/models — editors only.
-// Body: { models: ClientModel[] } — atomically replaces the client's whole model set.
+// Body: { models: ClientModel[], loggedEngagementId?: number | null }
+// Atomically replaces the client's whole model set. `loggedEngagementId` is the
+// interaction the save was made from; models it creates or content-changes are
+// attributed to it. Responds with the persisted models plus `loggedModelIds`, which a
+// brand-new interaction (no id yet) replays through POST .../models/attribute.
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ crn: string }> }
@@ -47,14 +51,15 @@ export async function PUT(
     const { crn: rawCrn } = await params;
     const crn = normalizeCrn(decodeURIComponent(rawCrn));
     const body = await req.json();
-    const models = await replaceClientModels(crn, body?.models);
+    const loggedEngagementId = coerceEngagementId(body?.loggedEngagementId);
+    const { models, loggedModelIds } = await replaceClientModels(crn, body?.models, loggedEngagementId);
     void logActivity(req, {
       action: 'clientModel.replace',
       entityType: 'client',
       entityId: crn,
-      details: { count: models.length },
+      details: { count: models.length, loggedEngagementId, logged: loggedModelIds.length },
     });
-    return NextResponse.json({ models });
+    return NextResponse.json({ models, loggedModelIds });
   } catch (err) {
     if (err instanceof ClientModelError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
@@ -62,4 +67,12 @@ export async function PUT(
     console.error('[PUT /api/client-interactions/clients/[crn]/models]', err);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
+}
+
+/** null/absent => no attributing interaction. Anything else must be a positive id. */
+function coerceEngagementId(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new ClientModelError(400, 'Invalid loggedEngagementId.');
+  return n;
 }
