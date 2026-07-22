@@ -44,14 +44,16 @@ from .verify import verify_visible
 #: The exact column set the app's POST /engagements route writes, plus `filepath`.
 #: `external_client` is retired (the client name lives only in the registry) and `portfolio`
 #: is superseded by client_models, so both are left NULL — same as the route does.
+#: `portfolio_unchanged` is always 0: it is the "model carried over unchanged from a prior
+#: interaction" follow-up flag the UI sets by hand, which a fresh batch import never is.
 _INSERT_SQL = f"""
 INSERT INTO {TABLE_ENGAGEMENTS} (
   client_crn, internal_client_name, internal_client_dept,
   intake_type, ad_hoc_channel, type, team_members, department,
-  date_started, date_finished, status, portfolio_logged, portfolio,
+  date_started, date_finished, status, portfolio_logged, portfolio_unchanged, portfolio,
   nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
   linked_from_id, filepath, project_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -219,6 +221,7 @@ class EngagementWriter:
                     n.date_finished,
                     n.status,
                     1 if n.portfolio_logged else 0,
+                    0,  # portfolio_unchanged: a fresh import is never a carry-over follow-up
                     None,  # portfolio: retired in favor of client_models
                     n.nna,
                     None,  # notes: the UI reads engagement_notes, not this legacy column

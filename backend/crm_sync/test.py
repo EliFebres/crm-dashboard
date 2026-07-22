@@ -179,6 +179,7 @@ def main() -> int:
         check("nna left NULL", row["nna"] is None, repr(row["nna"]))
         check("notes left NULL", row["notes"] is None, repr(row["notes"]))
         check("portfolio_logged defaults to 0", row["portfolio_logged"] == 0, repr(row["portfolio_logged"]))
+        check("portfolio_unchanged defaults to 0", row["portfolio_unchanged"] == 0, repr(row["portfolio_unchanged"]))
         check("ad_hoc_channel left NULL", row["ad_hoc_channel"] is None, repr(row["ad_hoc_channel"]))
         check("filepath left NULL", row["filepath"] is None, repr(row["filepath"]))
         check("linked_from_id left NULL", row["linked_from_id"] is None, repr(row["linked_from_id"]))
