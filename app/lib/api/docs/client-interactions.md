@@ -676,7 +676,7 @@ ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Te
 | Field | Type | Description |
 |-------|------|-------------|
 | `identifier` | string | Ticker, ISIN, or CUSIP |
-| `asset_class` | string | `Equity`, `Fixed Income`, `Alternatives`, `Crypto`, `Fund of Funds`, or `Multi-Asset` |
+| `asset_class` | string | `Equity`, `Fixed Income`, `Alternatives`, `Crypto`, `Fund of Funds`, `Multi-Asset`, or `Cash` |
 | `weight` | number | Normalized weight (0-1, sums to 1) |
 
 ### DayData (Contribution Heatmap)

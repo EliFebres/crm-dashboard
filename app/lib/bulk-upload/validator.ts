@@ -26,7 +26,7 @@ const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Da
 const VALID_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_STATUSES: string[] = [...STATUS_ENUM];
 const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
-const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds', 'Multi-Asset'];
+const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds', 'Multi-Asset', 'Cash'];
 
 // Fuzzy normalize for enum matching — case-insensitive, strip spaces/hyphens
 function normalize(s: string): string {
