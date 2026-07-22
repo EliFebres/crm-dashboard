@@ -417,9 +417,15 @@ export default function EngagementsDashboard() {
     patchEngagements(e => ({ ...e, teamMembers: [me] }), engagementId);
     assignEngagement(engagementId, [me]).catch(err => {
       console.error(err);
-      // Roll the optimistic claim back — someone else likely took it first.
+      // Roll the optimistic claim back — someone else took it first, or the server
+      // rejected the claim (e.g. you're not on the active roster for this team).
       patchEngagements(e => ({ ...e, teamMembers: [] }), engagementId);
       reloadData();
+      // Surface the server's reason instead of failing silently, so a rejected claim
+      // explains itself instead of just flashing on and vanishing.
+      if (conflictTimeoutRef.current) clearTimeout(conflictTimeoutRef.current);
+      setConflictError(err instanceof Error ? err.message : 'Failed to assign to yourself.');
+      conflictTimeoutRef.current = setTimeout(() => setConflictError(null), 6000);
     });
   };
 

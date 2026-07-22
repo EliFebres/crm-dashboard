@@ -10,7 +10,7 @@ import type { SortSpec } from '@/app/lib/api/client-interactions';
 import type { ChangeFlash, EngagementField } from '@/app/lib/hooks/useDashboardChanges';
 import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChanges';
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
-import { canUserEditEngagement, isReadOnlyUser, type User } from '@/app/lib/auth/types';
+import { canUserEditEngagement, isReadOnlyUser, toDisplayName, type User } from '@/app/lib/auth/types';
 import { getIntakeTypes, getProjectTypes } from '@/app/lib/api/types';
 
 type SortColumn =
@@ -277,6 +277,9 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     const canEdit = !readOnly && canUserEditEngagement(currentUser, engagement.teamMembers);
     // Claiming needs a real user to attribute the assignment to; read-only teams can't.
     const canClaim = !readOnly && !!currentUser && !isReadOnlyUser(currentUser);
+    // Display name of the signed-in user, so their own avatar in the roster can be
+    // highlighted with the site's cyan accent.
+    const currentUserName = currentUser ? toDisplayName(currentUser.firstName, currentUser.lastName) : null;
     return (
     <tr
       key={`${keyPrefix}${isGhost ? 'ghost-' : ''}${engagement.id}`}
@@ -361,15 +364,24 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
           )
         ) : (
         <div className="flex -space-x-1.5">
-          {engagement.teamMembers.slice(0, 4).map((member, idx) => (
+          {engagement.teamMembers.slice(0, 4).map((member, idx) => {
+            const isMe = member === currentUserName;
+            return (
             <div
               key={idx}
-              className="w-7 h-7 bg-zinc-700/80 backdrop-blur-sm border-2 border-zinc-900/50 flex items-center justify-center text-muted text-xs font-medium"
-              title={member}
+              className={`w-7 h-7 backdrop-blur-sm border-2 flex items-center justify-center text-xs font-medium ${
+                isMe
+                  // z-10 lifts the highlighted avatar above its overlapping neighbours
+                  // so the full cyan ring stays visible.
+                  ? 'relative z-10 bg-cyan-400/15 border-cyan-400/40 text-cyan-300'
+                  : 'bg-zinc-700/80 border-zinc-900/50 text-muted'
+              }`}
+              title={isMe ? `${member} (you)` : member}
             >
               {getInitials(member)}
             </div>
-          ))}
+            );
+          })}
           {engagement.teamMembers.length > 4 && (
             <div
               className="w-7 h-7 bg-zinc-600/80 backdrop-blur-sm border-2 border-zinc-900/50 flex items-center justify-center text-muted text-xs font-medium"
