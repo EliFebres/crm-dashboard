@@ -160,10 +160,10 @@ async function seedEngagements() {
         `INSERT INTO engagements (
           id, client_crn, internal_client_name, internal_client_dept,
           intake_type, ad_hoc_channel, type, team_members, office, department,
-          date_started, date_finished, status, portfolio_logged, portfolio,
+          date_started, date_finished, status, portfolio_logged, portfolio_unchanged, portfolio,
           nna, notes, tickers_mentioned, team, filepath, linked_from_id,
           created_by_name, project_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           e.id,
           e.clientCrn,
@@ -179,6 +179,7 @@ async function seedEngagements() {
           dateFinished,
           e.status,
           e.portfolioLogged ? 1 : 0,
+          e.portfolioUnchanged ? 1 : 0,
           e.portfolio ? JSON.stringify(e.portfolio) : null,
           e.nna ?? null,
           e.notes ?? null,
@@ -277,10 +278,18 @@ const EXTRA_NOTES = [
 const EQUITY_TICKERS = ['VTI', 'VOO', 'VEA', 'VWO', 'VGT', 'SCHD', 'FMAC', 'FMAS', 'FMEV', 'AAPL', 'MSFT', 'NVDA'];
 const FIXED_TICKERS = ['BND', 'AGG', 'LQD', 'TLT', 'MUB', 'BNDX', 'IEF', 'SHY', 'TIP'];
 const ALT_TICKERS = ['VNQ', 'GLD', 'DBC'];
+const CASH_TICKERS = ['VMFXX', 'SPAXX'];
+const CRYPTO_TICKERS = ['IBIT', 'FBTC'];
+const MULTI_TICKERS = ['AOR', 'AOA'];
+const FOF_TICKERS = ['FOF'];
 
 function assetClassOf(ticker: string): AssetClass {
   if (FIXED_TICKERS.includes(ticker)) return 'Fixed Income';
   if (ALT_TICKERS.includes(ticker)) return 'Alternatives';
+  if (CASH_TICKERS.includes(ticker)) return 'Cash';
+  if (CRYPTO_TICKERS.includes(ticker)) return 'Crypto';
+  if (MULTI_TICKERS.includes(ticker)) return 'Multi-Asset';
+  if (FOF_TICKERS.includes(ticker)) return 'Fund of Funds';
   return 'Equity';
 }
 
@@ -309,6 +318,26 @@ function synthHoldings(seed: number, style: 'balanced' | 'growth' | 'conservativ
   }
   for (const t of pickDistinct(FIXED_TICKERS, seed + 50, mix.fi)) {
     holdings.push({ identifier: t, constituentType: 'Security', assetClass: assetClassOf(t), weight: mix.fiBudget / mix.fi });
+  }
+  // Every model carries a small cash sleeve so the Cash class is broadly seeded.
+  holdings.push({
+    identifier: CASH_TICKERS[Math.floor(rng(seed + 90) * CASH_TICKERS.length)],
+    constituentType: 'Security', assetClass: 'Cash', weight: 5,
+  });
+  // ~60% of models additionally run a newer-class sleeve — rotating Crypto /
+  // Multi-Asset / Fund of Funds so each class ends up with real rows across the
+  // client set. Weights are renormalized to sum to 1 by replaceClientModels.
+  if (rng(seed + 91) > 0.4) {
+    const extras = [
+      { pool: CRYPTO_TICKERS, cls: 'Crypto' as const },
+      { pool: MULTI_TICKERS, cls: 'Multi-Asset' as const },
+      { pool: FOF_TICKERS, cls: 'Fund of Funds' as const },
+    ];
+    const pick = extras[Math.floor(rng(seed + 92) * extras.length)];
+    holdings.push({
+      identifier: pick.pool[Math.floor(rng(seed + 93) * pick.pool.length)],
+      constituentType: 'Security', assetClass: pick.cls, weight: 4,
+    });
   }
   return holdings;
 }
