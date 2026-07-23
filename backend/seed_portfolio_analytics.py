@@ -64,6 +64,41 @@ EQUITY_REGION_SLEEVES = {
 }
 
 
+#: Style-box mandates, as (cap weights, style weights).
+#:
+#: Every model used to be jittered around one set of base weights, which put the whole
+#: cloud in a patch a tenth of the box wide — jittering harder would only have made that
+#: patch fuzzier. Real books differ by *mandate*, not by noise: a small-cap growth manager
+#: and a large-cap value manager are in different corners, and the models inside each
+#: mandate cluster. So each model draws a mandate from its id and jitters within it, which
+#: is what puts dots across the grid and gives the clusters a reason to exist.
+#:
+#: Positions these land on, as (style x, size y): large value (.24, .08), large blend
+#: (.48, .10), large growth (.76, .09), all-cap core (.50, .28), mid blend (.49, .41),
+#: mid growth (.73, .45), small value (.27, .76), small growth (.76, .79).
+STYLE_ARCHETYPES = (
+    ({"Large": 0.88, "Mid": 0.09, "Small": 0.03}, {"Value": 0.62, "Blend": 0.28, "Growth": 0.10}),
+    ({"Large": 0.85, "Mid": 0.11, "Small": 0.04}, {"Value": 0.30, "Blend": 0.45, "Growth": 0.25}),
+    ({"Large": 0.86, "Mid": 0.10, "Small": 0.04}, {"Value": 0.10, "Blend": 0.28, "Growth": 0.62}),
+    ({"Large": 0.60, "Mid": 0.25, "Small": 0.15}, {"Value": 0.33, "Blend": 0.34, "Growth": 0.33}),
+    ({"Large": 0.35, "Mid": 0.48, "Small": 0.17}, {"Value": 0.30, "Blend": 0.42, "Growth": 0.28}),
+    ({"Large": 0.30, "Mid": 0.50, "Small": 0.20}, {"Value": 0.12, "Blend": 0.30, "Growth": 0.58}),
+    ({"Large": 0.10, "Mid": 0.28, "Small": 0.62}, {"Value": 0.58, "Blend": 0.30, "Growth": 0.12}),
+    ({"Large": 0.08, "Mid": 0.27, "Small": 0.65}, {"Value": 0.10, "Blend": 0.28, "Growth": 0.62}),
+)
+
+
+def archetype_for(model_id: str):
+    """
+    A model's mandate, fixed for its lifetime.
+
+    Keyed on the id alone — not the period — so a model holds its place on the box across
+    quarters instead of teleporting between them. Quarter-to-quarter drift comes from the
+    jitter applied on top.
+    """
+    return STYLE_ARCHETYPES[rng_for(model_id, "archetype").randrange(len(STYLE_ARCHETYPES))]
+
+
 def rng_for(*parts: str) -> random.Random:
     """A generator seeded from the inputs, so a given model/period always gets the same numbers."""
     digest = hashlib.sha256("|".join(parts).encode()).hexdigest()
@@ -118,9 +153,19 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
 
     # Look-through name count for this sleeve, split across each dimension's buckets.
     holdings = rnd.randint(120, 900)
-    cap = spread(rnd, {"Large": 0.72, "Mid": 0.20, "Small": 0.08})
-    style = spread(rnd, {"Value": 0.31, "Blend": 0.38, "Growth": 0.31})
+    arch_cap, arch_style = archetype_for(model.id)
+    cap = spread(rnd, arch_cap)
+    style = spread(rnd, arch_style)
     prof = spread(rnd, {"High": 0.42, "Mid": 0.38, "Low": 0.20})
+
+    # Keep the characteristics consistent with the mandate. A model the style box shows as
+    # small-cap growth should not also report a $300B weighted average market cap and an
+    # index-like price-to-book — the three equity cards read the same portfolio, and
+    # letting them disagree would make the demo data actively misleading about its own
+    # shape. This is also what spreads the Style XY cloud along both axes.
+    cap_factor = 0.15 + 0.85 * (cap["Large"] + 0.4 * cap["Mid"])
+    growth_share = style["Blend"] * 0.5 + style["Growth"]
+    pb_factor = 0.70 + 0.60 * growth_share
 
     breakdowns = [
         Breakdown("market_cap", cap, name_counts(rnd, cap, holdings)),
@@ -137,10 +182,10 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
         sleeve=sleeve,
         as_of=as_of,
         characteristics=Characteristics(
-            wtd_avg_market_cap=rnd.uniform(40e9, 380e9) * (0.7 + tilt * 0.6) * cap_scale,
-            median_market_cap=rnd.uniform(8e9, 60e9) * cap_scale,
-            price_to_book=round(rnd.uniform(1.6, 4.2) * (0.85 + tilt * 0.3) * pb_scale, 2),
-            price_to_earnings=round(rnd.uniform(14, 28) * pb_scale, 1),
+            wtd_avg_market_cap=rnd.uniform(40e9, 380e9) * (0.7 + tilt * 0.6) * cap_scale * cap_factor,
+            median_market_cap=rnd.uniform(8e9, 60e9) * cap_scale * cap_factor,
+            price_to_book=round(rnd.uniform(1.6, 4.2) * (0.85 + tilt * 0.3) * pb_scale * pb_factor, 2),
+            price_to_earnings=round(rnd.uniform(14, 28) * pb_scale * pb_factor, 1),
             profitability=round(rnd.uniform(0.18, 0.42) * prof_scale, 3),
             dividend_yield=round(rnd.uniform(0.008, 0.026), 4),
             underlying_companies=rnd.randint(60, 3600),
