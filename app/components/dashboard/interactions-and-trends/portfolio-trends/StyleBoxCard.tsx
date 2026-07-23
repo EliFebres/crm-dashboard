@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { BreakdownSeries, ModelBreakdownPoint } from '@/app/lib/types/portfolioTrends';
 import { BENCHMARK_COLOR, DELTA_INK, MODEL_CLOUD_COLOR, cohortColor } from './chartTokens';
+import { DOT_CLEARANCE, placeLabels } from './labelPlacement';
 
 /**
  * The Morningstar style box, beside the allocation it is derived from.
@@ -59,16 +60,6 @@ interface Dot {
   isModel?: boolean;
   sublabel?: string;
   detail: string[];
-  /**
-   * Vertical offset of the direct label from the dot's centre, in pixels.
-   *
-   * Same arrangement as the XY scatters: cohorts stack upward, the index sits below, and
-   * every label is centred on its own dot. A cohort average and the index routinely land
-   * a few pixels apart — that closeness is the finding — so a shared offset would put the
-   * two labels on top of each other exactly when the card is most worth reading.
-   * Cloud dots are not labelled at all; sixty-nine names would bury the three that matter.
-   */
-  labelDy: number;
 }
 
 const pct = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
@@ -120,7 +111,6 @@ export default function StyleBoxCard({
       color: MODEL_CLOUD_COLOR,
       isBenchmark: false,
       isModel: true,
-      labelDy: 0, // never labelled
       detail: [
         `Large/Mid/Small: ${pct(cap?.['Large'])} / ${pct(cap?.['Mid'])} / ${pct(cap?.['Small'])}`,
         `Value/Blend/Growth: ${pct(sty?.['Value'])} / ${pct(sty?.['Blend'])} / ${pct(sty?.['Growth'])}`,
@@ -139,9 +129,6 @@ export default function StyleBoxCard({
       y: indexY,
       color: BENCHMARK_COLOR.hex,
       isBenchmark: true,
-      // Below the dot — the opposite side from the cohorts, which is what keeps the two
-      // apart when a cohort average sits right on top of the index.
-      labelDy: 18,
       detail: [
         `Large/Mid/Small: ${pct(marketCap?.benchmark?.['Large'])} / ${pct(marketCap?.benchmark?.['Mid'])} / ${pct(marketCap?.benchmark?.['Small'])}`,
         `Value/Blend/Growth: ${pct(style?.benchmark?.['Value'])} / ${pct(style?.benchmark?.['Blend'])} / ${pct(style?.benchmark?.['Growth'])}`,
@@ -149,7 +136,7 @@ export default function StyleBoxCard({
     });
   }
 
-  cohorts.forEach((cohort, i) => {
+  cohorts.forEach((cohort) => {
     const cap = marketCap?.cohorts[cohort];
     const sty = style?.cohorts[cohort];
     const x = styleAxis(sty);
@@ -164,8 +151,6 @@ export default function StyleBoxCard({
       color: color.hex,
       glow: color.glow,
       isBenchmark: false,
-      // Clears both its own dot and the index's, then stacks for further cohorts.
-      labelDy: -17 - i * 13,
       detail: [
         `Large/Mid/Small: ${pct(cap?.['Large'])} / ${pct(cap?.['Mid'])} / ${pct(cap?.['Small'])}`,
         `Value/Blend/Growth: ${pct(sty?.['Value'])} / ${pct(sty?.['Blend'])} / ${pct(sty?.['Growth'])}`,
@@ -173,6 +158,26 @@ export default function StyleBoxCard({
     });
   });
 
+  // The box is sized by CSS (75% width, full height), so its pixel dimensions are only
+  // knowable after layout — and label collision is a pixel question. Same measure-then-
+  // draw pattern as BenchmarkBarChart.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setBox((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const labelled = dots.filter((d) => !d.isModel);
+  const labelOffsets = placeLabels(labelled, box.w, box.h);
   const modelDotCount = dots.filter((d) => d.isModel).length;
   const seriesFor = (dimension: 'market_cap' | 'style') => (dimension === 'market_cap' ? marketCap : style);
 
@@ -220,14 +225,14 @@ export default function StyleBoxCard({
                 on top, and carrying a surface-colored halo instead of a background box so
                 they stay legible over the gridlines and the cloud without masking them.
                 pointer-events-none keeps a label from stealing its own dot's hover. */}
-            {dots.filter((d) => !d.isModel).map((dot) => (
+            {labelled.map((dot) => (
               <span
                 key={`label:${dot.key}`}
                 className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] leading-none"
                 style={{
                   left: `${dot.x * 100}%`,
                   top: `${dot.y * 100}%`,
-                  transform: `translate(-50%, calc(-50% + ${dot.labelDy}px))`,
+                  transform: `translate(-50%, calc(-50% + ${labelOffsets.get(dot.key) ?? -DOT_CLEARANCE}px))`,
                   color: dot.isBenchmark ? '#a1a1aa' : '#e4e4e7',
                   textShadow:
                     '0 0 3px #131316, 0 0 3px #131316, 0 0 3px #131316, 0 0 3px #131316',
