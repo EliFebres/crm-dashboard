@@ -494,13 +494,12 @@ export default function PortfolioTrendsDashboard() {
                     cohorts={equity.cohorts}
                     benchmark={equity.benchmark}
                     allCohorts={allCohorts}
-                    xMetric="wtdAvgMarketCap"
-                    yMetric="priceToBook"
-                    xLabel="Wtd avg market cap"
-                    yLabel="Price / book"
-                    xFormat="money"
-                    yFormat="ratio"
-                    logX
+                    xMetric="priceToBook"
+                    yMetric="wtdAvgMarketCap"
+                    xLabel="Price / book"
+                    yLabel="Wtd avg market cap"
+                    xFormat="ratio"
+                    yFormat="money"
                   />
                 </Card>
               ) : (

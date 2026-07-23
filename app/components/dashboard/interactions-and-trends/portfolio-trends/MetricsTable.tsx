@@ -27,12 +27,18 @@ export interface MetricSpec {
 
 const EM_DASH = '—';
 
+/** One decimal, but not a pointless one — a $100B axis tick reads "$100B", not "$100.0B". */
+function scaled(value: number, unit: number, suffix: string): string {
+  const n = value / unit;
+  return `$${Number.isInteger(n) ? n : n.toFixed(1)}${suffix}`;
+}
+
 function formatCompactMoney(value: number): string {
   const abs = Math.abs(value);
-  if (abs >= 1e12) return `$${(value / 1e12).toFixed(1)}T`;
-  if (abs >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `$${(value / 1e3).toFixed(1)}K`;
+  if (abs >= 1e12) return scaled(value, 1e12, 'T');
+  if (abs >= 1e9) return scaled(value, 1e9, 'B');
+  if (abs >= 1e6) return scaled(value, 1e6, 'M');
+  if (abs >= 1e3) return scaled(value, 1e3, 'K');
   return `$${value.toFixed(0)}`;
 }
 
@@ -49,6 +55,17 @@ export function formatMetric(value: number | string | undefined, format: MetricF
     case 'years': return `${n.toFixed(1)} yr`;
     default: return n.toFixed(2);
   }
+}
+
+/**
+ * Same value, trimmed of decimals it doesn't need — for axis ticks, where a column of
+ * "1.00 2.00 3.00" is three characters of noise per label. The table keeps the padded
+ * form instead, so its figures stay aligned under `tabular-nums`.
+ */
+export function formatAxisTick(value: number, format: MetricFormat): string {
+  return formatMetric(value, format)
+    .replace(/(\.\d*?)0+(?=[^\d]|$)/, '$1')
+    .replace(/\.(?=[^\d]|$)/, '');
 }
 
 /** Delta rendered in the metric's own units, so "+0.4 yr" reads as duration, not percent. */
