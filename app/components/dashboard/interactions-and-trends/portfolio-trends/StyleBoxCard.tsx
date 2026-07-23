@@ -189,21 +189,29 @@ export default function StyleBoxCard({
       <div className="min-w-0 overflow-x-auto">
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="border-b border-zinc-700/60">
-              <th className="py-1.5 pr-2 text-left font-normal text-muted">Category</th>
+            {/* Same header treatment as MetricsTable: a color swatch carries identity and
+                the text stays neutral ink, so the two cards read as one system. */}
+            <tr className="border-b border-zinc-800">
+              <th className="py-1.5 pr-2 text-left font-medium text-zinc-500">Category</th>
               {cohorts.map((cohort) => (
                 <th key={cohort} className="py-1.5 px-1.5 text-right font-medium">
-                  <span
-                    className="block truncate"
-                    style={{ color: cohortColor(cohort, allCohorts).hex }}
-                    title={cohort}
-                  >
-                    {cohort}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-2 flex-shrink-0"
+                      style={{ background: cohortColor(cohort, allCohorts).hex }}
+                    />
+                    <span className="truncate text-zinc-300" title={cohort}>{cohort}</span>
                   </span>
                 </th>
               ))}
-              <th className="py-1.5 pl-1.5 text-right font-medium" title={benchmarkName}>
-                <span style={{ color: BENCHMARK_COLOR.hex }}>Index</span>
+              <th className="py-1.5 pl-1.5 text-right font-medium">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2 w-2 flex-shrink-0"
+                    style={{ background: BENCHMARK_COLOR.hex }}
+                  />
+                  <span className="truncate text-zinc-400" title={benchmarkName}>Index</span>
+                </span>
               </th>
             </tr>
           </thead>
@@ -237,7 +245,9 @@ export default function StyleBoxCard({
                               {delta > 0 ? '+' : ''}{Math.round(delta)}
                             </span>
                           )}
-                          {names != null && <span className="text-zinc-500">{names.toLocaleString()}n</span>}
+                          {names != null && (
+                            <span className="text-zinc-500">{names.toLocaleString()} names</span>
+                          )}
                         </div>
                       </td>
                     );
@@ -247,7 +257,9 @@ export default function StyleBoxCard({
                       {indexWeight == null ? '—' : `${Math.round(indexWeight * 100)}%`}
                     </div>
                     {indexNames != null && (
-                      <div className="text-[10px] text-zinc-600">{indexNames.toLocaleString()}n</div>
+                      <div className="text-[10px] text-zinc-600">
+                        {indexNames.toLocaleString()} names
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -256,8 +268,8 @@ export default function StyleBoxCard({
           </tbody>
         </table>
         <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-          Weight over the index delta; <span className="text-zinc-500">n</span> is the number of
-          names holding it. Growth and Value exclude the Blend bucket, so they do not total 100%.
+          Weight over the index delta, then the number of names holding it. Growth and Value
+          exclude the Blend bucket, so they do not total 100%.
         </p>
       </div>
     </div>

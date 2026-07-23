@@ -157,7 +157,7 @@ function Card({
 }
 
 const EQUITY_METRICS: MetricSpec[] = [
-  { key: 'underlyingCompanies', label: 'Underlying cos.', format: 'count' },
+  { key: 'underlyingCompanies', label: 'Number of Companies', format: 'count' },
   { key: 'wtdAvgMarketCap', label: 'Wtd avg mkt cap', format: 'money' },
   { key: 'priceToBook', label: 'Price/Book', format: 'ratio' },
   // Profitability is a bare ratio (gross profits / assets), not a percentage. It runs
