@@ -158,7 +158,7 @@ function Card({
 const EQUITY_METRICS: MetricSpec[] = [
   { key: 'underlyingCompanies', label: 'Underlying cos.', format: 'count' },
   { key: 'wtdAvgMarketCap', label: 'Wtd avg mkt cap', format: 'money' },
-  { key: 'priceToBook', label: 'Price / book', format: 'ratio' },
+  { key: 'priceToBook', label: 'Price/Book', format: 'ratio' },
   { key: 'profitability', label: 'Profitability', format: 'percent' },
 ];
 
@@ -496,7 +496,7 @@ export default function PortfolioTrendsDashboard() {
                     allCohorts={allCohorts}
                     xMetric="priceToBook"
                     yMetric="wtdAvgMarketCap"
-                    xLabel="Price / book"
+                    xLabel="Price/Book"
                     yLabel="Wtd avg market cap"
                     xFormat="ratio"
                     yFormat="money"
@@ -519,7 +519,7 @@ export default function PortfolioTrendsDashboard() {
                     allCohorts={allCohorts}
                     xMetric="priceToBook"
                     yMetric="profitability"
-                    xLabel="Price / book"
+                    xLabel="Price/Book"
                     yLabel="Profitability"
                     xFormat="ratio"
                     yFormat="percent"

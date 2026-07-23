@@ -58,11 +58,15 @@ export function formatMetric(value: number | string | undefined, format: MetricF
 }
 
 /**
- * Same value, trimmed of decimals it doesn't need — for axis ticks, where a column of
- * "1.00 2.00 3.00" is three characters of noise per label. The table keeps the padded
- * form instead, so its figures stay aligned under `tabular-nums`.
+ * Axis-tick form of a value.
+ *
+ * Trailing zeros are dropped for money and percentages, where "$100.0B" and "20.0%" carry
+ * a decimal that means nothing. Ratios keep both places: a price-to-book axis is read
+ * against values like 2.95, so 2 decimals is the precision of the measure itself and
+ * showing "3" beside "2.95" would imply the two were measured differently.
  */
 export function formatAxisTick(value: number, format: MetricFormat): string {
+  if (format === 'ratio') return formatMetric(value, format);
   return formatMetric(value, format)
     .replace(/(\.\d*?)0+(?=[^\d]|$)/, '$1')
     .replace(/\.(?=[^\d]|$)/, '');
