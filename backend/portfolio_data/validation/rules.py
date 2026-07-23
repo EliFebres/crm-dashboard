@@ -28,9 +28,9 @@ from ..core.periods import is_quarter_end, parse_iso_date, quarter_label
 from .vocabulary import (
     BREAKDOWN_DIMENSIONS,
     EQUITY_DIMENSIONS,
+    EQUITY_SLEEVES,
     FIXED_INCOME_DIMENSIONS,
     MARKET_SERIES,
-    SLEEVE_EQUITY,
     SLEEVE_FIXED_INCOME,
     SLEEVE_TOTAL,
     SLEEVES,
@@ -38,6 +38,10 @@ from .vocabulary import (
     SUBJECT_KINDS,
     SUBJECT_MODEL,
 )
+
+#: Sleeves whose contents are a single asset class, so a metric or dimension belonging to
+#: the *other* one is worth flagging. `total` is excluded: both groups are legitimate there.
+_SINGLE_CLASS_SLEEVES = EQUITY_SLEEVES + (SLEEVE_FIXED_INCOME,)
 
 __all__ = ["validate_payload", "validate_market_point"]
 
@@ -148,7 +152,7 @@ def _validate_key(
                 f"known: {', '.join(sorted(benchmarks)) or '(none)'}.",
             ))
         elif (
-            record.sleeve in (SLEEVE_EQUITY, SLEEVE_FIXED_INCOME)
+            record.sleeve in _SINGLE_CLASS_SLEEVES
             and benchmarks[record.subject_id] not in (record.sleeve, SLEEVE_TOTAL)
         ):
             findings.append(_warn(
@@ -227,19 +231,17 @@ def _validate_sleeve_fit(record: PortfolioData) -> List[Finding]:
     is nearly always a column shifted by one in the export, and that is invisible once
     stored.
     """
-    if record.sleeve not in (SLEEVE_EQUITY, SLEEVE_FIXED_INCOME):
+    if record.sleeve not in _SINGLE_CLASS_SLEEVES:
         return []
 
+    is_equity = record.sleeve in EQUITY_SLEEVES
     supplied = set(_set_fields(record.characteristics))
-    wrong_group = (
-        _FIXED_INCOME_CHARACTERISTICS if record.sleeve == SLEEVE_EQUITY
-        else _EQUITY_CHARACTERISTICS
-    )
+    wrong_group = _FIXED_INCOME_CHARACTERISTICS if is_equity else _EQUITY_CHARACTERISTICS
     misfits = sorted(supplied.intersection(wrong_group))
     if not misfits:
         return []
 
-    other = "fixed-income" if record.sleeve == SLEEVE_EQUITY else "equity"
+    other = "fixed-income" if is_equity else "equity"
     return [_warn(
         "characteristics", "metric_sleeve_mismatch",
         f"{other.capitalize()} metric(s) on the {record.sleeve!r} sleeve: "
@@ -316,18 +318,16 @@ def _validate_breakdowns(record: PortfolioData, cfg: PortfolioConfig) -> List[Fi
                 f"100%. Weights are fractions of the sleeve, so they must total 1.",
             ))
 
-        expected = EQUITY_DIMENSIONS if record.sleeve == SLEEVE_EQUITY else (
-            FIXED_INCOME_DIMENSIONS if record.sleeve == SLEEVE_FIXED_INCOME else ()
-        )
-        wrong = (FIXED_INCOME_DIMENSIONS if record.sleeve == SLEEVE_EQUITY else
-                 EQUITY_DIMENSIONS if record.sleeve == SLEEVE_FIXED_INCOME else ())
-        if expected and dimension in wrong:
-            findings.append(_warn(
-                field, "dimension_sleeve_mismatch",
-                f"{dimension!r} describes a "
-                f"{'fixed-income' if record.sleeve == SLEEVE_EQUITY else 'equity'} portfolio "
-                f"but is on the {record.sleeve!r} sleeve.",
-            ))
+        if record.sleeve in _SINGLE_CLASS_SLEEVES:
+            is_equity = record.sleeve in EQUITY_SLEEVES
+            wrong = FIXED_INCOME_DIMENSIONS if is_equity else EQUITY_DIMENSIONS
+            if dimension in wrong:
+                findings.append(_warn(
+                    field, "dimension_sleeve_mismatch",
+                    f"{dimension!r} describes a "
+                    f"{'fixed-income' if is_equity else 'equity'} portfolio "
+                    f"but is on the {record.sleeve!r} sleeve.",
+                ))
 
     return findings
 

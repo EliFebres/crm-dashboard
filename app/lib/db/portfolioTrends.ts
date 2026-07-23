@@ -66,12 +66,25 @@ const DIMENSION_BUCKETS: Record<string, string[]> = {
   maturity_band: ['0-1Y', '1-3Y', '3-5Y', '5-7Y', '7-10Y', '10-20Y', '20Y+'],
 };
 
-/** Which benchmark each sleeve is measured against, matching the seeds in db/schema.py. */
+/**
+ * Which benchmark each sleeve is measured against. Mirrors SEED_BENCHMARKS in
+ * backend/portfolio_data/validation/vocabulary.py — keep the two in step.
+ *
+ * A regional sleeve needs a regional index: measuring a US-only book against an
+ * all-country index would report a US overweight that is an artifact of the scope rather
+ * than a decision anyone made.
+ */
 const SLEEVE_BENCHMARK: Record<Sleeve, string> = {
-  equity: 'MSCI-ACWI-IMI',
-  fixed_income: 'BBG-US-AGG',
   total: 'MSCI-ACWI-IMI',
+  equity: 'MSCI-ACWI-IMI',
+  equity_us: 'RUSSELL-3000',
+  equity_developed: 'MSCI-WORLD-EX-USA-IMI',
+  equity_em: 'MSCI-EM-IMI',
+  fixed_income: 'BBG-US-AGG',
 };
+
+/** Sleeves the equity scope selector can ask for. */
+const EQUITY_SLEEVES: Sleeve[] = ['equity', 'equity_us', 'equity_developed', 'equity_em'];
 
 const EMPTY: PortfolioTrendsResponse = {
   summary: {
@@ -617,13 +630,35 @@ export async function computePortfolioTrends(
   }
 
   const selectedCohorts = filters.cohorts?.length ? filters.cohorts : [AVG_CLIENT];
-  const [equity, fixedIncome, yieldCurve, creditSpreads] = await Promise.all([
-    loadSleeve('equity', asOf, filters, sc, selectedCohorts),
+
+  // An unknown sleeve falls back to the whole equity book rather than returning nothing —
+  // a stale bookmark should show the default view, not an empty page.
+  const requested = filters.equitySleeve;
+  const equitySleeve: Sleeve =
+    requested && EQUITY_SLEEVES.includes(requested) ? requested : 'equity';
+
+  const [equity, fixedIncome, yieldCurve, creditSpreads, unscopedEquity] = await Promise.all([
+    loadSleeve(equitySleeve, asOf, filters, sc, selectedCohorts),
     loadSleeve('fixed_income', asOf, filters, sc, selectedCohorts),
     loadYieldCurve(asOf),
     loadCreditSpreads(asOf),
+    // The regional split always describes the whole book — see `equityRegions` on the
+    // response type. Skipped when the scope already is the whole book.
+    equitySleeve === 'equity'
+      ? Promise.resolve(null)
+      : loadSleeve('equity', asOf, filters, sc, selectedCohorts),
   ]);
 
-  const marketData: PortfolioMarketData = { asOf, equity, fixedIncome, yieldCurve, creditSpreads };
+  const regionSource = unscopedEquity ?? equity;
+  const marketData: PortfolioMarketData = {
+    asOf,
+    equity,
+    equitySleeve,
+    equityRegions: regionSource.breakdowns['region'] ?? null,
+    equityRegionsBenchmark: regionSource.benchmark?.ref ?? null,
+    fixedIncome,
+    yieldCurve,
+    creditSpreads,
+  };
   return { summary, filterOptions, marketData };
 }

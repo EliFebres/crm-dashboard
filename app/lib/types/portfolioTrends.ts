@@ -8,8 +8,31 @@
 /** The synthetic cohort: each client collapsed to its single main model. */
 export const AVG_CLIENT = 'Avg. Client';
 
-/** The three portfolios a model is analysed as. Mirrors portfolio_data's sleeve vocabulary. */
-export type Sleeve = 'total' | 'equity' | 'fixed_income';
+/** The portfolios a model is analysed as. Mirrors portfolio_data's sleeve vocabulary. */
+export type Sleeve =
+  | 'total'
+  | 'equity'
+  | 'equity_us'
+  | 'equity_developed'
+  | 'equity_em'
+  | 'fixed_income';
+
+/** The equity scope selector's options, in the order the filter lists them. */
+export type EquityScopeKey = 'Total' | 'US' | 'Developed' | 'Emerging Markets';
+
+/**
+ * Which sleeve each equity scope reads.
+ *
+ * The regional sleeves are populated by an analytics upload, not derived here: a holding
+ * carries no domicile, so splitting equity by region needs a security master. A scope with
+ * nothing uploaded leaves its cards in the "requires market data" state.
+ */
+export const EQUITY_SCOPE_SLEEVE: Record<EquityScopeKey, Sleeve> = {
+  Total: 'equity',
+  US: 'equity_us',
+  Developed: 'equity_developed',
+  'Emerging Markets': 'equity_em',
+};
 
 export interface PortfolioTrendsFilters {
   departments?: string[];
@@ -26,6 +49,11 @@ export interface PortfolioTrendsFilters {
    * `marketData.asOf` so the page can show which period it actually got.
    */
   asOf?: string | null;
+  /**
+   * Which equity sleeve the equity cards read — the Asset Class filter's scope selector.
+   * Defaults to the whole equity book.
+   */
+  equitySleeve?: Sleeve | null;
 }
 
 /**
@@ -182,7 +210,23 @@ export interface CreditSpreadPoint {
 export interface PortfolioMarketData {
   /** The period actually read — may lag the requested one when no data exists for it. */
   asOf: string;
+  /** The scoped equity sleeve: the whole book, or one region of it. */
   equity: SleeveMarketData;
+  /** Which sleeve `equity` holds, echoed back so the UI can label what it got. */
+  equitySleeve: Sleeve;
+  /**
+   * Regional split of the **whole** equity book, whatever the scope.
+   *
+   * Read from the unscoped `equity` sleeve on purpose: a US-scoped sleeve's own regional
+   * breakdown is trivially 100% US, which answers nothing. The question this card exists
+   * for — how is the equity book distributed across regions? — is the same question
+   * regardless of which region you are currently looking at, and it stays benchmarked
+   * against the all-country index because a single-region index has no regional split to
+   * compare to. Null when nobody uploaded a region breakdown.
+   */
+  equityRegions: BreakdownSeries | null;
+  /** The index behind `equityRegions` — always the all-country one. */
+  equityRegionsBenchmark: BenchmarkRef | null;
   fixedIncome: SleeveMarketData;
   /** Curve as of the latest date on or before `asOf`. Empty when never uploaded. */
   yieldCurve: YieldCurvePoint[];

@@ -13,8 +13,12 @@ import { SERIES_PALETTE, stableCohortOrder } from '@/app/components/dashboard/in
 import { hasData, toGroups, useDisplayedSeries, yMaxFor } from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/breakdownAdapter';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
 import { getPortfolioTrends } from '@/app/lib/api/portfolio-trends';
-import { AVG_CLIENT } from '@/app/lib/types/portfolioTrends';
-import type { PortfolioTrendsResponse, SleeveMarketData } from '@/app/lib/types/portfolioTrends';
+import { AVG_CLIENT, EQUITY_SCOPE_SLEEVE } from '@/app/lib/types/portfolioTrends';
+import type {
+  BreakdownSeries,
+  PortfolioTrendsResponse,
+  SleeveMarketData,
+} from '@/app/lib/types/portfolioTrends';
 
 // Every number on this page comes from portfolio.sqlite. Model rows and holdings are
 // refreshed by `npm run sync:portfolio`; the analytics behind the charts — characteristics,
@@ -186,37 +190,13 @@ export default function PortfolioTrendsDashboard() {
 
   const minAum = AUM_THRESHOLDS[aumFilter] ?? null;
 
-  useEffect(() => {
-    let cancelled = false;
-    // Marking the in-flight fetch is the effect synchronizing React with an external
-    // system, which is exactly what the rule carves out — but it can't tell the shape
-    // apart from a cascading-render bug, so the suppression is explicit.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    getPortfolioTrends({
-      departments: departmentFilter,
-      offices: officeFilter,
-      teams: teamFilter === ALL_TEAMS ? [] : [teamFilter],
-      cohorts: portfolioFilter,
-      minAum,
-      asOf,
-    })
-      .then(res => {
-        if (cancelled) return;
-        setTrends(res);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [departmentFilter, officeFilter, teamFilter, portfolioFilter, minAum, asOf]);
-
   // Asset class filter — independent radio (equity scope) + checkbox (fixed income),
   // with a hard floor that at least one bucket is always active. Floor enforcement
   // also lives inside AssetClassFilterButton's click handlers; the setter wrappers
   // here are a defense-in-depth in case any caller bypasses the component handlers.
+  //
+  // Declared above the fetch because the equity scope selects which sleeve the query
+  // reads, so it belongs in that effect's dependency list.
   const [equityScope, setEquityScopeRaw] = useState<EquityScope | null>('Total');
   const [fixedIncomeOn, setFixedIncomeOnRaw] = useState(true);
   // Hold onto the last non-null equity scope so the heading keeps its prefix while the
@@ -232,9 +212,42 @@ export default function PortfolioTrendsDashboard() {
     if (!next && equityScope === null) setEquityScopeRaw('Total');
     setFixedIncomeOnRaw(next);
   };
+  // Keep reading the last-held scope while the section animates out, so deselecting
+  // equity doesn't fire an extra fetch for a different sleeve on the way to hiding it.
+  const activeEquityScope: EquityScope = equityScope ?? lastEquityScope;
+  const equitySleeve = EQUITY_SCOPE_SLEEVE[activeEquityScope];
+
+  useEffect(() => {
+    let cancelled = false;
+    // Marking the in-flight fetch is the effect synchronizing React with an external
+    // system, which is exactly what the rule carves out — but it can't tell the shape
+    // apart from a cascading-render bug, so the suppression is explicit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    getPortfolioTrends({
+      departments: departmentFilter,
+      offices: officeFilter,
+      teams: teamFilter === ALL_TEAMS ? [] : [teamFilter],
+      cohorts: portfolioFilter,
+      minAum,
+      asOf,
+      equitySleeve,
+    })
+      .then(res => {
+        if (cancelled) return;
+        setTrends(res);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [departmentFilter, officeFilter, teamFilter, portfolioFilter, minAum, asOf, equitySleeve]);
+
   const equityVisibility = useSectionVisibility(equityScope !== null);
   const fixedIncomeVisibility = useSectionVisibility(fixedIncomeOn);
-  const titleEquityScope: EquityScope = equityScope ?? lastEquityScope;
+  const titleEquityScope: EquityScope = activeEquityScope;
 
   // Always keep at least one cohort selected — snap back to Avg. Client on empty.
   const setPortfolioFilter = (next: string[]) => {
@@ -304,13 +317,24 @@ export default function PortfolioTrendsDashboard() {
   const equity: SleeveMarketData | null = market?.equity ?? null;
   const fixedIncome: SleeveMarketData | null = market?.fixedIncome ?? null;
 
-  const equityIndexName = equity?.benchmark?.ref.name ?? 'MSCI ACWI IMI';
+  // The index for the scoped sleeve — Russell 3000 for US, MSCI World ex USA IMI for
+  // Developed, MSCI EM IMI for Emerging Markets, MSCI ACWI IMI for the whole book. The
+  // fallbacks only show before the first response lands.
+  const SCOPE_INDEX_FALLBACK: Record<EquityScope, string> = {
+    Total: 'MSCI ACWI IMI',
+    US: 'Russell 3000 Index',
+    Developed: 'MSCI World ex USA IMI Index',
+    'Emerging Markets': 'MSCI Emerging Markets IMI Index',
+  };
+  const equityIndexName = equity?.benchmark?.ref.name ?? SCOPE_INDEX_FALLBACK[titleEquityScope];
+  // The regional split is always the whole book against the all-country index, whatever
+  // the scope — see `equityRegions` on the response type.
+  const regionIndexName = market?.equityRegionsBenchmark?.name ?? 'MSCI ACWI IMI';
   const fiIndexName = fixedIncome?.benchmark?.ref.name ?? 'Bloomberg US Aggregate';
 
   /** One grouped-bar card, or its placeholder when the dimension was never uploaded. */
   const breakdownCard = (
-    sleeve: SleeveMarketData | null,
-    dimension: string,
+    series: BreakdownSeries | undefined,
     title: string,
     subtitle: string,
     needs: string[],
@@ -318,7 +342,6 @@ export default function PortfolioTrendsDashboard() {
     className?: string,
     staggerDelayMs = 0,
   ) => {
-    const series = sleeve?.breakdowns[dimension];
     if (!hasData(series, portfolioFilter)) {
       return <MarketDataCard title={title} subtitle={subtitle} needs={needs} className={className} />;
     }
@@ -530,11 +553,14 @@ export default function PortfolioTrendsDashboard() {
             </div>
 
             <div className="grid grid-cols-3 gap-4 row-stagger-2">
+              {/* Always the whole equity book, even under a regional scope: a US sleeve's
+                  own regional split is trivially 100% US. Benchmarked against the
+                  all-country index, since a single-region index has no split to compare. */}
               {breakdownCard(
-                equity, 'region',
-                `vs ${equityIndexName}`, `Regional equity positioning (${activeLabel})`,
+                market?.equityRegions ?? undefined,
+                `vs ${regionIndexName}`, `Regional equity positioning (${activeLabel})`,
                 ['US, developed ex-US and emerging-market equity allocations'],
-                equityIndexName, undefined, 400,
+                regionIndexName, undefined, 400,
               )}
 
               {/* Three ordered 3-bucket dimensions in one card. Separate mini charts rather
@@ -644,7 +670,7 @@ export default function PortfolioTrendsDashboard() {
 
             <div className="grid grid-cols-3 gap-4 mb-4 row-stagger-4">
               {breakdownCard(
-                fixedIncome, 'credit_rating',
+                fixedIncome?.breakdowns['credit_rating'],
                 'Credit Breakdown', `vs ${fiIndexName} (${activeLabel})`,
                 ['credit ratings per holding'],
                 fiIndexName, undefined, 600,
@@ -670,7 +696,7 @@ export default function PortfolioTrendsDashboard() {
 
             <div className="grid grid-cols-1 gap-4 mb-4 row-stagger-5">
               {breakdownCard(
-                fixedIncome, 'security_type',
+                fixedIncome?.breakdowns['security_type'],
                 'Security Type', `vs ${fiIndexName} (${activeLabel})`,
                 ['instrument type per holding (government, municipal, corporate, securitized)'],
                 fiIndexName, undefined, 800,
@@ -679,7 +705,7 @@ export default function PortfolioTrendsDashboard() {
 
             <div className="grid grid-cols-1 gap-4 row-stagger-6">
               {breakdownCard(
-                fixedIncome, 'maturity_band',
+                fixedIncome?.breakdowns['maturity_band'],
                 'Maturity Breakdown', `vs ${fiIndexName} (${activeLabel})`,
                 ['maturity date per holding'],
                 fiIndexName, undefined, 1000,

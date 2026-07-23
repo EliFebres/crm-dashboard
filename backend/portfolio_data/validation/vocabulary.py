@@ -71,9 +71,32 @@ SLEEVE_TOTAL = "total"
 SLEEVE_EQUITY = "equity"
 SLEEVE_FIXED_INCOME = "fixed_income"
 
-#: The only three values `pf_*.sleeve` may hold. The dashboard will filter on these exact
-#: strings, so a typo'd sleeve is not a data error — it is an invisible row.
-SLEEVES: Tuple[str, ...] = (SLEEVE_TOTAL, SLEEVE_EQUITY, SLEEVE_FIXED_INCOME)
+# Regional slices of the equity book, matching the dashboard's equity scope selector.
+SLEEVE_EQUITY_US = "equity_us"
+SLEEVE_EQUITY_DEVELOPED = "equity_developed"
+SLEEVE_EQUITY_EM = "equity_em"
+
+#: Sleeves that are a regional slice of `equity` rather than an asset-class split.
+#:
+#: **These are upload-only.** `get_models()` cannot produce them: a holding record carries
+#: an identifier, a constituent type, an asset class and a weight — and no domicile. Region
+#: needs a security master keyed by identifier, which is precisely what this package does
+#: not have and what the analytics engine on the other end does. So the engine splits the
+#: equity sleeve by region itself and uploads each slice under one of these names.
+#:
+#: They behave like `equity` everywhere else: same metrics, same breakdown dimensions, same
+#: validation. Only the benchmark differs — a US sleeve is measured against the Russell
+#: 3000, not against an all-country index.
+EQUITY_REGION_SLEEVES: Tuple[str, ...] = (
+    SLEEVE_EQUITY_US, SLEEVE_EQUITY_DEVELOPED, SLEEVE_EQUITY_EM,
+)
+
+#: Every sleeve that describes an equity portfolio — the whole book, or one region of it.
+EQUITY_SLEEVES: Tuple[str, ...] = (SLEEVE_EQUITY,) + EQUITY_REGION_SLEEVES
+
+#: The only values `pf_*.sleeve` may hold. The dashboard filters on these exact strings,
+#: so a typo'd sleeve is not a data error — it is an invisible row.
+SLEEVES: Tuple[str, ...] = (SLEEVE_TOTAL, SLEEVE_FIXED_INCOME) + EQUITY_SLEEVES
 
 SUBJECT_MODEL = "model"
 SUBJECT_BENCHMARK = "benchmark"
@@ -149,7 +172,14 @@ MARKET_SERIES: Dict[str, Dict[str, object]] = {
 # ---------------------------------------------------------------------------------
 
 #: (id, display name, the sleeve it benchmarks, is_default)
+#:
+#: One index per sleeve, because a regional slice needs a regional benchmark: comparing a
+#: US-only book to an all-country index would report a US overweight that is an artifact of
+#: the scope, not a decision anyone made.
 SEED_BENCHMARKS: Tuple[Tuple[str, str, str, bool], ...] = (
     ("MSCI-ACWI-IMI", "MSCI ACWI IMI", SLEEVE_EQUITY, True),
+    ("RUSSELL-3000", "Russell 3000 Index", SLEEVE_EQUITY_US, True),
+    ("MSCI-WORLD-EX-USA-IMI", "MSCI World ex USA IMI Index", SLEEVE_EQUITY_DEVELOPED, True),
+    ("MSCI-EM-IMI", "MSCI Emerging Markets IMI Index", SLEEVE_EQUITY_EM, True),
     ("BBG-US-AGG", "Bloomberg US Aggregate", SLEEVE_FIXED_INCOME, True),
 )

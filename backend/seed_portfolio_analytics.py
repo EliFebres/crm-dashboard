@@ -52,6 +52,17 @@ SOURCE = "DEMO SEED"
 EQUITY_BENCHMARK = "MSCI-ACWI-IMI"
 FI_BENCHMARK = "BBG-US-AGG"
 
+#: sleeve -> (benchmark id, market-cap scale, price-to-book scale, profitability scale)
+#:
+#: The regional slices are seeded with the tilts the regions actually have — US large and
+#: expensive, emerging markets smaller and cheaper — so switching the equity scope visibly
+#: moves the charts instead of redrawing the same cloud under a different title.
+EQUITY_REGION_SLEEVES = {
+    "equity_us": ("RUSSELL-3000", 1.35, 1.30, 1.15),
+    "equity_developed": ("MSCI-WORLD-EX-USA-IMI", 0.70, 0.75, 0.90),
+    "equity_em": ("MSCI-EM-IMI", 0.45, 0.62, 0.82),
+}
+
 
 def rng_for(*parts: str) -> random.Random:
     """A generator seeded from the inputs, so a given model/period always gets the same numbers."""
@@ -70,22 +81,46 @@ def spread(rnd: random.Random, weights: dict) -> dict:
     return out
 
 
-def equity_payload(model, as_of: str) -> PortfolioData:
-    rnd = rng_for(model.id, as_of, "equity")
+def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
+    """
+    One equity sleeve for one model — the whole book, or a regional slice of it.
+
+    The regional sleeves exist only because an analytics engine can produce them: a
+    holding carries no domicile, so `get_models()` cannot split equity by region and this
+    script cannot derive the split either. It fabricates each slice directly, which is
+    exactly the shape a real engine would upload.
+
+    Only the whole book gets a `region` breakdown. A US sleeve's regional split is
+    trivially 100% US, and uploading that would put a meaningless bar chart on the page.
+    """
+    rnd = rng_for(model.id, as_of, sleeve)
+    benchmark, cap_scale, pb_scale, prof_scale = EQUITY_REGION_SLEEVES.get(
+        sleeve, (EQUITY_BENCHMARK, 1.0, 1.0, 1.0)
+    )
     # Tilt with the sleeve's share of the portfolio: an equity-dominant model reads more
     # growth-y, a small equity sleeve beside a large bond one reads more value-y.
     tilt = model.equity.weight_of_total
 
+    breakdowns = [
+        Breakdown("market_cap", spread(rnd, {"Large": 0.72, "Mid": 0.20, "Small": 0.08})),
+        Breakdown("style", spread(rnd, {"Value": 0.31, "Blend": 0.38, "Growth": 0.31})),
+        Breakdown("profitability", spread(rnd, {"High": 0.42, "Mid": 0.38, "Low": 0.20})),
+    ]
+    if sleeve == "equity":
+        breakdowns.insert(0, Breakdown("region", spread(rnd, {
+            "US": 0.63, "Developed ex-US": 0.26, "Emerging Markets": 0.11,
+        })))
+
     return PortfolioData(
         subject_id=model.id,
-        sleeve="equity",
+        sleeve=sleeve,
         as_of=as_of,
         characteristics=Characteristics(
-            wtd_avg_market_cap=rnd.uniform(40e9, 380e9) * (0.7 + tilt * 0.6),
-            median_market_cap=rnd.uniform(8e9, 60e9),
-            price_to_book=round(rnd.uniform(1.6, 4.2) * (0.85 + tilt * 0.3), 2),
-            price_to_earnings=round(rnd.uniform(14, 28), 1),
-            profitability=round(rnd.uniform(0.18, 0.42), 3),
+            wtd_avg_market_cap=rnd.uniform(40e9, 380e9) * (0.7 + tilt * 0.6) * cap_scale,
+            median_market_cap=rnd.uniform(8e9, 60e9) * cap_scale,
+            price_to_book=round(rnd.uniform(1.6, 4.2) * (0.85 + tilt * 0.3) * pb_scale, 2),
+            price_to_earnings=round(rnd.uniform(14, 28) * pb_scale, 1),
+            profitability=round(rnd.uniform(0.18, 0.42) * prof_scale, 3),
             dividend_yield=round(rnd.uniform(0.008, 0.026), 4),
             underlying_companies=rnd.randint(60, 3600),
             num_holdings=len(model.equity),
@@ -101,16 +136,9 @@ def equity_payload(model, as_of: str) -> PortfolioData:
             beta_3y=round(rnd.uniform(0.85, 1.15), 2),
             r_squared_3y=round(rnd.uniform(0.86, 0.99), 3),
             max_drawdown=round(-rnd.uniform(0.10, 0.34), 4),
-            benchmark_id=EQUITY_BENCHMARK,
+            benchmark_id=benchmark,
         ),
-        breakdowns=[
-            Breakdown("region", spread(rnd, {
-                "US": 0.63, "Developed ex-US": 0.26, "Emerging Markets": 0.11,
-            })),
-            Breakdown("market_cap", spread(rnd, {"Large": 0.72, "Mid": 0.20, "Small": 0.08})),
-            Breakdown("style", spread(rnd, {"Value": 0.31, "Blend": 0.38, "Growth": 0.31})),
-            Breakdown("profitability", spread(rnd, {"High": 0.42, "Mid": 0.38, "Low": 0.20})),
-        ],
+        breakdowns=breakdowns,
         source=SOURCE,
     )
 
@@ -158,11 +186,36 @@ def fixed_income_payload(model, as_of: str) -> PortfolioData:
     )
 
 
+def region_benchmark_payload(sleeve: str, as_of: str) -> PortfolioData:
+    """A regional index — Russell 3000, MSCI World ex USA IMI, MSCI EM IMI."""
+    benchmark, cap_scale, pb_scale, prof_scale = EQUITY_REGION_SLEEVES[sleeve]
+    rnd = rng_for(benchmark, as_of)
+    return PortfolioData(
+        subject_id=benchmark, subject_kind="benchmark", sleeve=sleeve, as_of=as_of,
+        characteristics=Characteristics(
+            wtd_avg_market_cap=rnd.uniform(160e9, 200e9) * cap_scale,
+            median_market_cap=rnd.uniform(11e9, 15e9) * cap_scale,
+            price_to_book=round(rnd.uniform(2.6, 3.1) * pb_scale, 2),
+            price_to_earnings=round(rnd.uniform(18, 22) * pb_scale, 1),
+            profitability=round(rnd.uniform(0.27, 0.33) * prof_scale, 3),
+            dividend_yield=round(rnd.uniform(0.017, 0.021), 4),
+            underlying_companies=rnd.randint(700, 3100),
+        ),
+        breakdowns=[
+            Breakdown("market_cap", spread(rnd, {"Large": 0.712, "Mid": 0.196, "Small": 0.092})),
+            Breakdown("style", spread(rnd, {"Value": 0.334, "Blend": 0.333, "Growth": 0.333})),
+            Breakdown("profitability", spread(rnd, {"High": 0.401, "Mid": 0.392, "Low": 0.207})),
+        ],
+        source=SOURCE,
+    )
+
+
 def benchmark_payloads(as_of: str) -> list:
-    """The two indices the cards are captioned against. Steadier than any single model."""
+    """The indices the cards are captioned against. Steadier than any single model."""
     eq = rng_for(EQUITY_BENCHMARK, as_of)
     fi = rng_for(FI_BENCHMARK, as_of)
     return [
+        *(region_benchmark_payload(s, as_of) for s in EQUITY_REGION_SLEEVES),
         PortfolioData(
             subject_id=EQUITY_BENCHMARK, subject_kind="benchmark", sleeve="equity", as_of=as_of,
             characteristics=Characteristics(
@@ -275,6 +328,10 @@ def main() -> int:
         for model in models:
             if model.equity:
                 payloads.append(equity_payload(model, as_of))
+                # The regional slices an analytics engine would compute from a security
+                # master. Seeded for every model with equity, so each scope has data.
+                for sleeve in EQUITY_REGION_SLEEVES:
+                    payloads.append(equity_payload(model, as_of, sleeve))
             if model.fixed_income:
                 payloads.append(fixed_income_payload(model, as_of))
 

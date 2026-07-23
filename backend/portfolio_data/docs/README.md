@@ -205,9 +205,46 @@ upload_pf_data(PortfolioData(
 ))
 ```
 
-`MSCI-ACWI-IMI` and `BBG-US-AGG` are seeded into `pf_benchmarks` automatically. Any other id
-must be registered there first — an unregistered benchmark is rejected, because a typo'd
-index would otherwise become a subject nothing ever compares against.
+These are seeded into `pf_benchmarks` automatically, one per sleeve:
+
+| Sleeve | Benchmark id | Name |
+|---|---|---|
+| `equity` | `MSCI-ACWI-IMI` | MSCI ACWI IMI |
+| `equity_us` | `RUSSELL-3000` | Russell 3000 Index |
+| `equity_developed` | `MSCI-WORLD-EX-USA-IMI` | MSCI World ex USA IMI Index |
+| `equity_em` | `MSCI-EM-IMI` | MSCI Emerging Markets IMI Index |
+| `fixed_income` | `BBG-US-AGG` | Bloomberg US Aggregate |
+
+Any other id must be registered there first — an unregistered benchmark is rejected,
+because a typo'd index would otherwise become a subject nothing ever compares against.
+
+## Regional equity sleeves
+
+`equity_us`, `equity_developed` and `equity_em` are regional slices of the equity book,
+and they are **upload-only**. `get_models()` cannot produce them: a holding record carries
+an identifier, a constituent type, an asset class and a weight — and no domicile. Region
+needs a security master keyed by identifier, which is exactly what this package lacks and
+what the analytics engine on the other end has. So the engine splits the equity sleeve
+itself and uploads each slice under its own name:
+
+```python
+upload_pf_data(PortfolioData(
+    subject_id=model.id,
+    sleeve="equity_us",
+    as_of=quarter_end_for_label("Q1 2026"),
+    characteristics=Characteristics(price_to_book=3.92, profitability=0.35),
+))
+```
+
+They behave like `equity` everywhere else — same metrics, same breakdown dimensions, same
+validation — and each is measured against its own index, because comparing a US-only book
+to an all-country index would report a US overweight that is an artifact of the scope
+rather than a decision anyone made.
+
+Don't upload a `region` breakdown against a regional sleeve: a US sleeve is trivially 100%
+US. The dashboard reads the regional split from the unscoped `equity` sleeve whatever the
+selected scope, so that one card keeps answering "how is the book distributed?" instead of
+restating the filter.
 
 ---
 
@@ -405,9 +442,9 @@ cohort, and returns `PortfolioTrendsResponse.marketData`. Which card consumes wh
 
 | Table / dimension | Card |
 |---|---|
-| `pf_characteristics` equity group | Style XY, Profitability XY, Metrics vs Index |
+| `pf_characteristics` equity group | Style XY, Profitability XY, Metrics vs Index — read from whichever sleeve the equity scope selects |
 | `pf_characteristics` FI group | FI Metrics, and the duration marker on the Yield Curve |
-| `region` | vs MSCI ACWI IMI |
+| `region` (on the unscoped `equity` sleeve) | vs MSCI ACWI IMI |
 | `market_cap`, `style`, `profitability` | Style × Profitability |
 | `credit_rating` | Credit Breakdown |
 | `security_type` | Security Type |

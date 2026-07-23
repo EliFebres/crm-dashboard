@@ -180,6 +180,12 @@ def _missing_tables(conn: sqlite3.Connection) -> List[str]:
     return [t for t in ALL_TABLES if t not in present]
 
 
+def _missing_benchmarks(conn: sqlite3.Connection) -> List[Tuple[str, str, str, bool]]:
+    """Seed benchmarks that are not in the registry yet."""
+    present = {r[0] for r in conn.execute(f"SELECT id FROM {TABLE_BENCHMARKS}").fetchall()}
+    return [b for b in SEED_BENCHMARKS if b[0] not in present]
+
+
 def bootstrap(conn: sqlite3.Connection, cfg: PortfolioConfig) -> None:
     """
     Create the sidecar tables and seed the known benchmarks. Safe on every startup.
@@ -190,14 +196,23 @@ def bootstrap(conn: sqlite3.Connection, cfg: PortfolioConfig) -> None:
     calling `get_models()` would fail whenever the Next.js server happened to be
     mid-write.
     """
-    if not _missing_tables(conn):
+    missing_tables = _missing_tables(conn)
+    # Benchmarks are checked separately from the tables, because the two drift apart:
+    # adding an index to SEED_BENCHMARKS has to reach databases whose tables an earlier
+    # version already created. Gating the seed on "the tables are missing" would mean a
+    # new index only ever appears on a fresh database, and every existing one would reject
+    # uploads referencing it — with an error telling you to register a benchmark this
+    # package believes it ships.
+    missing_benchmarks = list(SEED_BENCHMARKS) if missing_tables else _missing_benchmarks(conn)
+    if not missing_tables and not missing_benchmarks:
         return
 
     def _create() -> None:
         with write_tx(conn) as cur:
-            for statement in _ddl_statements():
-                cur.execute(statement)
-            for benchmark_id, name, sleeve, is_default in SEED_BENCHMARKS:
+            if missing_tables:
+                for statement in _ddl_statements():
+                    cur.execute(statement)
+            for benchmark_id, name, sleeve, is_default in missing_benchmarks:
                 # OR IGNORE: a benchmark someone renamed or re-pointed by hand stays as
                 # they left it. Seeding is a convenience, not an authority.
                 cur.execute(
