@@ -180,6 +180,17 @@ export interface BreakdownSeries {
   cohorts: Record<string, Record<string, number>>;
   /** The benchmark's distribution over the same buckets, or null when not uploaded. */
   benchmark: Record<string, number> | null;
+  /**
+   * Holding counts behind those weights: cohort -> bucket -> number of names.
+   *
+   * A separate fact from the weight, not derivable from it — 40% of a book can be four
+   * names or four hundred, and which it is separates a concentrated bet from an
+   * index-like sleeve. Empty when the upload carried no counts. For a cohort spanning
+   * several models this is the mean per model, matching how the weights are averaged.
+   */
+  cohortNames: Record<string, Record<string, number>>;
+  /** The benchmark's holding counts over the same buckets, or null. */
+  benchmarkNames: Record<string, number> | null;
 }
 
 export interface BenchmarkRef {

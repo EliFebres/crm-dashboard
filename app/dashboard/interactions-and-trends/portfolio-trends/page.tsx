@@ -8,6 +8,7 @@ import CharacteristicScatter from '@/app/components/dashboard/interactions-and-t
 import CreditSpreadChart from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/CreditSpreadChart';
 import MetricsTable, { type MetricSpec } from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/MetricsTable';
 import RequiresMarketData from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/RequiresMarketData';
+import StyleBoxCard from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/StyleBoxCard';
 import YieldCurveChart from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/YieldCurveChart';
 import { SERIES_PALETTE, stableCohortOrder } from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/chartTokens';
 import { hasData, toGroups, useDisplayedSeries, yMaxFor } from '@/app/components/dashboard/interactions-and-trends/portfolio-trends/breakdownAdapter';
@@ -566,54 +567,29 @@ export default function PortfolioTrendsDashboard() {
                 regionIndexName, undefined, 400,
               )}
 
-              {/* Three ordered 3-bucket dimensions in one card. Separate mini charts rather
-                  than one 9-category axis: cap, style and profitability are independent
-                  splits of the same sleeve, and interleaving them on one axis would imply
-                  a single distribution that sums to 100% across all nine. */}
+              {/* Morningstar style box beside the allocation it comes from. The box shows
+                  position at a glance; the table carries the figures it abstracts away,
+                  including how many names hold each weight. */}
               {equity && (hasData(equity.breakdowns['market_cap'], portfolioFilter)
-                || hasData(equity.breakdowns['style'], portfolioFilter)
-                || hasData(equity.breakdowns['profitability'], portfolioFilter)) ? (
+                || hasData(equity.breakdowns['style'], portfolioFilter)) ? (
                 <Card
                   title="Style × Profitability"
                   subtitle={`Cap and style allocation (${activeLabel})`}
                   className="col-span-2"
                 >
-                  <div className="grid flex-1 min-h-0 grid-cols-3 gap-2">
-                    {(['market_cap', 'style', 'profitability'] as const).map((dimension) => {
-                      const groups = toGroups(equity.breakdowns[dimension], portfolioFilter);
-                      const label = dimension === 'market_cap' ? 'Market cap'
-                        : dimension === 'style' ? 'Style' : 'Profitability';
-                      return (
-                        <div key={dimension} className="flex min-h-0 flex-col">
-                          <span className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">{label}</span>
-                          <div className="min-h-0 flex-1">
-                            {groups.length > 0 ? (
-                              <BenchmarkBarChart
-                                data={groups}
-                                displayedSeries={displayedSeries}
-                                palette={SERIES_PALETTE}
-                                benchmarkLabel={equityIndexName}
-                                showBenchmark={equity.breakdowns[dimension]?.benchmark != null}
-                                yMax={yMaxFor(groups)}
-                                staggerDelayMs={400}
-                                compact
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-[10px] text-zinc-600">
-                                not uploaded
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <StyleBoxCard
+                    marketCap={equity.breakdowns['market_cap']}
+                    style={equity.breakdowns['style']}
+                    cohorts={portfolioFilter}
+                    allCohorts={allCohorts}
+                    benchmarkName={equityIndexName}
+                  />
                 </Card>
               ) : (
                 <MarketDataCard
                   title="Style × Profitability"
                   subtitle={`Cap and style allocation (${activeLabel})`}
-                  needs={['market-cap size buckets', 'growth vs value split', 'profitability buckets']}
+                  needs={['market-cap size buckets', 'growth vs value split', 'holding counts per bucket']}
                   className="col-span-2"
                 />
               )}

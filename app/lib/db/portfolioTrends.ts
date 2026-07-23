@@ -329,6 +329,7 @@ interface BreakdownRow {
   dimension: string;
   bucket: string;
   weight: number;
+  names: number | null;
 }
 
 /** Everything one sleeve needs, in two queries plus the benchmark's two. */
@@ -354,7 +355,7 @@ async function loadSleeve(
         [sleeve, asOf, ...base.params]
       ),
       queryPortfolio<BreakdownRow>(
-        `SELECT m.id, m.model_name, m.is_main, b.dimension, b.bucket, b.weight
+        `SELECT m.id, m.model_name, m.is_main, b.dimension, b.bucket, b.weight, b.names
            FROM pf_breakdowns b
            JOIN portfolio_models m ON m.id = b.subject_id
           WHERE b.subject_kind = 'model' AND b.sleeve = ? AND b.as_of = ? ${scopeSql}`,
@@ -366,8 +367,8 @@ async function loadSleeve(
           WHERE c.subject_kind = 'benchmark' AND c.subject_id = ? AND c.sleeve = ? AND c.as_of = ?`,
         [benchmarkId, sleeve, asOf]
       ),
-      queryPortfolio<{ dimension: string; bucket: string; weight: number }>(
-        `SELECT dimension, bucket, weight FROM pf_breakdowns
+      queryPortfolio<{ dimension: string; bucket: string; weight: number; names: number | null }>(
+        `SELECT dimension, bucket, weight, names FROM pf_breakdowns
           WHERE subject_kind = 'benchmark' AND subject_id = ? AND sleeve = ? AND as_of = ?`,
         [benchmarkId, sleeve, asOf]
       ),
@@ -397,7 +398,8 @@ async function loadSleeve(
   // cohort's models. Since every model's distribution sums to 1, so does the mean.
   const breakdowns: Record<string, BreakdownSeries> = {};
   const sums = new Map<string, Map<string, Map<string, number>>>(); // dim -> cohort -> bucket -> sum
-  const modelsPerDim = new Map<string, Map<string, Set<string>>>(); // dim -> cohort -> model names
+  const nameSums = new Map<string, Map<string, Map<string, number>>>(); // same, for holding counts
+  const modelsPerDim = new Map<string, Map<string, Set<string>>>(); // dim -> cohort -> model ids
 
   for (const row of breakdownRows) {
     for (const cohort of cohortsForRow(row, selectedCohorts)) {
@@ -406,6 +408,14 @@ async function loadSleeve(
       cohortBuckets.set(row.bucket, (cohortBuckets.get(row.bucket) ?? 0) + Number(row.weight));
       dim.set(cohort, cohortBuckets);
       sums.set(row.dimension, dim);
+
+      if (row.names != null) {
+        const nameDim = nameSums.get(row.dimension) ?? new Map();
+        const cohortNames = nameDim.get(cohort) ?? new Map<string, number>();
+        cohortNames.set(row.bucket, (cohortNames.get(row.bucket) ?? 0) + Number(row.names));
+        nameDim.set(cohort, cohortNames);
+        nameSums.set(row.dimension, nameDim);
+      }
 
       const dimModels = modelsPerDim.get(row.dimension) ?? new Map();
       const set = dimModels.get(cohort) ?? new Set<string>();
@@ -419,16 +429,24 @@ async function loadSleeve(
   }
 
   const benchmarkByDim = new Map<string, Record<string, number>>();
+  const benchmarkNamesByDim = new Map<string, Record<string, number>>();
   for (const row of benchmarkBreakdowns) {
     const existing = benchmarkByDim.get(row.dimension) ?? {};
     existing[row.bucket] = Number(row.weight);
     benchmarkByDim.set(row.dimension, existing);
+    if (row.names != null) {
+      const names = benchmarkNamesByDim.get(row.dimension) ?? {};
+      names[row.bucket] = Number(row.names);
+      benchmarkNamesByDim.set(row.dimension, names);
+    }
   }
 
   const dimensions = new Set([...sums.keys(), ...benchmarkByDim.keys()]);
   for (const dimension of dimensions) {
     const cohortWeights: Record<string, Record<string, number>> = {};
+    const cohortNames: Record<string, Record<string, number>> = {};
     const dimSums = sums.get(dimension);
+    const dimNames = nameSums.get(dimension);
     const dimModels = modelsPerDim.get(dimension);
     if (dimSums) {
       for (const [cohort, buckets] of dimSums) {
@@ -437,6 +455,16 @@ async function loadSleeve(
         const averaged: Record<string, number> = {};
         for (const [bucket, total] of buckets) averaged[bucket] = total / n;
         cohortWeights[cohort] = averaged;
+
+        // Mean names per model, matching how the weights are averaged. A cohort's
+        // "number of names" is what a typical model in it holds, not the sum across
+        // forty models, which would be an order of magnitude too large.
+        const nameBuckets = dimNames?.get(cohort);
+        if (nameBuckets) {
+          const meanNames: Record<string, number> = {};
+          for (const [bucket, total] of nameBuckets) meanNames[bucket] = Math.round(total / n);
+          cohortNames[cohort] = meanNames;
+        }
       }
     }
     breakdowns[dimension] = {
@@ -451,6 +479,8 @@ async function loadSleeve(
         )].sort(),
       cohorts: cohortWeights,
       benchmark: benchmarkByDim.get(dimension) ?? null,
+      cohortNames,
+      benchmarkNames: benchmarkNamesByDim.get(dimension) ?? null,
     };
   }
 

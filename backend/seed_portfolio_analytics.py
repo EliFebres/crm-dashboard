@@ -70,6 +70,21 @@ def rng_for(*parts: str) -> random.Random:
     return random.Random(int(digest[:16], 16))
 
 
+def name_counts(rnd: random.Random, weights: dict, total: int) -> dict:
+    """
+    Split `total` holdings across buckets, roughly in proportion to weight.
+
+    Only roughly: a bucket's share of the names and its share of the money are different
+    numbers in a real book — a 40% weight can be four names or four hundred — so the
+    jitter here is the point, not noise to be smoothed out. The remainder lands on the
+    largest bucket so the counts still add up to `total`.
+    """
+    out = {k: max(1, int(round(total * w * rnd.uniform(0.6, 1.4)))) for k, w in weights.items()}
+    largest = max(out, key=lambda k: weights[k])
+    out[largest] = max(1, out[largest] + (total - sum(out.values())))
+    return out
+
+
 def spread(rnd: random.Random, weights: dict) -> dict:
     """Jitter a set of weights and renormalize so they still sum to exactly 1."""
     jittered = {k: max(0.001, v * rnd.uniform(0.75, 1.25)) for k, v in weights.items()}
@@ -101,10 +116,16 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
     # growth-y, a small equity sleeve beside a large bond one reads more value-y.
     tilt = model.equity.weight_of_total
 
+    # Look-through name count for this sleeve, split across each dimension's buckets.
+    holdings = rnd.randint(120, 900)
+    cap = spread(rnd, {"Large": 0.72, "Mid": 0.20, "Small": 0.08})
+    style = spread(rnd, {"Value": 0.31, "Blend": 0.38, "Growth": 0.31})
+    prof = spread(rnd, {"High": 0.42, "Mid": 0.38, "Low": 0.20})
+
     breakdowns = [
-        Breakdown("market_cap", spread(rnd, {"Large": 0.72, "Mid": 0.20, "Small": 0.08})),
-        Breakdown("style", spread(rnd, {"Value": 0.31, "Blend": 0.38, "Growth": 0.31})),
-        Breakdown("profitability", spread(rnd, {"High": 0.42, "Mid": 0.38, "Low": 0.20})),
+        Breakdown("market_cap", cap, name_counts(rnd, cap, holdings)),
+        Breakdown("style", style, name_counts(rnd, style, holdings)),
+        Breakdown("profitability", prof, name_counts(rnd, prof, holdings)),
     ]
     if sleeve == "equity":
         breakdowns.insert(0, Breakdown("region", spread(rnd, {
@@ -186,6 +207,25 @@ def fixed_income_payload(model, as_of: str) -> PortfolioData:
     )
 
 
+#: An index carries thousands of names; the count is what makes "40% large cap" mean
+#: something different for an index than for a 30-stock model.
+INDEX_NAMES = 9000
+
+
+def _index_style_breakdowns(rnd: random.Random, jitter: bool = True) -> list:
+    """market_cap / style / profitability for an equity index, with holding counts."""
+    cap = {"Large": 0.712, "Mid": 0.196, "Small": 0.092}
+    style = {"Value": 0.334, "Blend": 0.333, "Growth": 0.333}
+    prof = {"High": 0.401, "Mid": 0.392, "Low": 0.207}
+    if jitter:
+        cap, style, prof = spread(rnd, cap), spread(rnd, style), spread(rnd, prof)
+    return [
+        Breakdown("market_cap", cap, name_counts(rnd, cap, INDEX_NAMES)),
+        Breakdown("style", style, name_counts(rnd, style, INDEX_NAMES)),
+        Breakdown("profitability", prof, name_counts(rnd, prof, INDEX_NAMES)),
+    ]
+
+
 def region_benchmark_payload(sleeve: str, as_of: str) -> PortfolioData:
     """A regional index — Russell 3000, MSCI World ex USA IMI, MSCI EM IMI."""
     benchmark, cap_scale, pb_scale, prof_scale = EQUITY_REGION_SLEEVES[sleeve]
@@ -201,11 +241,7 @@ def region_benchmark_payload(sleeve: str, as_of: str) -> PortfolioData:
             dividend_yield=round(rnd.uniform(0.017, 0.021), 4),
             underlying_companies=rnd.randint(700, 3100),
         ),
-        breakdowns=[
-            Breakdown("market_cap", spread(rnd, {"Large": 0.712, "Mid": 0.196, "Small": 0.092})),
-            Breakdown("style", spread(rnd, {"Value": 0.334, "Blend": 0.333, "Growth": 0.333})),
-            Breakdown("profitability", spread(rnd, {"High": 0.401, "Mid": 0.392, "Low": 0.207})),
-        ],
+        breakdowns=_index_style_breakdowns(rnd),
         source=SOURCE,
     )
 
@@ -229,9 +265,7 @@ def benchmark_payloads(as_of: str) -> list:
             ),
             breakdowns=[
                 Breakdown("region", {"US": 0.633, "Developed ex-US": 0.259, "Emerging Markets": 0.108}),
-                Breakdown("market_cap", {"Large": 0.712, "Mid": 0.196, "Small": 0.092}),
-                Breakdown("style", {"Value": 0.334, "Blend": 0.333, "Growth": 0.333}),
-                Breakdown("profitability", {"High": 0.401, "Mid": 0.392, "Low": 0.207}),
+                *_index_style_breakdowns(eq, jitter=False),
             ],
             source=SOURCE,
         ),

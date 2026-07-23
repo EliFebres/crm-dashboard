@@ -92,11 +92,15 @@ def _write_breakdowns(cur: sqlite3.Cursor, record: PortfolioData) -> None:
             keys + [breakdown.dimension],
         )
         for bucket, weight in breakdown.weights.items():
+            names = breakdown.names.get(bucket)
             cur.execute(
                 f"INSERT INTO {TABLE_BREAKDOWNS} "
-                f"({', '.join(SUBJECT_KEY_COLUMNS)}, dimension, bucket, weight, source) "
-                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                keys + [breakdown.dimension, bucket, float(weight), record.source],
+                f"({', '.join(SUBJECT_KEY_COLUMNS)}, dimension, bucket, weight, names, source) "
+                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                keys + [
+                    breakdown.dimension, bucket, float(weight),
+                    None if names is None else int(names), record.source,
+                ],
             )
 
 

@@ -119,6 +119,9 @@ def _ddl_statements() -> List[str]:
           dimension    TEXT NOT NULL,
           bucket       TEXT NOT NULL,
           weight       REAL NOT NULL,
+          -- Holding count behind the weight. Nullable: an engine that reports allocations
+          -- without counts is normal, and 0 would be a lie in that case.
+          names        INTEGER,
 {_PROVENANCE_DDL.rstrip()}
           PRIMARY KEY ({", ".join(SUBJECT_KEY_COLUMNS)}, dimension, bucket)
         );
@@ -186,6 +189,32 @@ def _missing_benchmarks(conn: sqlite3.Connection) -> List[Tuple[str, str, str, b
     return [b for b in SEED_BENCHMARKS if b[0] not in present]
 
 
+#: Columns added after a table's first release, as (table, column, DDL type).
+#:
+#: `CREATE TABLE IF NOT EXISTS` is a no-op against a table that already exists, so a new
+#: column in the DDL above reaches new databases only. Every existing one keeps the old
+#: shape and every write naming the column fails. These run as `ALTER TABLE ADD COLUMN`,
+#: which SQLite applies in constant time and which is safe to attempt repeatedly because
+#: the caller checks first.
+_ADDED_COLUMNS: Tuple[Tuple[str, str, str], ...] = (
+    (TABLE_BREAKDOWNS, "names", "INTEGER"),
+)
+
+
+def _missing_columns(conn: sqlite3.Connection) -> List[Tuple[str, str, str]]:
+    out: List[Tuple[str, str, str]] = []
+    for table, column, ddl in _ADDED_COLUMNS:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+        ).fetchone()
+        if not exists:
+            continue  # the CREATE will include it
+        columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            out.append((table, column, ddl))
+    return out
+
+
 def bootstrap(conn: sqlite3.Connection, cfg: PortfolioConfig) -> None:
     """
     Create the sidecar tables and seed the known benchmarks. Safe on every startup.
@@ -204,7 +233,8 @@ def bootstrap(conn: sqlite3.Connection, cfg: PortfolioConfig) -> None:
     # uploads referencing it — with an error telling you to register a benchmark this
     # package believes it ships.
     missing_benchmarks = list(SEED_BENCHMARKS) if missing_tables else _missing_benchmarks(conn)
-    if not missing_tables and not missing_benchmarks:
+    missing_columns = _missing_columns(conn)
+    if not missing_tables and not missing_benchmarks and not missing_columns:
         return
 
     def _create() -> None:
@@ -212,6 +242,8 @@ def bootstrap(conn: sqlite3.Connection, cfg: PortfolioConfig) -> None:
             if missing_tables:
                 for statement in _ddl_statements():
                     cur.execute(statement)
+            for table, column, ddl in missing_columns:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
             for benchmark_id, name, sleeve, is_default in missing_benchmarks:
                 # OR IGNORE: a benchmark someone renamed or re-pointed by hand stays as
                 # they left it. Seeding is a convenience, not an authority.

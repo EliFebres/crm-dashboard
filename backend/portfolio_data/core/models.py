@@ -234,10 +234,17 @@ class Breakdown:
     not reach 100%, and an unknown bucket becomes a slice with no legend entry.
 
     A bucket with zero weight may be omitted; it does not need an explicit 0.0.
+
+    `names` is the optional holding count per bucket — how many distinct securities make
+    up that weight. It is a genuinely separate fact, not something derivable from the
+    weights: 40% of a portfolio can sit in four names or four hundred, and which one it is
+    is the difference between a concentrated bet and an index-like sleeve. Supply it where
+    the analytics engine knows it; omit it and the column simply reads as unknown.
     """
 
     dimension: str
     weights: Dict[str, float] = field(default_factory=dict)
+    names: Dict[str, int] = field(default_factory=dict)
 
     @property
     def total_weight(self) -> float:

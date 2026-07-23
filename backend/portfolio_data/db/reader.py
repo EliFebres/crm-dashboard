@@ -219,7 +219,7 @@ def read_breakdowns(
     conn = open_portfolio_readonly(cfg)
     try:
         rows = conn.execute(
-            f"SELECT dimension, bucket, weight FROM {TABLE_BREAKDOWNS} WHERE {where} "
+            f"SELECT dimension, bucket, weight, names FROM {TABLE_BREAKDOWNS} WHERE {where} "
             f"ORDER BY dimension, bucket",
             params,
         ).fetchall()
@@ -227,9 +227,15 @@ def read_breakdowns(
         conn.close()
 
     grouped: Dict[str, Dict[str, float]] = {}
+    counts: Dict[str, Dict[str, int]] = {}
     for r in rows:
         grouped.setdefault(r["dimension"], {})[r["bucket"]] = float(r["weight"])
-    return [Breakdown(dimension=d, weights=w) for d, w in grouped.items()]
+        if r["names"] is not None:
+            counts.setdefault(r["dimension"], {})[r["bucket"]] = int(r["names"])
+    return [
+        Breakdown(dimension=d, weights=w, names=counts.get(d, {}))
+        for d, w in grouped.items()
+    ]
 
 
 def read_market_series(

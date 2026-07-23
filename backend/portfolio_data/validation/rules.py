@@ -309,6 +309,27 @@ def _validate_breakdowns(record: PortfolioData, cfg: PortfolioConfig) -> List[Fi
             ))
             continue
 
+        # Counts are optional, but a count against a bucket the dimension doesn't have —
+        # or a fractional/negative one — is a mapping error, and a silent one: the column
+        # would simply render a wrong number of securities.
+        unknown_names = sorted(set(breakdown.names) - set(buckets))
+        if unknown_names:
+            findings.append(_err(
+                field, "names_bucket_unknown",
+                f"{dimension!r} has holding counts for bucket(s) outside its vocabulary: "
+                f"{', '.join(repr(u) for u in unknown_names)}.",
+            ))
+        bad_names = {
+            k: v for k, v in breakdown.names.items()
+            if not isinstance(v, int) or isinstance(v, bool) or v < 0
+        }
+        if bad_names:
+            findings.append(_err(
+                field, "names_invalid",
+                f"{dimension!r} holding counts must be non-negative whole numbers: "
+                f"{', '.join(f'{k}={v!r}' for k, v in sorted(bad_names.items()))}.",
+            ))
+
         total = breakdown.total_weight
         if abs(total - 1.0) > cfg.weight_tolerance:
             findings.append(_err(
