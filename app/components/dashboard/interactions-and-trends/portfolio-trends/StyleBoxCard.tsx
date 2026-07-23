@@ -126,7 +126,7 @@ export default function StyleBoxCard({
   return (
     <div className="grid flex-1 min-h-0 grid-cols-2 gap-4">
       {/* ---- Style box ----
-          Full height of the cell, 80% of its width. Sized directly rather than through an
+          Full height of the cell, 75% of its width. Sized directly rather than through an
           aspect ratio, which coupled the two: constraining the width to the height left
           the box narrow whenever the row was short. Both axes are normalized 0..1 and
           every mark is placed in percentages, so the proportions are presentational and
@@ -138,7 +138,7 @@ export default function StyleBoxCard({
             <span className="text-xs leading-none text-muted">Mid</span>
             <span className="text-xs leading-none text-muted">Small</span>
           </div>
-          <div className="relative h-full w-4/5 rounded-sm border-4 border-zinc-600/80">
+          <div className="relative h-full w-3/4 rounded-sm border-4 border-zinc-600/80">
             <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '33.333%' }} />
             <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '66.667%' }} />
             <div className="absolute bottom-0 top-0 border-l-[3px] border-zinc-700/70" style={{ left: '33.333%' }} />
@@ -180,11 +180,11 @@ export default function StyleBoxCard({
             )}
           </div>
         </div>
-        {/* Mirrors the row above — same gutter, same 80% — so the labels stay under their
+        {/* Mirrors the row above — same gutter, same 75% — so the labels stay under their
             columns whatever the cell width. */}
         <div className="mt-1 flex">
           <div className="w-10 flex-shrink-0" />
-          <div className="flex w-4/5">
+          <div className="flex w-3/4">
             <span className="flex-1 text-center text-xs leading-none text-muted">Value</span>
             <span className="flex-1 text-center text-xs leading-none text-muted">Core</span>
             <span className="flex-1 text-center text-xs leading-none text-muted">Growth</span>
