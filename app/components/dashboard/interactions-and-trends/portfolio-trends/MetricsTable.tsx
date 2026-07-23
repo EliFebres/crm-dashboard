@@ -13,8 +13,11 @@ import { BENCHMARK_COLOR, DELTA_INK, cohortColor } from './chartTokens';
  * as the table-view twin the scatter cards need for accessibility: every number plotted
  * as a dot over there is readable as text here.
  *
- * `n` is the number of models behind each average. Shown because an average over two
- * models and an average over forty look identical otherwise.
+ * Each cell carries the value and its delta against the index, and nothing else. The
+ * per-metric model count (`CohortAggregate.metricCounts`) is still in the response and
+ * still worth reading when a figure looks off — it is what distinguishes an average over
+ * forty models from one over two — but the Data Metrics strip above already tells the
+ * reader how much data is in scope, so repeating a count in twenty cells was noise.
  */
 
 export type MetricFormat = 'money' | 'ratio' | 'percent' | 'count' | 'years' | 'text';
@@ -136,7 +139,6 @@ export default function MetricsTable({ metrics, cohorts, benchmark, allCohorts }
                 <td className="py-1.5 pr-2 text-zinc-400">{metric.label}</td>
                 {cohorts.map((c) => {
                   const value = c.characteristics[metric.key];
-                  const n = c.metricCounts[metric.key as string] ?? 0;
                   const canDelta =
                     typeof value === 'number' && typeof indexValue === 'number' && metric.format !== 'text';
                   const delta = canDelta ? (value as number) - (indexValue as number) : null;
@@ -145,7 +147,7 @@ export default function MetricsTable({ metrics, cohorts, benchmark, allCohorts }
                       <div className="font-mono tabular-nums text-zinc-100">
                         {formatMetric(value, metric.format)}
                       </div>
-                      <div className="flex items-center justify-end gap-1.5 text-[10px]">
+                      <div className="flex items-center justify-end text-[10px]">
                         {delta != null && (
                           <span
                             className="font-mono tabular-nums"
@@ -154,7 +156,6 @@ export default function MetricsTable({ metrics, cohorts, benchmark, allCohorts }
                             {formatDelta(delta, metric.format)}
                           </span>
                         )}
-                        {n > 0 && <span className="text-zinc-600">n={n}</span>}
                       </div>
                     </td>
                   );
