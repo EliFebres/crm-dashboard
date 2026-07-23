@@ -34,6 +34,7 @@ import type {
   Characteristics,
   CohortAggregate,
   CreditSpreadPoint,
+  ModelBreakdownPoint,
   ModelPoint,
   PortfolioMarketData,
   PortfolioTrendsFilters,
@@ -82,6 +83,15 @@ const SLEEVE_BENCHMARK: Record<Sleeve, string> = {
   equity_em: 'MSCI-EM-IMI',
   fixed_income: 'BBG-US-AGG',
 };
+
+/**
+ * Dimensions carried down to individual models, for the style box's cloud.
+ *
+ * Only these two: they are what a per-model mark is plotted from. Every other dimension
+ * is drawn as a cohort average, so shipping it per model would inflate the payload for
+ * data nothing renders.
+ */
+const MODEL_LEVEL_DIMENSIONS = new Set(['market_cap', 'style']);
 
 /** Sleeves the equity scope selector can ask for. */
 const EQUITY_SLEEVES: Sleeve[] = ['equity', 'equity_us', 'equity_developed', 'equity_em'];
@@ -324,6 +334,7 @@ interface ModelCharacteristicRow extends CharacteristicRow {
 
 interface BreakdownRow {
   id: string;
+  client_name: string;
   model_name: string;
   is_main: number;
   dimension: string;
@@ -355,7 +366,8 @@ async function loadSleeve(
         [sleeve, asOf, ...base.params]
       ),
       queryPortfolio<BreakdownRow>(
-        `SELECT m.id, m.model_name, m.is_main, b.dimension, b.bucket, b.weight, b.names
+        `SELECT m.id, m.client_name, m.model_name, m.is_main,
+                b.dimension, b.bucket, b.weight, b.names
            FROM pf_breakdowns b
            JOIN portfolio_models m ON m.id = b.subject_id
           WHERE b.subject_kind = 'model' AND b.sleeve = ? AND b.as_of = ? ${scopeSql}`,
@@ -426,6 +438,21 @@ async function loadSleeve(
       dimModels.set(cohort, set);
       modelsPerDim.set(row.dimension, dimModels);
     }
+  }
+
+  // Per-model weights for the style box cloud, built from the rows already in hand.
+  const perModel = new Map<string, ModelBreakdownPoint>();
+  for (const row of breakdownRows) {
+    if (!MODEL_LEVEL_DIMENSIONS.has(row.dimension)) continue;
+    const point = perModel.get(row.id) ?? {
+      modelId: row.id,
+      clientName: row.client_name,
+      modelName: row.model_name,
+      isMain: Number(row.is_main) === 1,
+      weights: {},
+    };
+    (point.weights[row.dimension] ??= {})[row.bucket] = Number(row.weight);
+    perModel.set(row.id, point);
   }
 
   const benchmarkByDim = new Map<string, Record<string, number>>();
@@ -502,7 +529,7 @@ async function loadSleeve(
     characteristics: rowToCharacteristics(row),
   }));
 
-  return { cohorts, benchmark, models, breakdowns };
+  return { cohorts, benchmark, models, modelBreakdowns: [...perModel.values()], breakdowns };
 }
 
 async function loadYieldCurve(asOf: string): Promise<YieldCurvePoint[]> {

@@ -580,6 +580,7 @@ export default function PortfolioTrendsDashboard() {
                   <StyleBoxCard
                     marketCap={equity.breakdowns['market_cap']}
                     style={equity.breakdowns['style']}
+                    models={equity.modelBreakdowns}
                     cohorts={portfolioFilter}
                     allCohorts={allCohorts}
                     benchmarkName={equityIndexName}

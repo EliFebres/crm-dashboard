@@ -198,6 +198,23 @@ export interface BenchmarkRef {
   name: string;
 }
 
+/**
+ * One model's own bucket weights — the cloud behind a cohort average on the style box,
+ * the same role the per-model dots play on the XY scatters.
+ *
+ * Carries only the dimensions a per-model mark is actually plotted from (see
+ * MODEL_LEVEL_DIMENSIONS in app/lib/db/portfolioTrends.ts). Shipping every dimension for
+ * every model would multiply the payload for data nothing draws.
+ */
+export interface ModelBreakdownPoint {
+  modelId: string;
+  clientName: string;
+  modelName: string;
+  isMain: boolean;
+  /** dimension -> bucket -> weight (0..1). */
+  weights: Record<string, Record<string, number>>;
+}
+
 /** Everything one sleeve contributes to the page. */
 export interface SleeveMarketData {
   /** Aggregates for the cohorts currently selected, in selection order. */
@@ -206,6 +223,8 @@ export interface SleeveMarketData {
   benchmark: (CohortAggregate & { ref: BenchmarkRef }) | null;
   /** Every model in the filtered set that has analytics — the scatter cloud. */
   models: ModelPoint[];
+  /** Per-model bucket weights — the style box's equivalent of `models`. */
+  modelBreakdowns: ModelBreakdownPoint[];
   /** dimension -> distribution. Absent dimensions simply were not uploaded. */
   breakdowns: Record<string, BreakdownSeries>;
 }

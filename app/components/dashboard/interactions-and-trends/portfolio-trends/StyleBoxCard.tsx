@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { BreakdownSeries } from '@/app/lib/types/portfolioTrends';
-import { BENCHMARK_COLOR, DELTA_INK, cohortColor } from './chartTokens';
+import type { BreakdownSeries, ModelBreakdownPoint } from '@/app/lib/types/portfolioTrends';
+import { BENCHMARK_COLOR, DELTA_INK, MODEL_CLOUD_COLOR, cohortColor } from './chartTokens';
 
 /**
  * The Morningstar style box, beside the allocation it is derived from.
@@ -50,6 +50,9 @@ interface Dot {
   color: string;
   glow?: string;
   isBenchmark: boolean;
+  /** A single model behind the averages, not a series of its own. */
+  isModel?: boolean;
+  sublabel?: string;
   detail: string[];
 }
 
@@ -67,6 +70,8 @@ const ROWS: Array<{ label: string; dimension: 'market_cap' | 'style'; bucket: st
 interface Props {
   marketCap: BreakdownSeries | undefined;
   style: BreakdownSeries | undefined;
+  /** Every model with a cap and style split — the cloud behind the averages. */
+  models: ModelBreakdownPoint[];
   /** Cohorts to plot and column, in selection order. */
   cohorts: string[];
   /** Full option list — colors key off this so deselecting never repaints survivors. */
@@ -75,13 +80,39 @@ interface Props {
 }
 
 export default function StyleBoxCard({
-  marketCap, style, cohorts, allCohorts, benchmarkName,
+  marketCap, style, models, cohorts, allCohorts, benchmarkName,
 }: Props) {
   const [hover, setHover] = useState<Dot | null>(null);
 
   const dots: Dot[] = [];
 
-  // Index first, so portfolio dots layer over it.
+  // The cloud first, so every labelled mark layers over it. Same role as the model dots
+  // on the XY scatters: an average sitting inside a tight cluster and the same average
+  // sitting between two clusters are very different findings, and the cohort dot alone
+  // cannot tell them apart.
+  for (const model of models) {
+    const cap = model.weights['market_cap'];
+    const sty = model.weights['style'];
+    const x = styleAxis(sty);
+    const y = sizeAxis(cap);
+    if (x == null || y == null) continue;
+    dots.push({
+      key: `model:${model.modelId}`,
+      label: model.modelName,
+      sublabel: model.clientName,
+      x,
+      y,
+      color: MODEL_CLOUD_COLOR,
+      isBenchmark: false,
+      isModel: true,
+      detail: [
+        `Large/Mid/Small: ${pct(cap?.['Large'])} / ${pct(cap?.['Mid'])} / ${pct(cap?.['Small'])}`,
+        `Value/Blend/Growth: ${pct(sty?.['Value'])} / ${pct(sty?.['Blend'])} / ${pct(sty?.['Growth'])}`,
+      ],
+    });
+  }
+
+  // Index next, so portfolio dots layer over it.
   const indexX = styleAxis(style?.benchmark ?? undefined);
   const indexY = sizeAxis(marketCap?.benchmark ?? undefined);
   if (indexX != null && indexY != null) {
@@ -121,6 +152,7 @@ export default function StyleBoxCard({
     });
   }
 
+  const modelDotCount = dots.filter((d) => d.isModel).length;
   const seriesFor = (dimension: 'market_cap' | 'style') => (dimension === 'market_cap' ? marketCap : style);
 
   return (
@@ -147,13 +179,15 @@ export default function StyleBoxCard({
             {dots.map((dot) => (
               <div
                 key={dot.key}
-                className="absolute z-10 h-4 w-4 cursor-pointer rounded-full border-2"
+                className={`absolute cursor-pointer rounded-full ${
+                  dot.isModel ? 'z-0 h-2.5 w-2.5' : 'z-10 h-4 w-4 border-2'
+                }`}
                 style={{
                   left: `${dot.x * 100}%`,
                   top: `${dot.y * 100}%`,
                   transform: 'translate(-50%, -50%)',
                   backgroundColor: dot.isBenchmark ? 'transparent' : dot.color,
-                  borderColor: dot.color,
+                  borderColor: dot.isModel ? undefined : dot.color,
                   boxShadow: dot.glow ? `0 0 14px ${dot.glow}` : undefined,
                 }}
                 onMouseEnter={() => setHover(dot)}
@@ -172,7 +206,10 @@ export default function StyleBoxCard({
                   transform: hover.y < 0.33 ? 'translate(-50%, 40%)' : 'translate(-50%, -140%)',
                 }}
               >
-                <div className="mb-0.5 text-zinc-200">{hover.label}</div>
+                <div className="text-zinc-200">{hover.label}</div>
+                {hover.sublabel && (
+                  <div className="mb-0.5 text-[10px] text-zinc-500">{hover.sublabel}</div>
+                )}
                 {hover.detail.map((line) => (
                   <div key={line} className="font-mono text-[10px] text-zinc-400">{line}</div>
                 ))}
@@ -190,6 +227,16 @@ export default function StyleBoxCard({
             <span className="flex-1 text-center text-sm leading-none text-muted">Growth</span>
           </div>
         </div>
+        {/* Names the faint marks, matching the scatter cards' footnote. */}
+        {modelDotCount > 0 && (
+          <div className="ml-12 mt-2 flex items-center gap-1.5 text-[10px] text-zinc-500">
+            <span
+              className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+              style={{ background: MODEL_CLOUD_COLOR }}
+            />
+            {modelDotCount} model{modelDotCount === 1 ? '' : 's'}
+          </div>
+        )}
       </div>
 
       {/* ---- Allocation table ---- */}
