@@ -103,10 +103,13 @@ function pruneRowFlashes(current: RowFlashState, expired: RowDiff): RowFlashStat
  * auto-expire after ~1.2s. Works the same whether a change came from an
  * optimistic local edit or an SSE-triggered refetch — it only compares values.
  *
- * The first snapshot is treated as a baseline (no flash), so an initial load
- * never lights up. `specs` must be a stable (module-level) array.
+ * The first snapshot is treated as a baseline (no flash). Pass `undefined` until
+ * the first fetch resolves: an empty array is a valid snapshot of a genuinely
+ * empty list, so `[]` would be taken as the baseline and the loaded rows would
+ * then diff against it as brand new. `specs` must be a stable (module-level) array.
  */
 export function useRowFlashes<T extends { id: string }>(
+  /** The current rows, or `undefined` while no data has loaded yet. */
   rows: T[] | undefined,
   specs: FieldSpec<T>[],
 ): RowFlashState {

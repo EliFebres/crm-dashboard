@@ -48,6 +48,21 @@ export function readOnlyError(): NextResponse {
 export function canEditEngagement(payload: JWTPayload, teamMembers: string[]): boolean {
   if (!canModify(payload)) return false;
   if (payload.role === 'admin') return true;
+  // An unassigned engagement (empty roster) is claimable by anyone who can see it —
+  // automation creates interactions with no owner and a human picks them up. Visibility
+  // is already team-scoped upstream, so this can't expose another team's work.
+  if (teamMembers.length === 0) return true;
+  return teamMembers.includes(toDisplayName(payload.firstName, payload.lastName));
+}
+
+/**
+ * Deletion is deliberately NOT claimable-by-default. An unassigned engagement is
+ * editable by anyone (so they can claim it), but only an admin or an actual assignee
+ * may destroy it — otherwise any user could wipe automation output nobody has triaged.
+ */
+export function canDeleteEngagement(payload: JWTPayload, teamMembers: string[]): boolean {
+  if (!canModify(payload)) return false;
+  if (payload.role === 'admin') return true;
   return teamMembers.includes(toDisplayName(payload.firstName, payload.lastName));
 }
 

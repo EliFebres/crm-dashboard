@@ -17,6 +17,8 @@ import { getDepartments } from '@/app/lib/api/internal-clients';
 import { getIntakeTypes, getProjectTypes, type IntakeTypeItem, type ProjectTypeItem } from '@/app/lib/api/types';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { canUserEditEngagement, type TeamMember } from '@/app/lib/auth/types';
+import { useResizableModal } from '@/app/lib/hooks/useResizableModal';
+import { ResizeHandle } from '@/app/components/ui/ResizeHandle';
 
 export interface InteractionFormData {
   clientCrn: string;          // CRN of the selected registered external client (required)
@@ -27,17 +29,22 @@ export interface InteractionFormData {
   intakeType: string;          // A managed intake-type name, or '' when unset
   adHocChannel?: 'In-Person' | 'Email' | 'Teams';
   projectType: string;
+  projectId?: string;          // Optional free-text project identifier; blank for ad-hoc work
   teamMembers: string[];
   dateStarted: string;
   dateFinished?: string;
   status?: string;
   notes: string;
   portfolioLogged: boolean;
+  portfolioUnchanged: boolean; // "Same model, carried over" — follow-up with no change
   portfolio?: PortfolioHolding[];
   nna: number | null;
   tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
   linkedFromId?: number | null; // Parent engagement this one is the result of (funnel KPIs)
   linkedFromPreview?: EngagementLinkSummary | null; // Cached preview so we can render the chip without re-fetching
+  // Create mode only: models logged from this form before the interaction existed.
+  // The caller attributes them once it has an id (edit mode attributes inline).
+  pendingModelIds?: string[];
 }
 
 export interface EditingEngagement {
@@ -67,6 +74,7 @@ interface NewInteractionFormProps {
 export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate, onDelete, editingEngagement, initialNoteCount, onNoteAdded, onNoteDeleted, onFilepathSaved, onBulkUploadClick }: NewInteractionFormProps) {
   const isEditMode = !!editingEngagement;
   const { user: currentUser } = useCurrentUser();
+  const { panelRef, panelStyle, startResize, resetSize } = useResizableModal('new-interaction');
 
   const getDefaultFormData = (): InteractionFormData => ({
     clientCrn: '',
@@ -76,16 +84,19 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     internalClientDept: '',
     intakeType: '',
     projectType: '',
+    projectId: '',
     teamMembers: [],
     dateStarted: new Date().toISOString().split('T')[0],
     status: 'In Progress',
     notes: '',
     portfolioLogged: false,
+    portfolioUnchanged: false,
     portfolio: undefined,
     nna: null,
     tickersMentioned: [],
     linkedFromId: null,
     linkedFromPreview: null,
+    pendingModelIds: [],
   });
 
   const [formData, setFormData] = useState<InteractionFormData>(getDefaultFormData());
@@ -374,9 +385,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
       newErrors.projectType = 'Project type is required';
     }
 
-    if (formData.teamMembers.length === 0) {
-      newErrors.teamMembers = 'At least one team member is required';
-    }
+    // Team members are intentionally optional: an interaction may be logged before
+    // anyone is staffed on it. It renders as "Unassigned" and anyone can claim it.
 
     if (!formData.dateStarted) {
       newErrors.dateStarted = 'Start date is required';
@@ -463,9 +473,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         className="fixed inset-0 z-[100] flex items-center justify-center p-8 pointer-events-none"
       >
         <div
-          className="w-full max-w-2xl max-h-[90vh] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
+          ref={panelRef}
+          style={panelStyle}
+          className="relative w-full max-w-2xl max-h-[90vh] bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl pointer-events-auto overflow-hidden"
         >
-        <div className="flex flex-col max-h-[90vh]">
+        <div className="flex flex-col h-full max-h-[90vh]">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
             <div>
@@ -559,6 +571,20 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                     {errors.adHocChannel && <p className="mt-1 text-xs text-red-400">{errors.adHocChannel}</p>}
                   </div>
                 )}
+              </div>
+
+              {/* Project ID — optional; ad-hoc work often has none */}
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1.5">
+                  Project ID <span className="text-muted font-normal text-xs">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.projectId ?? ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, projectId: e.target.value }))}
+                  placeholder="e.g. PRJ-1042"
+                  className="w-full px-3 h-[38px] bg-zinc-800/50 border border-zinc-700 rounded-lg text-white placeholder:text-muted focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
               </div>
 
               {/* Linked From Previous Interaction */}
@@ -942,7 +968,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
               {/* Row 3: Team Members (4 columns, grouped by office) */}
               <div>
                 <label className="block text-sm font-medium text-muted mb-1.5">
-                  Team Members <span className="text-red-400">*</span>
+                  Team Members <span className="text-xs font-normal text-zinc-500">(optional — leave empty to log as Unassigned)</span>
                 </label>
                 {Object.keys(teamMembersByOffice).length === 0 ? (
                   <p className="text-xs text-muted py-2">No team members configured yet.</p>
@@ -1068,6 +1094,35 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   </button>
                     );
                   })()}
+                  {/* Carry-over flag: mark a follow-up where the client's model is
+                      unchanged, so the Model Logged column reads "Unchanged" rather
+                      than a misleading "No". Only meaningful once a client is chosen;
+                      logging an actual model clears it (see onSaved below). */}
+                  <label
+                    className={`mt-1.5 flex items-center gap-2 text-xs ${
+                      !formData.clientCrn || formData.portfolioLogged
+                        ? 'text-zinc-600 cursor-not-allowed'
+                        : 'text-muted cursor-pointer'
+                    }`}
+                    title={
+                      formData.portfolioLogged
+                        ? 'A model was logged for this interaction'
+                        : !formData.clientCrn
+                          ? 'Select a client first'
+                          : undefined
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-sky-500"
+                      disabled={!formData.clientCrn || formData.portfolioLogged}
+                      checked={formData.portfolioUnchanged}
+                      onChange={(e) =>
+                        setFormData(prev => ({ ...prev, portfolioUnchanged: e.target.checked }))
+                      }
+                    />
+                    Same model as before (carried over — no change)
+                  </label>
                 </div>
               </div>
 
@@ -1141,6 +1196,7 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
             </div>
           </div>
         </div>
+        <ResizeHandle startResize={startResize} resetSize={resetSize} />
         </div>
       </div>
 
@@ -1164,9 +1220,20 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
           onClose={() => setIsPortfolioModalOpen(false)}
           clientCrn={formData.clientCrn}
           clientName={formData.externalClient}
-          onSaved={(models) => {
+          // Edit mode: the server attributes logged models to this interaction inline.
+          // Create mode: it has no id yet, so collect the ids and attribute after save.
+          loggedEngagementId={editingEngagement?.id ?? null}
+          onSaved={(models, loggedModelIds) => {
             setModelSummary({ count: models.length, mainName: models.find(m => m.isMain)?.name });
-            setFormData(prev => ({ ...prev, portfolioLogged: models.length > 0 }));
+            setFormData(prev => ({
+              ...prev,
+              portfolioLogged: models.length > 0,
+              // Logging a real model supersedes the carry-over flag.
+              portfolioUnchanged: models.length > 0 ? false : prev.portfolioUnchanged,
+              pendingModelIds: isEditMode
+                ? prev.pendingModelIds
+                : [...new Set([...(prev.pendingModelIds ?? []), ...loggedModelIds])],
+            }));
           }}
         />
       )}

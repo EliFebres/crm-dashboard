@@ -2,10 +2,11 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, executeTransaction, hasDb } from '@/app/lib/db';
-import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
-import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
+import { rowToEngagement, CLIENT_JOIN, teamScopeClause } from '@/app/lib/db/queries';
+import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, canDeleteEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { normalizeCrn } from '@/app/lib/config/crn';
 import { toISODate } from '@/app/lib/db/dateUtils';
+import { normalizeProjectId } from '@/app/lib/utils/text';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
@@ -21,8 +22,7 @@ export async function GET(
 
   try {
     const { id } = await params;
-    const teamClause = sc.team ? 'AND e.team = ?' : '';
-    const teamParams = sc.team ? [sc.team] : [];
+    const { clause: teamClause, params: teamParams } = teamScopeClause(sc, 'e');
     const rows = await query<Record<string, unknown>>(
       `SELECT e.*, c.name AS client_name, c.crn_pending AS client_crn_pending FROM engagements e ${CLIENT_JOIN} WHERE e.id = ? ${teamClause}`,
       [Number(id), ...teamParams]
@@ -120,6 +120,10 @@ export async function PATCH(
       setClauses.push('portfolio_logged = ?');
       values.push(Boolean(body.portfolioLogged));
     }
+    if (body.portfolioUnchanged !== undefined) {
+      setClauses.push('portfolio_unchanged = ?');
+      values.push(Boolean(body.portfolioUnchanged));
+    }
     if (body.portfolio !== undefined) {
       setClauses.push('portfolio = ?');
       values.push(body.portfolio ? JSON.stringify(body.portfolio) : null);
@@ -136,6 +140,10 @@ export async function PATCH(
       setClauses.push('tickers_mentioned = ?');
       values.push(body.tickersMentioned ? JSON.stringify(body.tickersMentioned) : null);
     }
+    if (body.projectId !== undefined) {
+      setClauses.push('project_id = ?');
+      values.push(normalizeProjectId(body.projectId));
+    }
     if (body.linkedFromId !== undefined) {
       // null explicitly clears the link; a number sets/changes it
       if (body.linkedFromId === null) {
@@ -149,13 +157,11 @@ export async function PATCH(
         if (n === engagementId) {
           return NextResponse.json({ error: 'Cannot link an engagement to itself' }, { status: 400 });
         }
-        // Parent must exist in the same team
-        const parentTeamClause = sc.team ? 'AND team = ?' : '';
-        const parentParams: unknown[] = [n];
-        if (sc.team) parentParams.push(sc.team);
+        // Parent must be visible to the caller: same team, or unassigned.
+        const { clause: parentTeamClause, params: parentTeamParams } = teamScopeClause(sc);
         const parent = await query<{ id: number }>(
           `SELECT id FROM engagements WHERE id = ? ${parentTeamClause}`,
-          parentParams
+          [n, ...parentTeamParams]
         );
         if (parent.length === 0) {
           return NextResponse.json({ error: 'Linked engagement not found' }, { status: 400 });
@@ -174,13 +180,13 @@ export async function PATCH(
 
     // If client sends version, enforce it to detect concurrent edits
     const clientVersion = typeof body.version === 'number' ? body.version : null;
-    const teamClause = sc.team ? 'AND team = ?' : '';
+    const { clause: teamClause, params: teamParams } = teamScopeClause(sc);
     const whereClause = clientVersion !== null
       ? `WHERE id = ? AND version = ? ${teamClause}`
       : `WHERE id = ? ${teamClause}`;
     values.push(engagementId);
     if (clientVersion !== null) values.push(clientVersion);
-    if (sc.team) values.push(sc.team);
+    values.push(...teamParams);
 
     const updated = await queryWrite<Record<string, unknown>>(
       `UPDATE engagements SET ${setClauses.join(', ')} ${whereClause} RETURNING id`,
@@ -253,10 +259,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Engagement not found' }, { status: 404 });
     }
     const currentTeamMembers = JSON.parse(teamRows[0].team_members || '[]') as string[];
-    if (!canEditEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
+    if (!canDeleteEngagement(auth.payload, currentTeamMembers)) return notTeamMemberError();
 
-    const teamClause = sc.team ? 'AND team = ?' : '';
-    const teamParams = sc.team ? [sc.team] : [];
+    const { clause: teamClause, params: teamParams } = teamScopeClause(sc);
     // Capture internalClient for the activity log before the row is gone.
     const preDelete = await query<{ internal_client_name: string | null }>(
       `SELECT internal_client_name FROM engagements WHERE id = ?`,

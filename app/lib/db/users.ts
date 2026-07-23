@@ -216,6 +216,21 @@ export async function queryWriteUsers<T = Record<string, unknown>>(
   return dbAll<T>(getDb(), sql, params);
 }
 
+/**
+ * The office a user belongs to, or null when unknown.
+ *
+ * Looked up live rather than read off the session token: the JWT carries `team` but
+ * not `office` (see app/lib/auth/jwt.ts), so a token minted before this column
+ * existed would silently yield no office.
+ */
+export async function getUserOffice(userId: string): Promise<string | null> {
+  const rows = await queryUsers<{ office: string | null }>(
+    `SELECT office FROM users WHERE id = ?`,
+    [userId]
+  );
+  return rows[0]?.office || null;
+}
+
 /** Helpers passed to a {@link usersTransaction} callback for synchronous reads/writes. */
 export interface UsersTx {
   get<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | undefined;

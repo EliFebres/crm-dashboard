@@ -399,6 +399,7 @@ Create a new engagement.
   "intake_type": "Ad-Hoc",
   "ad_hoc_channel": "In-Person",
   "type": "Meeting",
+  "project_id": null,
   "team_members": ["Alex M.", "Blake N."],
   "date_started": "Jan 28, 2025",
   "date_finished": "—",
@@ -418,6 +419,7 @@ Create a new engagement.
 | `intake_type` | string | **Yes** | `IRQ`, `SERF`, or `Ad-Hoc` |
 | `ad_hoc_channel` | string \| null | Conditional | Required if `intake_type` is `Ad-Hoc`: `In-Person`, `Email`, `Teams` |
 | `type` | string | **Yes** | `Meeting`, `Discovery Meeting`, `Data Request`, `Data Update`, `PCR`, `Other` |
+| `project_id` | string \| null | No | Free-text project identifier, e.g. `"PRJ-1042"`. Blank/whitespace is stored as `null` — ad-hoc work often has none. Matched by the engagements `search` filter. |
 | `team_members` | string[] | **Yes** | Array of team member names |
 | `date_started` | string | **Yes** | Formatted date: `"Jan 28, 2025"` |
 | `date_finished` | string | **Yes** | Formatted date or `"—"` if not finished |
@@ -474,6 +476,9 @@ Update an existing engagement with partial data.
   "nna": 25000000
 }
 ```
+
+An omitted field is left unchanged. To clear `project_id`, send it as `""` (or `null`) —
+both are normalized to `null`.
 
 **Response (200 OK):** The full updated engagement object
 
@@ -671,7 +676,7 @@ ID,External Client,Internal Client,Department,Intake Type,Ad Hoc Channel,Type,Te
 | Field | Type | Description |
 |-------|------|-------------|
 | `identifier` | string | Ticker, ISIN, or CUSIP |
-| `asset_class` | string | `Equity`, `Fixed Income`, `Alternatives`, `Crypto`, `Fund of Funds`, or `Multi-Asset` |
+| `asset_class` | string | `Equity`, `Fixed Income`, `Alternatives`, `Crypto`, `Fund of Funds`, `Multi-Asset`, or `Cash` |
 | `weight` | number | Normalized weight (0-1, sums to 1) |
 
 ### DayData (Contribution Heatmap)

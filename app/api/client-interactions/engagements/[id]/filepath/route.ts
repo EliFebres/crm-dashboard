@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, hasDb } from '@/app/lib/db';
 import { rowToEngagement, CLIENT_JOIN } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint, canModify, readOnlyError } from '@/app/lib/auth/require-auth';
+import { teamScopeClause } from '@/app/lib/db/queries';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 
@@ -53,8 +54,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'filepath must be a string or null.' }, { status: 400 });
     }
 
-    const teamClause = sc.team ? 'AND team = ?' : '';
-    const teamParams = sc.team ? [sc.team] : [];
+    const { clause: teamClause, params: teamParams } = teamScopeClause(sc);
 
     const updated = await queryWrite<{ id: number }>(
       `UPDATE engagements SET filepath = ?, version = version + 1 WHERE id = ? ${teamClause} RETURNING id`,

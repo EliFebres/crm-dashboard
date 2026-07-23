@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { FileText, Download, Check, X, ChevronUp, ChevronDown, ChevronsUpDown, Maximize2, Minimize2, Plus, Loader2, Link2, AlertTriangle } from 'lucide-react';
+import { FileText, Download, Check, X, ChevronUp, ChevronDown, ChevronsUpDown, Maximize2, Minimize2, Plus, Loader2, Link2, AlertTriangle, UserPlus } from 'lucide-react';
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import NNAModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NNAModal';
 import { Select } from '@/app/components/ui/Select';
@@ -10,7 +10,7 @@ import type { SortSpec } from '@/app/lib/api/client-interactions';
 import type { ChangeFlash, EngagementField } from '@/app/lib/hooks/useDashboardChanges';
 import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChanges';
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
-import { canUserEditEngagement, type User } from '@/app/lib/auth/types';
+import { canUserEditEngagement, isReadOnlyUser, toDisplayName, type User } from '@/app/lib/auth/types';
 import { getIntakeTypes, getProjectTypes } from '@/app/lib/api/types';
 
 type SortColumn =
@@ -75,6 +75,8 @@ interface InteractionsTableProps {
   onNoteDeleted: (engagementId: number) => void;
   onFilepathSaved: (engagementId: number, filepath: string | null) => void;
   onNNAChange: (engagementId: number, nna: number | undefined) => void;
+  /** Claim an unassigned engagement for the current user. */
+  onAssignSelf: (engagementId: number) => void;
   onRowClick: (engagement: Engagement) => void;
   onExport: () => void;
   isExporting?: boolean;
@@ -90,7 +92,7 @@ interface GhostRow {
   expiresAt: number;
 }
 
-const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortBy, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onFilepathSaved, onNNAChange, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false, currentUser }) => {
+const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortBy, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onFilepathSaved, onNNAChange, onAssignSelf, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false, currentUser }) => {
   // O(1) lookup from column name → its position in sortBy + direction.
   const sortIndex = useMemo(() => {
     const map = new Map<string, { direction: 'asc' | 'desc'; index: number }>();
@@ -273,6 +275,11 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     const rowFlash = !isGhost && newRowIds?.has(engagement.id) ? FLASH_CLASS[newRowIds.get(engagement.id)!.kind] : '';
     const ghostClass = isGhost ? 'ghost-row' : '';
     const canEdit = !readOnly && canUserEditEngagement(currentUser, engagement.teamMembers);
+    // Claiming needs a real user to attribute the assignment to; read-only teams can't.
+    const canClaim = !readOnly && !!currentUser && !isReadOnlyUser(currentUser);
+    // Display name of the signed-in user, so their own avatar in the roster can be
+    // highlighted with the site's cyan accent.
+    const currentUserName = currentUser ? toDisplayName(currentUser.firstName, currentUser.lastName) : null;
     return (
     <tr
       key={`${keyPrefix}${isGhost ? 'ghost-' : ''}${engagement.id}`}
@@ -332,24 +339,49 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
       </td>
       <td className={`px-4 py-3 ${flashFor(engagement.id, 'teamMembers')}`}>
         {engagement.teamMembers.length === 0 ? (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-400/15 border border-yellow-400/50 text-yellow-300 text-xs font-semibold whitespace-nowrap"
-            title="No team member is assigned to this project"
-          >
-            <AlertTriangle className="w-3 h-3" />
-            Unassigned
-          </span>
+          // Unassigned: anyone who can see the row may claim it. Ghost rows are a
+          // fading copy of a deleted engagement, so they stay inert.
+          canClaim && !isGhost ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onAssignSelf(engagement.id); }}
+              className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-400/15 border border-yellow-400/50 text-yellow-300 hover:bg-cyan-500/20 hover:border-cyan-500/50 hover:text-cyan-300 text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer"
+              title="No team member is assigned — click to assign yourself"
+            >
+              <AlertTriangle className="w-3 h-3 group-hover:hidden" />
+              <UserPlus className="w-3 h-3 hidden group-hover:block" />
+              <span className="group-hover:hidden">Unassigned</span>
+              <span className="hidden group-hover:inline">Assign to me</span>
+            </button>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-400/15 border border-yellow-400/50 text-yellow-300 text-xs font-semibold whitespace-nowrap"
+              title="No team member is assigned to this project"
+            >
+              <AlertTriangle className="w-3 h-3" />
+              Unassigned
+            </span>
+          )
         ) : (
         <div className="flex -space-x-1.5">
-          {engagement.teamMembers.slice(0, 4).map((member, idx) => (
+          {engagement.teamMembers.slice(0, 4).map((member, idx) => {
+            const isMe = member === currentUserName;
+            return (
             <div
               key={idx}
-              className="w-7 h-7 bg-zinc-700/80 backdrop-blur-sm border-2 border-zinc-900/50 flex items-center justify-center text-muted text-xs font-medium"
-              title={member}
+              className={`w-7 h-7 backdrop-blur-sm border-2 flex items-center justify-center text-xs font-medium ${
+                isMe
+                  // z-10 lifts the highlighted avatar above its overlapping neighbours
+                  // so the full cyan ring stays visible.
+                  ? 'relative z-10 bg-cyan-400/15 border-cyan-400/40 text-cyan-300'
+                  : 'bg-zinc-700/80 border-zinc-900/50 text-muted'
+              }`}
+              title={isMe ? `${member} (you)` : member}
             >
               {getInitials(member)}
             </div>
-          ))}
+            );
+          })}
           {engagement.teamMembers.length > 4 && (
             <div
               className="w-7 h-7 bg-zinc-600/80 backdrop-blur-sm border-2 border-zinc-900/50 flex items-center justify-center text-muted text-xs font-medium"
@@ -374,6 +406,11 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
           <div className={`flex items-center gap-1.5 text-emerald-400 ${flashTextFor(engagement.id, 'portfolioLogged')}`}>
             <Check className="w-4 h-4" />
             <span className="text-xs font-medium">Yes</span>
+          </div>
+        ) : engagement.portfolioUnchanged ? (
+          <div className={`flex items-center gap-1.5 text-sky-400 ${flashTextFor(engagement.id, 'portfolioUnchanged')}`} title="Model carried over unchanged from a prior interaction">
+            <Check className="w-4 h-4" />
+            <span className="text-xs font-medium">Unchanged</span>
           </div>
         ) : (
           <div className={`flex items-center gap-1.5 text-muted ${flashTextFor(engagement.id, 'portfolioLogged')}`}>

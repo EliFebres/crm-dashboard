@@ -17,7 +17,8 @@
     "seed:mock": "tsx scripts/seed-db.ts --with-mock",
     "db:backup": "tsx scripts/backup-db.ts",
     "db:restore": "tsx scripts/restore-db.ts",
-    "db:migrate-from-duckdb": "tsx scripts/migrate-duckdb-to-sqlite.ts"
+    "db:migrate-from-duckdb": "tsx scripts/migrate-duckdb-to-sqlite.ts",
+    "sync:portfolio": "tsx scripts/sync-portfolio.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -43,7 +43,7 @@ export async function GET() {
   // ── Data sheet ─────────────────────────────────────────────────────────────
   const data = workbook.addWorksheet('Engagements');
 
-  // Column order (17 cols — Department is auto-derived):
+  // Column order (18 cols — Department is auto-derived):
   // A  CRN
   // B  External Client
   // C  Internal Client Name
@@ -61,6 +61,9 @@ export async function GET() {
   // O  Portfolio Logged
   // P  Portfolio
   // Q  Notes (JSON)
+  // R  Project ID
+  // New columns must be appended, never inserted: the parser reads by fixed
+  // numeric index and the validation/date rules below reference fixed letters.
   // No `header` property here: header row is added manually below to prevent
   // ExcelJS from bleeding row-level styling beyond the last column.
   data.columns = [
@@ -81,6 +84,7 @@ export async function GET() {
     { key: 'portfolioLogged',     width: 16 },
     { key: 'portfolio',           width: 50 },
     { key: 'structuredNotes',     width: 50 },
+    { key: 'projectId',           width: 18 },
   ];
 
   // Add header row manually and style only the populated cells.
@@ -89,7 +93,7 @@ export async function GET() {
     'CRN', 'External Client', 'Internal Client Name', 'Internal Client Dept',
     'Intake Type', 'Ad-Hoc Channel', 'Project Type', 'Team Members',
     'Date Started', 'Date Finished', 'Status', 'NNA ($M)', 'Notes', 'Tickers Mentioned',
-    'Portfolio Logged', 'Portfolio', 'Notes (JSON)',
+    'Portfolio Logged', 'Portfolio', 'Notes (JSON)', 'Project ID',
   ]);
   headerRow.height = 20;
   headerRow.eachCell({ includeEmpty: false }, cell => {
@@ -147,6 +151,7 @@ export async function GET() {
       portfolioLogged: 'Yes',
       portfolio: '[{"identifier":"FMAC","constituentType":"Security","assetClass":"Equity","weight":0.6},{"identifier":"FMCF","constituentType":"Security","assetClass":"Fixed Income","weight":0.4}]',
       structuredNotes: '[{"text":"Client requested equity exposure analysis.","author":"Blake N.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]',
+      projectId: 'PRJ-1042',
     },
     {
       crn: 'CRN-000002',
@@ -166,6 +171,7 @@ export async function GET() {
       portfolioLogged: 'No',
       portfolio: '',
       structuredNotes: '',
+      projectId: 'PRJ-1043',
     },
     {
       crn: 'CRN-000003',
@@ -185,6 +191,7 @@ export async function GET() {
       portfolioLogged: 'No',
       portfolio: '',
       structuredNotes: '[{"text":"Discussed firm core equity vs Vanguard.","author":"Harper B.","authorId":"user_2","date":"2024-11-18T14:30:00Z"}]',
+      projectId: '', // ad-hoc work often has no project ID
     },
   ];
 
@@ -226,6 +233,7 @@ export async function GET() {
     ['Portfolio Logged', 'Yes or No. Whether a client portfolio was logged for this engagement.'],
     ['Portfolio', 'Optional. JSON array of holdings. Format: [{"identifier":"FMAC","constituentType":"Security","assetClass":"Equity","weight":0.35}]'],
     ['Notes (JSON)', 'Optional. JSON array of notes with metadata. Format: [{"text":"...","author":"Alex M.","authorId":"user_1","date":"2024-06-10T10:00:00Z"}]'],
+    ['Project ID', 'Optional. Free-text project identifier, e.g. "PRJ-1042". Leave blank for ad-hoc work with no assigned ID.'],
     ['', ''],
     ['Auto-filled by system', 'Department (from Internal Client Dept)'],
     ['Backup/restore', 'Columns N-P are populated by the Export button for full backup. On import, Notes (JSON) takes priority over Notes for restoring individual note entries.'],

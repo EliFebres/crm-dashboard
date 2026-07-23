@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+# `pip install -e .` artifacts
+*.egg-info/
+build/
+dist/
+
+# Local virtualenvs
+.venv/
+venv/

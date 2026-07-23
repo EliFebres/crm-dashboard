@@ -335,6 +335,33 @@ export async function updateEngagementStatus(
 }
 
 /**
+ * Staffs (or un-staffs) an engagement. The server derives the engagement's `team`
+ * from the assignees, so this is the only way to move a row out of — or back into —
+ * the unassigned inbox. Pass an empty array to un-assign.
+ * Endpoint: PATCH /api/client-interactions/engagements/:id/assign
+ */
+export async function assignEngagement(
+  id: number,
+  teamMembers: string[],
+  version?: number
+): Promise<{ id: number; teamMembers: string[]; team: string | null }> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/${id}/assign`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamMembers, version }),
+  });
+  if (response.status === 409) {
+    const data = await response.json();
+    throw new ConflictError(data.error ?? 'This engagement was modified by someone else. Refresh and try again.');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error ?? 'Failed to assign engagement');
+  }
+  return response.json();
+}
+
+/**
  * Optimized endpoint for quick NNA updates.
  * Endpoint: PATCH /api/client-interactions/engagements/:id/nna
  */
@@ -529,23 +556,70 @@ export async function getClientModels(crn: string): Promise<ClientModel[]> {
   return (data.models ?? []) as ClientModel[];
 }
 
+export interface SaveClientModelsResult {
+  models: ClientModel[];
+  /** Models this save created or content-changed — i.e. logged. */
+  loggedModelIds: string[];
+}
+
 /**
  * Atomically replaces a client's entire model set. The server enforces the
  * single-main invariant and normalizes holding weights before persisting.
+ *
+ * `loggedEngagementId` is the interaction the save was made from; the models it logs
+ * are attributed to it, and the export reads that interaction's Project ID through the
+ * link. Pass null when there is no interaction (Settings → Client Management) or when
+ * it does not exist yet (a new interaction) — in the latter case, replay the returned
+ * `loggedModelIds` through `attributeClientModels` once it has an id.
+ *
  * Endpoint: PUT /api/client-interactions/clients/:crn/models
  */
-export async function saveClientModels(crn: string, models: ClientModel[]): Promise<ClientModel[]> {
+export async function saveClientModels(
+  crn: string,
+  models: ClientModel[],
+  loggedEngagementId: number | null = null
+): Promise<SaveClientModelsResult> {
   const response = await fetch(`${API_BASE_URL}/client-interactions/clients/${encodeURIComponent(crn)}/models`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ models }),
+    body: JSON.stringify({ models, loggedEngagementId }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'Failed to save client models');
   }
   const data = await response.json();
-  return (data.models ?? []) as ClientModel[];
+  return {
+    models: (data.models ?? []) as ClientModel[],
+    loggedModelIds: (data.loggedModelIds ?? []) as string[],
+  };
+}
+
+/**
+ * Records which interaction logged the given models. Used only after creating a new
+ * interaction, whose models were necessarily saved before it had an id.
+ * Endpoint: POST /api/client-interactions/clients/:crn/models/attribute
+ */
+export async function attributeClientModels(
+  crn: string,
+  engagementId: number,
+  modelIds: string[]
+): Promise<number> {
+  if (modelIds.length === 0) return 0;
+  const response = await fetch(
+    `${API_BASE_URL}/client-interactions/clients/${encodeURIComponent(crn)}/models/attribute`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ engagementId, modelIds }),
+    }
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to attribute client models');
+  }
+  const data = await response.json();
+  return Number(data.updated ?? 0);
 }
 
 /**

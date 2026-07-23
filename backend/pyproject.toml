@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crm-sync"
+version = "2.0.0"
+description = "Create CRM client interactions from Python, straight into the dashboard's SQLite database."
+readme = "crm_sync/docs/README.md"
+requires-python = ">=3.9"
+
+# Deliberately empty: crm_sync uses only the standard library. See requirements.txt.
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/../backend/crm_sync/docs/README.md"
+
+[tool.setuptools]
+# Explicit, not auto-discovered: `backend/` is not a src-layout root, and letting setuptools
+# guess here would sweep up stray top-level directories.
+packages = [
+    "crm_sync",
+    "crm_sync.core",
+    "crm_sync.db",
+    "crm_sync.validation",
+    "crm_sync.utils",
+    "crm_sync.tests",
+]

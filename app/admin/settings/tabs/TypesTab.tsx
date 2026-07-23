@@ -58,7 +58,10 @@ function TypeSection<T extends TypeItem>({
 }) {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const flashes = useRowFlashes(items, TYPE_FLASH_SPECS);
+  const [loaded, setLoaded] = useState(false);
+  // Withhold rows until the first fetch lands, so the empty initial array isn't
+  // taken as the flash baseline and light up every row on mount.
+  const flashes = useRowFlashes(loaded ? items : undefined, TYPE_FLASH_SPECS);
   const cellFlash = (id: string, key: string) => {
     const t = flashes.cells.get(id)?.[key];
     return t ? FLASH_TEXT_CLASS[t.kind] : '';
@@ -81,12 +84,16 @@ function TypeSection<T extends TypeItem>({
 
   const load = useCallback(() => {
     setLoading(true);
-    api.list().then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
+    api.list()
+      .then(rows => { setItems(rows); setLoaded(true); })
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
   }, [api]);
 
   // Silent refetch (no loading flicker) for live updates, so the flash shows.
+  // Also marks loaded, so flashes still work if the initial load failed.
   const refetch = useCallback(() => {
-    api.list().then(setItems).catch(() => {});
+    api.list().then(rows => { setItems(rows); setLoaded(true); }).catch(() => {});
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
