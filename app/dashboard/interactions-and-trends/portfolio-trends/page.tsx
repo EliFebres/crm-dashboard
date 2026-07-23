@@ -261,16 +261,39 @@ export default function PortfolioTrendsDashboard() {
   const activeIso = market?.asOf ?? asOf ?? periodIsos[0] ?? '';
   const activeLabel = activeIso ? quarterLabel(activeIso) : '';
 
+  // The strip describes the dataset in scope, so it follows the department / office /
+  // team / AUM filters but not the Portfolios one — that picks which averages the charts
+  // draw, not which models exist. Each entry carries a `hint` because none of these
+  // labels says what it measures: "F.I. Models" could as easily mean "models containing
+  // any bonds" as "models that are mostly bonds", and the two differ a lot.
   const dataMetrics = useMemo(() => {
     const s = view?.summary;
     const n = (v: number | undefined) => (v == null ? '—' : v.toLocaleString());
     return [
-      { label: 'Unique Clients', value: n(s?.uniqueClients) },
-      { label: 'Models Logged', value: n(s?.modelsLogged) },
-      { label: 'Equity Models', value: n(s?.equityModels) },
-      { label: 'F.I. Models', value: n(s?.fixedIncomeModels) },
-      { label: 'Avg Positions', value: n(s?.avgPositions) },
-      { label: 'Recent Updates', value: s ? `${s.recentUpdatesPct}%` : '—' },
+      {
+        label: 'Unique Clients', value: n(s?.uniqueClients),
+        hint: 'Distinct external clients with a logged model, in the current scope.',
+      },
+      {
+        label: 'Models Logged', value: n(s?.modelsLogged),
+        hint: 'Models in the current scope. Not affected by the Portfolios filter, which selects chart series rather than data.',
+      },
+      {
+        label: 'Equity Models', value: n(s?.equityModels),
+        hint: 'Models with at least half their weight in Equity.',
+      },
+      {
+        label: 'F.I. Models', value: n(s?.fixedIncomeModels),
+        hint: 'Models with at least half their weight in Fixed Income. Equity and F.I. are independent counts — a model that is mostly alternatives or cash is in neither, so they need not add up to Models Logged.',
+      },
+      {
+        label: 'Avg Positions', value: n(s?.avgPositions),
+        hint: 'Mean number of holdings per model, over models that hold any.',
+      },
+      {
+        label: 'Recent Updates', value: s ? `${s.recentUpdatesPct}%` : '—',
+        hint: 'Share of models logged or changed in the last 30 days.',
+      },
     ];
   }, [view]);
 
@@ -406,7 +429,11 @@ export default function PortfolioTrendsDashboard() {
                 Data Metrics
               </span>
               {dataMetrics.map((s) => (
-                <div key={s.label} className="flex items-baseline justify-center gap-2 min-w-0">
+                <div
+                  key={s.label}
+                  className="flex items-baseline justify-center gap-2 min-w-0"
+                  title={`${s.label} — ${s.hint}`}
+                >
                   <span className="text-sm font-mono font-semibold text-zinc-200 flex-shrink-0">{s.value}</span>
                   <span className="text-[11px] text-muted truncate">{s.label}</span>
                 </div>

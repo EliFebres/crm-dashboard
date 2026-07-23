@@ -28,12 +28,30 @@ export interface PortfolioTrendsFilters {
   asOf?: string | null;
 }
 
+/**
+ * The Data Metrics strip. Describes the dataset in scope — the department, office, team
+ * and AUM filters apply; the Portfolios (cohort) filter deliberately does not, because it
+ * selects which series the charts plot rather than which models exist.
+ */
 export interface PortfolioTrendsSummary {
+  /** Models in scope, however many holdings they carry. */
   modelsLogged: number;
+  /** Distinct external clients behind those models. */
   uniqueClients: number;
+  /**
+   * Models with at least half their weight in Equity.
+   *
+   * `equityModels` and `fixedIncomeModels` are independent counts, not a partition: a
+   * model that is mostly Alternatives, Crypto, Multi-Asset or Cash falls in neither, as
+   * does one with no holdings, so they need not sum to `modelsLogged`. (A 50/50 model
+   * reaches the threshold on both sides and is counted in each.)
+   */
   equityModels: number;
+  /** Models with at least half their weight in Fixed Income. See `equityModels`. */
   fixedIncomeModels: number;
+  /** Mean positions per model, over models that hold any. */
   avgPositions: number;
+  /** Share of models logged within the last 30 days. */
   recentUpdatesPct: number;
   /** Models excluded from any AUM threshold because their AUM was never entered. */
   modelsWithoutAum: number;

@@ -516,12 +516,46 @@ function resolveAsOf(requested: string | null | undefined, available: string[]):
   return available[0];
 }
 
+/** Models whose weight in `assetClass` reaches the dominance threshold. */
+function dominanceQuery(assetClass: string, where: string): string {
+  return `SELECT COUNT(*) AS n FROM (
+            SELECT m.id
+              FROM portfolio_models m
+              JOIN portfolio_holdings h ON h.model_id = m.id
+             ${where}
+             GROUP BY m.id
+            HAVING SUM(CASE WHEN h.asset_class = ? THEN h.weight ELSE 0 END) >= ${EQUITY_DOMINANCE}
+          )`;
+}
+
 /**
  * Summary stats, filter options, and the analytics behind every card.
  *
- * Equity vs fixed-income in the summary is decided per model by which asset class holds
- * the majority of its weight, rather than by any per-model flag — the store has no such
- * flag, and weights are normalized to sum to 1.
+ * ## What the Data Metrics strip counts
+ *
+ * The strip describes the *dataset* — every model the current scope contains — so it
+ * applies the department, office, team and AUM filters but deliberately **not** the
+ * Portfolios (cohort) filter. Cohort is a series selector: it decides which averages the
+ * charts plot, not which models exist. Scoping the strip by it made the corpus look
+ * smaller than it is, and because that filter always keeps at least one cohort selected
+ * (`noAllOption`), there was no state in which the strip could show the real total. It
+ * also disagreed on screen with the scatter's own "69 models" footnote, which counts the
+ * same population.
+ *
+ * ## Equity vs fixed income
+ *
+ * Decided per model by which asset class holds at least half its weight, since the store
+ * has no per-model flag and weights are normalized to sum to 1. The two counts are
+ * independent questions, not a partition:
+ *
+ *  - a model that is mostly Alternatives, Crypto, Multi-Asset or Cash is in neither, and
+ *  - so is a model with no holdings at all,
+ *
+ * so they need not add up to `modelsLogged`. That is the fix for the previous
+ * `fixedIncomeModels = modelsLogged - equityModels`, which labelled everything that
+ * merely *wasn't* equity-dominant as fixed income — including empty models. The current
+ * data hides the bug (it holds only Equity and Fixed Income holdings, so the subtraction
+ * happened to be right); real holdings would not.
  */
 export async function computePortfolioTrends(
   filters: PortfolioTrendsFilters,
@@ -529,11 +563,12 @@ export async function computePortfolioTrends(
 ): Promise<PortfolioTrendsResponse> {
   if (!hasDb()) return EMPTY;
 
-  const model = buildWhere(filters, sc);
-  const joined = buildWhere(filters, sc, 'm');
+  // includeCohorts=false — see the note above.
+  const model = buildWhere(filters, sc, '', false);
+  const joined = buildWhere(filters, sc, 'm', false);
   const hasAnalytics = await analyticsTablesExist();
 
-  const [summaryRows, holdingRows, equityRows, filterOptions] = await Promise.all([
+  const [summaryRows, holdingRows, equityRows, fixedIncomeRows, filterOptions] = await Promise.all([
     queryPortfolio<SummaryRow>(
       `SELECT COUNT(*) AS models,
               COUNT(DISTINCT crn) AS clients,
@@ -542,40 +577,34 @@ export async function computePortfolioTrends(
          FROM portfolio_models ${model.where}`,
       model.params
     ),
-    queryPortfolio<{ n: number }>(
-      `SELECT COUNT(*) AS n
+    // Positions, and how many models carry any — a model with no holdings would otherwise
+    // drag the average down as if it were a real zero-position portfolio.
+    queryPortfolio<{ n: number; models: number }>(
+      `SELECT COUNT(*) AS n, COUNT(DISTINCT m.id) AS models
          FROM portfolio_holdings h
          JOIN portfolio_models m ON m.id = h.model_id
         ${joined.where}`,
       joined.params
     ),
+    queryPortfolio<{ n: number }>(dominanceQuery('Equity', joined.where), [...joined.params, 'Equity']),
     queryPortfolio<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM (
-         SELECT m.id
-           FROM portfolio_models m
-           JOIN portfolio_holdings h ON h.model_id = m.id
-          ${joined.where}
-          GROUP BY m.id
-         HAVING SUM(CASE WHEN h.asset_class = 'Equity' THEN h.weight ELSE 0 END) >= ${EQUITY_DOMINANCE}
-       )`,
-      joined.params
+      dominanceQuery('Fixed Income', joined.where), [...joined.params, 'Fixed Income']
     ),
     loadFilterOptions(hasAnalytics),
   ]);
 
   const row = summaryRows[0];
   const modelsLogged = Number(row?.models ?? 0);
-  const equityModels = Number(equityRows[0]?.n ?? 0);
   const totalHoldings = Number(holdingRows[0]?.n ?? 0);
+  const modelsWithHoldings = Number(holdingRows[0]?.models ?? 0);
   const recent = Number(row?.recent ?? 0);
 
   const summary = {
     modelsLogged,
     uniqueClients: Number(row?.clients ?? 0),
-    equityModels,
-    // Everything that isn't equity-dominant, including models with no holdings at all.
-    fixedIncomeModels: modelsLogged - equityModels,
-    avgPositions: modelsLogged ? Math.round(totalHoldings / modelsLogged) : 0,
+    equityModels: Number(equityRows[0]?.n ?? 0),
+    fixedIncomeModels: Number(fixedIncomeRows[0]?.n ?? 0),
+    avgPositions: modelsWithHoldings ? Math.round(totalHoldings / modelsWithHoldings) : 0,
     recentUpdatesPct: modelsLogged ? Math.round((recent / modelsLogged) * 100) : 0,
     modelsWithoutAum: Number(row?.no_aum ?? 0),
   };
