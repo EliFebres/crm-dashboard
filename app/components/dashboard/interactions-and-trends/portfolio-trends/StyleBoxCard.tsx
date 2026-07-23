@@ -125,63 +125,67 @@ export default function StyleBoxCard({
 
   return (
     <div className="grid flex-1 min-h-0 grid-cols-2 gap-4">
-      {/* ---- Style box ---- */}
-      <div className="relative flex items-center justify-center">
-        <div className="flex flex-col items-start">
-          <div className="flex">
-            <div className="flex w-10 flex-col justify-around pr-2 text-right" style={{ height: 200 }}>
-              <span className="text-xs leading-none text-muted">Large</span>
-              <span className="text-xs leading-none text-muted">Mid</span>
-              <span className="text-xs leading-none text-muted">Small</span>
-            </div>
-            <div
-              className="relative rounded-sm border-4 border-zinc-600/80"
-              style={{ width: 200, height: 200 }}
-            >
-              <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '33.333%' }} />
-              <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '66.667%' }} />
-              <div className="absolute bottom-0 top-0 border-l-[3px] border-zinc-700/70" style={{ left: '33.333%' }} />
-              <div className="absolute bottom-0 top-0 border-l-[3px] border-zinc-700/70" style={{ left: '66.667%' }} />
-
-              {dots.map((dot) => (
-                <div
-                  key={dot.key}
-                  className="absolute z-10 h-4 w-4 cursor-pointer rounded-full border-2"
-                  style={{
-                    left: `${dot.x * 100}%`,
-                    top: `${dot.y * 100}%`,
-                    transform: 'translate(-50%, -50%)',
-                    backgroundColor: dot.isBenchmark ? 'transparent' : dot.color,
-                    borderColor: dot.color,
-                    boxShadow: dot.glow ? `0 0 14px ${dot.glow}` : undefined,
-                  }}
-                  onMouseEnter={() => setHover(dot)}
-                  onMouseLeave={() => setHover((h) => (h?.key === dot.key ? null : h))}
-                />
-              ))}
-
-              {hover && (
-                <div
-                  className="pointer-events-none absolute z-20 whitespace-nowrap border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs shadow-lg"
-                  style={{
-                    left: `${hover.x * 100}%`,
-                    top: `${hover.y * 100}%`,
-                    transform: 'translate(-50%, -140%)',
-                  }}
-                >
-                  <div className="mb-0.5 text-zinc-200">{hover.label}</div>
-                  {hover.detail.map((line) => (
-                    <div key={line} className="font-mono text-[10px] text-zinc-400">{line}</div>
-                  ))}
-                </div>
-              )}
-            </div>
+      {/* ---- Style box ----
+          Fills its cell rather than sitting at a fixed size. Both axes are normalized
+          0..1 and every mark is positioned in percentages, so the geometry is unaffected
+          by the aspect ratio — a wider-than-tall box reads exactly the same, it just gives
+          the dots more room to separate. The size gutter and the bottom labels are the
+          only fixed dimensions. */}
+      <div className="flex min-w-0 flex-col">
+        <div className="flex min-h-0 flex-1">
+          <div className="flex w-10 flex-shrink-0 flex-col justify-around pr-2 text-right">
+            <span className="text-xs leading-none text-muted">Large</span>
+            <span className="text-xs leading-none text-muted">Mid</span>
+            <span className="text-xs leading-none text-muted">Small</span>
           </div>
-          <div className="ml-10 mt-1 flex" style={{ width: 200 }}>
-            <span className="flex-1 text-center text-xs leading-none text-muted">Value</span>
-            <span className="flex-1 text-center text-xs leading-none text-muted">Core</span>
-            <span className="flex-1 text-center text-xs leading-none text-muted">Growth</span>
+          <div className="relative min-h-0 min-w-0 flex-1 rounded-sm border-4 border-zinc-600/80">
+            <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '33.333%' }} />
+            <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '66.667%' }} />
+            <div className="absolute bottom-0 top-0 border-l-[3px] border-zinc-700/70" style={{ left: '33.333%' }} />
+            <div className="absolute bottom-0 top-0 border-l-[3px] border-zinc-700/70" style={{ left: '66.667%' }} />
+
+            {dots.map((dot) => (
+              <div
+                key={dot.key}
+                className="absolute z-10 h-4 w-4 cursor-pointer rounded-full border-2"
+                style={{
+                  left: `${dot.x * 100}%`,
+                  top: `${dot.y * 100}%`,
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: dot.isBenchmark ? 'transparent' : dot.color,
+                  borderColor: dot.color,
+                  boxShadow: dot.glow ? `0 0 14px ${dot.glow}` : undefined,
+                }}
+                onMouseEnter={() => setHover(dot)}
+                onMouseLeave={() => setHover((h) => (h?.key === dot.key ? null : h))}
+              />
+            ))}
+
+            {hover && (
+              <div
+                className="pointer-events-none absolute z-20 whitespace-nowrap border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs shadow-lg"
+                style={{
+                  left: `${hover.x * 100}%`,
+                  top: `${hover.y * 100}%`,
+                  // Below the dot in the top third, above it everywhere else, so a
+                  // tooltip near the ceiling isn't clipped by the card.
+                  transform: hover.y < 0.33
+                    ? 'translate(-50%, 40%)'
+                    : 'translate(-50%, -140%)',
+                }}
+              >
+                <div className="mb-0.5 text-zinc-200">{hover.label}</div>
+                {hover.detail.map((line) => (
+                  <div key={line} className="font-mono text-[10px] text-zinc-400">{line}</div>
+                ))}
+              </div>
+            )}
           </div>
+        </div>
+        <div className="ml-10 mt-1 flex">
+          <span className="flex-1 text-center text-xs leading-none text-muted">Value</span>
+          <span className="flex-1 text-center text-xs leading-none text-muted">Core</span>
+          <span className="flex-1 text-center text-xs leading-none text-muted">Growth</span>
         </div>
       </div>
 
