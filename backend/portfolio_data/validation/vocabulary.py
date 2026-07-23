@@ -27,7 +27,12 @@ __all__ = [
     "SLEEVES",
     "SLEEVE_TOTAL",
     "SLEEVE_EQUITY",
+    "SLEEVE_EQUITY_US",
+    "SLEEVE_EQUITY_DEVELOPED",
+    "SLEEVE_EQUITY_EM",
     "SLEEVE_FIXED_INCOME",
+    "EQUITY_SLEEVES",
+    "EQUITY_REGION_SLEEVES",
     "SUBJECT_KINDS",
     "SUBJECT_MODEL",
     "SUBJECT_BENCHMARK",
@@ -35,6 +40,8 @@ __all__ = [
     "EQUITY_DIMENSIONS",
     "FIXED_INCOME_DIMENSIONS",
     "MARKET_SERIES",
+    "SLEEVE_BENCHMARK",
+    "BENCHMARK_NAMES",
     "SEED_BENCHMARKS",
 ]
 
@@ -109,18 +116,23 @@ SUBJECT_KINDS: Tuple[str, ...] = (SUBJECT_MODEL, SUBJECT_BENCHMARK)
 # what that card's legend can label.
 # ---------------------------------------------------------------------------------
 
+#: Every dimension a card actually draws. Bucket order is the axis order, so it is part of
+#: the contract, not a formatting detail — app/lib/db/portfolioTrends.ts mirrors this
+#: exactly and `validation/mirrors.py` fails the smoke test when the two drift.
+#:
+#: Two dimensions were removed here after the Style × Profitability card was rebuilt as a
+#: style box plus a five-row table: `style_box` (a 9-cell grid that was declared in both
+#: languages and never once written or read) and `profitability` (which the old three-mini-
+#: chart card drew and nothing has read since). A dimension nothing renders is worse than
+#: absent — it invites an upload that reports success and then shows up nowhere.
+#: `Characteristics.profitability` is a different thing entirely and is still displayed.
 BREAKDOWN_DIMENSIONS: Dict[str, Tuple[str, ...]] = {
     # "vs MSCI ACWI IMI" — regional equity positioning.
     "region": ("US", "Developed ex-US", "Emerging Markets"),
-    # "Style x Profitability" — the three axes it slices on, plus the 9-cell style box.
+    # The style box's two axes: size (vertical) and value/growth (horizontal), plus the
+    # allocation table beside it.
     "market_cap": ("Large", "Mid", "Small"),
     "style": ("Value", "Blend", "Growth"),
-    "profitability": ("High", "Mid", "Low"),
-    "style_box": (
-        "Large/Value", "Large/Blend", "Large/Growth",
-        "Mid/Value", "Mid/Blend", "Mid/Growth",
-        "Small/Value", "Small/Blend", "Small/Growth",
-    ),
     # "Credit Breakdown" — ratings collapsed to the buckets the chart draws.
     "credit_rating": ("AAA", "AA", "A", "BBB", "BB", "B", "CCC & Below", "Not Rated"),
     # "Security Type" — instrument type per holding.
@@ -133,9 +145,7 @@ BREAKDOWN_DIMENSIONS: Dict[str, Tuple[str, ...]] = {
 
 #: Dimensions that only make sense on an equity sleeve. Uploading one against
 #: `fixed_income` is almost always a column-mapping mistake in the export, so it warns.
-EQUITY_DIMENSIONS: Tuple[str, ...] = (
-    "region", "market_cap", "style", "profitability", "style_box",
-)
+EQUITY_DIMENSIONS: Tuple[str, ...] = ("region", "market_cap", "style")
 
 #: Dimensions that only make sense on a fixed-income sleeve. Same warning, other way.
 FIXED_INCOME_DIMENSIONS: Tuple[str, ...] = (
@@ -171,15 +181,42 @@ MARKET_SERIES: Dict[str, Dict[str, object]] = {
 # reference them on a fresh database without a registration step.
 # ---------------------------------------------------------------------------------
 
-#: (id, display name, the sleeve it benchmarks, is_default)
+#: sleeve -> the benchmark id it is measured against.
 #:
 #: One index per sleeve, because a regional slice needs a regional benchmark: comparing a
 #: US-only book to an all-country index would report a US overweight that is an artifact of
 #: the scope, not a decision anyone made.
-SEED_BENCHMARKS: Tuple[Tuple[str, str, str, bool], ...] = (
-    ("MSCI-ACWI-IMI", "MSCI ACWI IMI", SLEEVE_EQUITY, True),
-    ("RUSSELL-3000", "Russell 3000 Index", SLEEVE_EQUITY_US, True),
-    ("MSCI-WORLD-EX-USA-IMI", "MSCI World ex USA IMI Index", SLEEVE_EQUITY_DEVELOPED, True),
-    ("MSCI-EM-IMI", "MSCI Emerging Markets IMI Index", SLEEVE_EQUITY_EM, True),
-    ("BBG-US-AGG", "Bloomberg US Aggregate", SLEEVE_FIXED_INCOME, True),
+#:
+#: `total` has no index of its own — a blended book has nothing to compare against as a
+#: whole — so it points at the all-country equity index, matching what the dashboard does.
+#: This is the authoritative mapping; app/lib/db/portfolioTrends.ts mirrors it and
+#: `validation/mirrors.py` fails the smoke test if the two disagree.
+SLEEVE_BENCHMARK: Dict[str, str] = {
+    SLEEVE_TOTAL: "MSCI-ACWI-IMI",
+    SLEEVE_EQUITY: "MSCI-ACWI-IMI",
+    SLEEVE_EQUITY_US: "RUSSELL-3000",
+    SLEEVE_EQUITY_DEVELOPED: "MSCI-WORLD-EX-USA-IMI",
+    SLEEVE_EQUITY_EM: "MSCI-EM-IMI",
+    SLEEVE_FIXED_INCOME: "BBG-US-AGG",
+}
+
+#: Display name per benchmark id.
+BENCHMARK_NAMES: Dict[str, str] = {
+    "MSCI-ACWI-IMI": "MSCI ACWI IMI",
+    "RUSSELL-3000": "Russell 3000 Index",
+    "MSCI-WORLD-EX-USA-IMI": "MSCI World ex USA IMI Index",
+    "MSCI-EM-IMI": "MSCI Emerging Markets IMI Index",
+    "BBG-US-AGG": "Bloomberg US Aggregate",
+}
+
+#: (id, display name, the sleeve it benchmarks, is_default) — what db/schema.py seeds into
+#: `pf_benchmarks`. Derived from the two maps above rather than restating them, so a new
+#: index is added in one place. `total` is skipped: it shares the equity index rather than
+#: registering a second row for it.
+SEED_BENCHMARKS: Tuple[Tuple[str, str, str, bool], ...] = tuple(
+    (SLEEVE_BENCHMARK[sleeve], BENCHMARK_NAMES[SLEEVE_BENCHMARK[sleeve]], sleeve, True)
+    for sleeve in (
+        SLEEVE_EQUITY, SLEEVE_EQUITY_US, SLEEVE_EQUITY_DEVELOPED,
+        SLEEVE_EQUITY_EM, SLEEVE_FIXED_INCOME,
+    )
 )

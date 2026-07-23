@@ -51,25 +51,28 @@ const EQUITY_DOMINANCE = 0.5;
 /** "Recent Updates" counts models logged within this many days. */
 const RECENT_DAYS = 30;
 
-/** Canonical bucket order per dimension. Mirrors backend/portfolio_data/validation/vocabulary.py. */
+/**
+ * Canonical bucket order per dimension. Mirrors BREAKDOWN_DIMENSIONS in
+ * backend/portfolio_data/validation/vocabulary.py, which owns it.
+ *
+ * Order is the axis order, so a mismatch is a wrong chart rather than a cosmetic
+ * difference — and an omission is worse, because the fallback below sorts alphabetically
+ * and would render credit quality as AA, AAA, B, BB, BBB: plausible, and backwards.
+ * `portfolio_data`'s smoke test parses this object and fails on any drift.
+ */
 const DIMENSION_BUCKETS: Record<string, string[]> = {
   region: ['US', 'Developed ex-US', 'Emerging Markets'],
   market_cap: ['Large', 'Mid', 'Small'],
   style: ['Value', 'Blend', 'Growth'],
-  profitability: ['High', 'Mid', 'Low'],
-  style_box: [
-    'Large/Value', 'Large/Blend', 'Large/Growth',
-    'Mid/Value', 'Mid/Blend', 'Mid/Growth',
-    'Small/Value', 'Small/Blend', 'Small/Growth',
-  ],
   credit_rating: ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC & Below', 'Not Rated'],
   security_type: ['Government', 'Municipal', 'Corporate', 'Securitized', 'Cash & Equivalents'],
   maturity_band: ['0-1Y', '1-3Y', '3-5Y', '5-7Y', '7-10Y', '10-20Y', '20Y+'],
 };
 
 /**
- * Which benchmark each sleeve is measured against. Mirrors SEED_BENCHMARKS in
- * backend/portfolio_data/validation/vocabulary.py — keep the two in step.
+ * Which benchmark each sleeve is measured against. Mirrors SLEEVE_BENCHMARK in
+ * backend/portfolio_data/validation/vocabulary.py, which owns it; the smoke test there
+ * fails on drift.
  *
  * A regional sleeve needs a regional index: measuring a US-only book against an
  * all-country index would report a US overweight that is an artifact of the scope rather

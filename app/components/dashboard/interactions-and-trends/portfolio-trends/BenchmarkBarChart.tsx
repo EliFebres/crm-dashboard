@@ -17,8 +17,15 @@ export type BenchmarkGroup = {
   label: string;
   /** The benchmark's weight in this bucket, as a percentage. Null when not uploaded. */
   benchmark: number | null;
-  /** Cohort name -> its weight (percentage) and delta vs the benchmark. */
-  series: Record<string, { value: number; delta: number | null }>;
+  /** How many names carry the benchmark's weight here. Null when not uploaded. */
+  benchmarkNames?: number | null;
+  /**
+   * Cohort name -> its weight (percentage), delta vs the benchmark, and how many names
+   * hold that weight. The count only appears in the tooltip: 22% across 4 names and 22%
+   * across 90 are different portfolios, but a count above every bar would reintroduce
+   * exactly the crowding the value labels already back off from below 20px of bar width.
+   */
+  series: Record<string, { value: number; delta: number | null; names?: number }>;
 };
 
 type DisplayedSeries = { name: string; idx: number; exiting: boolean };
@@ -318,6 +325,11 @@ export default function BenchmarkBarChart({
               <span className="font-mono text-zinc-100">
                 {(hover.group.benchmark ?? 0).toFixed(1)}%
               </span>
+              {hover.group.benchmarkNames != null && (
+                <span className="text-zinc-500">
+                  {hover.group.benchmarkNames.toLocaleString()} names
+                </span>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -336,6 +348,11 @@ export default function BenchmarkBarChart({
                 >
                   {(hover.group.series[hover.key]!.delta ?? 0) >= 0 ? '+' : ''}
                   {(hover.group.series[hover.key]!.delta ?? 0).toFixed(1)}
+                </span>
+              )}
+              {hover.group.series[hover.key]?.names != null && (
+                <span className="text-zinc-500">
+                  {hover.group.series[hover.key]!.names!.toLocaleString()} names
                 </span>
               )}
             </div>

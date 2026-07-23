@@ -36,9 +36,20 @@ export function toGroups(
       const weights = series.cohorts[cohort];
       if (!weights) continue;
       const value = (weights[bucket] ?? 0) * 100;
-      seriesValues[cohort] = { value, delta: benchmark == null ? null : value - benchmark };
+      seriesValues[cohort] = {
+        value,
+        delta: benchmark == null ? null : value - benchmark,
+        // Absent when the upload carried no counts — distinct from a count of zero, so
+        // the tooltip can omit the line rather than claim "0 names".
+        names: series.cohortNames[cohort]?.[bucket],
+      };
     }
-    return { label: bucket, benchmark, series: seriesValues };
+    return {
+      label: bucket,
+      benchmark,
+      benchmarkNames: series.benchmarkNames?.[bucket] ?? null,
+      series: seriesValues,
+    };
   });
 }
 

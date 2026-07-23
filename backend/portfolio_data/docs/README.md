@@ -12,14 +12,15 @@ Pure standard library — no third-party dependencies. Python 3.9+.
 
 ## Why this exists
 
-The Portfolio Trends dashboard is fully built and completely inert. Every analytics card
-renders a "requires market data" placeholder, because
-[`portfolioTrends.ts`](../../../app/lib/db/portfolioTrends.ts) says the store holds
-identifiers, asset class, constituent type and weight — and no market data. Market cap,
-price-to-book, profitability, duration, credit rating, yield and maturity all need a
-security master the app does not have.
+`portfolio.sqlite` holds identifiers, asset class, constituent type and weight — and no
+market data. Market cap, price-to-book, profitability, duration, credit rating, yield and
+maturity all need a security master the app does not have, so before this package existed
+every analytics card on the Portfolio Trends dashboard rendered a "requires market data"
+placeholder.
 
-This package is the round trip that fills that gap.
+This package is the round trip that fills that gap. The cards light up as the data lands,
+per card: a dimension nobody has uploaded keeps its placeholder while the rest of the page
+draws.
 
 ```
 get_models()  ──►  your analytics engine  ──►  upload_pf_data()
@@ -66,6 +67,10 @@ Each model comes back as **three portfolios**:
 | `model.total` | every holding | sum to 1.0, as logged |
 | `model.equity` | `Equity` holdings only | **rescaled** to sum to 1.0 |
 | `model.fixed_income` | `Fixed Income` holdings only | **rescaled** to sum to 1.0 |
+
+Uploads may additionally target three regional slices of the equity book — `equity_us`,
+`equity_developed`, `equity_em` — which `get_models()` cannot produce because a holding
+carries no domicile. See [Regional equity sleeves](#regional-equity-sleeves).
 
 The split is the whole point. An equity style analysis run over a portfolio that is 38%
 bonds produces a price-to-book that describes nothing real, and a duration computed over
@@ -190,6 +195,28 @@ buckets carry no stable identity and merging would leave a bucket that vanished 
 still counted in the chart's total. Replacement is scoped to the dimensions you send —
 uploading a fresh `region` does not touch a `credit_rating` written earlier.
 
+### Holding counts
+
+A `Breakdown` carries an optional `names` map beside its weights — how many securities make
+up each bucket:
+
+```python
+Breakdown(
+    "credit_rating",
+    {"AAA": 0.44, "AA": 0.12, "A": 0.20, "BBB": 0.24},
+    {"AAA": 310, "AA": 88, "A": 141, "BBB": 176},
+)
+```
+
+It is a genuinely separate fact, not something the weight implies: 22% of a book can sit in
+four names or four hundred, and which one it is separates a concentrated bet from an
+index-like sleeve. Optional throughout — an engine that reports allocations without counts
+is normal, and the column stays NULL rather than claiming zero.
+
+The dashboard shows them in the style box's allocation table and in the bar-chart tooltips
+on the credit, security-type and maturity cards. For a cohort spanning several models the
+figure is the **mean per model**, matching how the weights are averaged; summing across
+forty models would be an order of magnitude too large.
 ### Benchmarks
 
 Every card on the page is captioned "vs \<index\>", so benchmarks travel the same path and
@@ -431,6 +458,18 @@ Hand-maintained copies. If someone changes the original, change it here too.
 | `core/periods.recent_quarter_ends` | `portfolio-trends/page.tsx` → `getRecentQuarterEnds` |
 | `db/reader._MODELS_SQL` | `app/lib/db/portfolioSync.ts` → `syncPortfolioModels` |
 
+And two that go the other way — TypeScript copies of values **this package owns**:
+
+| There | Here |
+|---|---|
+| `app/lib/db/portfolioTrends.ts` → `DIMENSION_BUCKETS` | `vocabulary.BREAKDOWN_DIMENSIONS` |
+| `app/lib/db/portfolioTrends.ts` → `SLEEVE_BENCHMARK` | `vocabulary.SLEEVE_BENCHMARK` |
+
+Those two are **enforced**: `python -m portfolio_data.test` parses the TypeScript and fails
+naming the exact mismatch. Drift there is otherwise invisible — a dimension missing on the
+TypeScript side falls through to alphabetical bucket ordering, which renders a credit axis
+as AA, AAA, B, BB, BBB: plausible, and backwards. Nothing else catches it.
+
 ---
 
 ## What reads this
@@ -445,13 +484,17 @@ cohort, and returns `PortfolioTrendsResponse.marketData`. Which card consumes wh
 | `pf_characteristics` equity group | Style XY, Profitability XY, Metrics vs Index — read from whichever sleeve the equity scope selects |
 | `pf_characteristics` FI group | FI Metrics, and the duration marker on the Yield Curve |
 | `region` (on the unscoped `equity` sleeve) | vs MSCI ACWI IMI |
-| `market_cap`, `style`, `profitability` | Style × Profitability |
+| `market_cap`, `style` | Style × Profitability — the style box's two axes, the five-row allocation table beside it, and the per-model cloud |
 | `credit_rating` | Credit Breakdown |
 | `security_type` | Security Type |
 | `maturity_band` | Maturity Breakdown |
 | `ust_par_yield` | Yield Curve |
 | `ig_oas`, `hy_oas` | Credit Spread |
 | `pf_performance` | *nothing yet* — stored and queryable, but no card plots returns |
+
+Every dimension above is drawn as a cohort average. `market_cap` and `style` are
+additionally sent down per model, to place each one on the style box behind the averages —
+the same role the model dots play on the XY scatters.
 
 Two behaviours worth knowing when your upload does not show up:
 

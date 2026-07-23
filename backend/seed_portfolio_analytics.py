@@ -114,10 +114,25 @@ def name_counts(rnd: random.Random, weights: dict, total: int) -> dict:
     jitter here is the point, not noise to be smoothed out. The remainder lands on the
     largest bucket so the counts still add up to `total`.
     """
-    out = {k: max(1, int(round(total * w * rnd.uniform(0.6, 1.4)))) for k, w in weights.items()}
+    # A bucket holding none of the money holds none of the names. Flooring everything at 1
+    # put "1 name" against the index's 0% high-yield buckets, which reads as a real
+    # position. Non-empty buckets still floor at 1: a weight you can measure came from at
+    # least one security.
+    out = {
+        k: 0 if w <= 0 else max(1, int(round(total * w * rnd.uniform(0.6, 1.4))))
+        for k, w in weights.items()
+    }
     largest = max(out, key=lambda k: weights[k])
     out[largest] = max(1, out[largest] + (total - sum(out.values())))
     return out
+
+
+def _with_names(rnd: random.Random, total: int, weights_by_dimension: dict) -> list:
+    """Breakdowns for a set of dimensions, each with holding counts from one shared total."""
+    return [
+        Breakdown(dimension, weights, name_counts(rnd, weights, total))
+        for dimension, weights in weights_by_dimension.items()
+    ]
 
 
 def spread(rnd: random.Random, weights: dict) -> dict:
@@ -151,12 +166,13 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
     # growth-y, a small equity sleeve beside a large bond one reads more value-y.
     tilt = model.equity.weight_of_total
 
-    # Look-through name count for this sleeve, split across each dimension's buckets.
+    # Look-through name count for this sleeve, split across each dimension's buckets. One
+    # total per sleeve, so a sleeve's dimensions agree with each other about how many
+    # securities it holds.
     holdings = rnd.randint(120, 900)
     arch_cap, arch_style = archetype_for(model.id)
     cap = spread(rnd, arch_cap)
     style = spread(rnd, arch_style)
-    prof = spread(rnd, {"High": 0.42, "Mid": 0.38, "Low": 0.20})
 
     # Keep the characteristics consistent with the mandate. A model the style box shows as
     # small-cap growth should not also report a $300B weighted average market cap and an
@@ -170,12 +186,10 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
     breakdowns = [
         Breakdown("market_cap", cap, name_counts(rnd, cap, holdings)),
         Breakdown("style", style, name_counts(rnd, style, holdings)),
-        Breakdown("profitability", prof, name_counts(rnd, prof, holdings)),
     ]
     if sleeve == "equity":
-        breakdowns.insert(0, Breakdown("region", spread(rnd, {
-            "US": 0.63, "Developed ex-US": 0.26, "Emerging Markets": 0.11,
-        })))
+        region = spread(rnd, {"US": 0.63, "Developed ex-US": 0.26, "Emerging Markets": 0.11})
+        breakdowns.insert(0, Breakdown("region", region, name_counts(rnd, region, holdings)))
 
     return PortfolioData(
         subject_id=model.id,
@@ -186,6 +200,8 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
             median_market_cap=rnd.uniform(8e9, 60e9) * cap_scale * cap_factor,
             price_to_book=round(rnd.uniform(1.6, 4.2) * (0.85 + tilt * 0.3) * pb_scale * pb_factor, 2),
             price_to_earnings=round(rnd.uniform(14, 28) * pb_scale * pb_factor, 1),
+            # The scalar metric, not the retired breakdown of the same name — a bare ratio
+            # shown on the Metrics vs Index row and the Profitability XY y-axis.
             profitability=round(rnd.uniform(0.18, 0.42) * prof_scale, 3),
             dividend_yield=round(rnd.uniform(0.008, 0.026), 4),
             underlying_companies=rnd.randint(60, 3600),
@@ -209,9 +225,53 @@ def equity_payload(model, as_of: str, sleeve: str = "equity") -> PortfolioData:
     )
 
 
+def total_payload(model, as_of: str) -> PortfolioData:
+    """
+    The whole book, blended.
+
+    Deliberately thin, and the omissions are the point. A price-to-book or an effective
+    duration computed across a 60/40 portfolio describes nothing real — that is the entire
+    reason sleeves exist (see core/sleeves.py), and seeding those metrics here would have
+    the demo data contradict the package's own thesis. Validation permits both groups on
+    `total` without complaint, so the restraint has to live here.
+
+    What survives the blend: how many line items the portfolio holds, what it costs, how
+    much it trades, and how it performed. Total return is arguably *most* meaningful at
+    this level — it is the number the client actually receives.
+
+    No breakdowns either. A regional or credit split across a mixed book would need a
+    denominator that means something for both halves, and none does.
+    """
+    rnd = rng_for(model.id, as_of, "total")
+    return PortfolioData(
+        subject_id=model.id,
+        sleeve="total",
+        as_of=as_of,
+        characteristics=Characteristics(
+            num_holdings=len(model.total),
+            expense_ratio=round(rnd.uniform(0.0004, 0.0065), 4),
+            turnover=round(rnd.uniform(0.05, 0.85), 3),
+        ),
+        performance=Performance(
+            return_qtd=round(rnd.uniform(-0.05, 0.09), 4),
+            return_1y=round(rnd.uniform(-0.07, 0.22), 4),
+            return_3y=round(rnd.uniform(0.0, 0.12), 4),
+            return_5y=round(rnd.uniform(0.02, 0.13), 4),
+            std_dev_3y=round(rnd.uniform(0.07, 0.16), 4),
+            sharpe_3y=round(rnd.uniform(0.2, 1.3), 2),
+            max_drawdown=round(-rnd.uniform(0.08, 0.28), 4),
+            benchmark_id=EQUITY_BENCHMARK,
+        ),
+        source=SOURCE,
+    )
+
+
 def fixed_income_payload(model, as_of: str) -> PortfolioData:
     rnd = rng_for(model.id, as_of, "fi")
     duration = round(rnd.uniform(2.4, 8.6), 2)
+    # Bond sleeves carry more line items than equity ones at comparable size — many small
+    # issues rather than a few large positions.
+    holdings = rnd.randint(200, 1400)
 
     return PortfolioData(
         subject_id=model.id,
@@ -234,20 +294,20 @@ def fixed_income_payload(model, as_of: str) -> PortfolioData:
             std_dev_3y=round(rnd.uniform(0.04, 0.09), 4),
             benchmark_id=FI_BENCHMARK,
         ),
-        breakdowns=[
-            Breakdown("credit_rating", spread(rnd, {
+        breakdowns=_with_names(rnd, holdings, {
+            "credit_rating": spread(rnd, {
                 "AAA": 0.36, "AA": 0.11, "A": 0.19, "BBB": 0.21,
                 "BB": 0.06, "B": 0.03, "CCC & Below": 0.01, "Not Rated": 0.03,
-            })),
-            Breakdown("security_type", spread(rnd, {
+            }),
+            "security_type": spread(rnd, {
                 "Government": 0.40, "Municipal": 0.06, "Corporate": 0.28,
                 "Securitized": 0.22, "Cash & Equivalents": 0.04,
-            })),
-            Breakdown("maturity_band", spread(rnd, {
+            }),
+            "maturity_band": spread(rnd, {
                 "0-1Y": 0.06, "1-3Y": 0.18, "3-5Y": 0.20, "5-7Y": 0.16,
                 "7-10Y": 0.18, "10-20Y": 0.12, "20Y+": 0.10,
-            })),
-        ],
+            }),
+        }),
         source=SOURCE,
     )
 
@@ -256,19 +316,18 @@ def fixed_income_payload(model, as_of: str) -> PortfolioData:
 #: something different for an index than for a 30-stock model.
 INDEX_NAMES = 9000
 
+#: A broad aggregate bond index is counted in issues, not issuers — one company floats
+#: dozens of bonds — so it runs an order of magnitude above the equity index.
+FI_INDEX_NAMES = 13500
+
 
 def _index_style_breakdowns(rnd: random.Random, jitter: bool = True) -> list:
-    """market_cap / style / profitability for an equity index, with holding counts."""
+    """market_cap / style for an equity index, with holding counts."""
     cap = {"Large": 0.712, "Mid": 0.196, "Small": 0.092}
     style = {"Value": 0.334, "Blend": 0.333, "Growth": 0.333}
-    prof = {"High": 0.401, "Mid": 0.392, "Low": 0.207}
     if jitter:
-        cap, style, prof = spread(rnd, cap), spread(rnd, style), spread(rnd, prof)
-    return [
-        Breakdown("market_cap", cap, name_counts(rnd, cap, INDEX_NAMES)),
-        Breakdown("style", style, name_counts(rnd, style, INDEX_NAMES)),
-        Breakdown("profitability", prof, name_counts(rnd, prof, INDEX_NAMES)),
-    ]
+        cap, style = spread(rnd, cap), spread(rnd, style)
+    return _with_names(rnd, INDEX_NAMES, {"market_cap": cap, "style": style})
 
 
 def region_benchmark_payload(sleeve: str, as_of: str) -> PortfolioData:
@@ -309,7 +368,9 @@ def benchmark_payloads(as_of: str) -> list:
                 underlying_companies=eq.randint(8500, 9200),
             ),
             breakdowns=[
-                Breakdown("region", {"US": 0.633, "Developed ex-US": 0.259, "Emerging Markets": 0.108}),
+                *_with_names(eq, INDEX_NAMES, {
+                    "region": {"US": 0.633, "Developed ex-US": 0.259, "Emerging Markets": 0.108},
+                }),
                 *_index_style_breakdowns(eq, jitter=False),
             ],
             source=SOURCE,
@@ -324,20 +385,20 @@ def benchmark_payloads(as_of: str) -> list:
                 avg_coupon=round(fi.uniform(0.031, 0.036), 4),
                 avg_credit_quality="AA",
             ),
-            breakdowns=[
-                Breakdown("credit_rating", {
+            breakdowns=_with_names(fi, FI_INDEX_NAMES, {
+                "credit_rating": {
                     "AAA": 0.442, "AA": 0.122, "A": 0.201, "BBB": 0.195,
                     "BB": 0.0, "B": 0.0, "CCC & Below": 0.0, "Not Rated": 0.04,
-                }),
-                Breakdown("security_type", {
+                },
+                "security_type": {
                     "Government": 0.451, "Municipal": 0.005, "Corporate": 0.253,
                     "Securitized": 0.281, "Cash & Equivalents": 0.01,
-                }),
-                Breakdown("maturity_band", {
+                },
+                "maturity_band": {
                     "0-1Y": 0.021, "1-3Y": 0.223, "3-5Y": 0.192, "5-7Y": 0.128,
                     "7-10Y": 0.196, "10-20Y": 0.101, "20Y+": 0.139,
-                }),
-            ],
+                },
+            }),
             source=SOURCE,
         ),
     ]
@@ -405,6 +466,8 @@ def main() -> int:
     for as_of in periods:
         payloads.extend(benchmark_payloads(as_of))
         for model in models:
+            if model.total:
+                payloads.append(total_payload(model, as_of))
             if model.equity:
                 payloads.append(equity_payload(model, as_of))
                 # The regional slices an analytics engine would compute from a security

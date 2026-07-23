@@ -52,6 +52,7 @@ from .db.schema import ALL_TABLES, bootstrap  # noqa: E402
 from .db.writer import delete_subject  # noqa: E402
 from .pull import get_market_series, get_models, to_rows  # noqa: E402
 from .push import upload_market_series, upload_pf_data  # noqa: E402
+from .validation.mirrors import check_mirrors  # noqa: E402
 
 MARKER = "PORTFOLIO_DATA_TEST_DELETE_ME"
 
@@ -163,6 +164,26 @@ def _test_sleeves() -> None:
 
     empty_total, _, _ = build_sleeves("not json at all")
     check("corrupt holdings blob reads as empty, does not raise", len(empty_total) == 0)
+
+
+def _test_mirrors() -> None:
+    """
+    The TypeScript copies of the vocabulary still match it.
+
+    Drift here is invisible to a type check, a lint, and a page that renders — an omitted
+    dimension just falls through to alphabetical bucket ordering, which turns a credit
+    axis backwards while looking entirely plausible. This is the only thing that catches
+    it. See validation/mirrors.py.
+    """
+    print("\nMirrors: the TypeScript copies still match the vocabulary")
+    checked, findings = check_mirrors()
+    if not checked:
+        # A standalone copy of backend/ has no app to compare against, which the README
+        # documents as supported. Say so rather than passing silently.
+        print("  SKIP  app/lib/db/portfolioTrends.ts not found (standalone backend copy)")
+        return
+    check("bucket order and sleeve benchmarks agree across both languages",
+          not findings, "; ".join(str(f) for f in findings))
 
 
 def _test_periods() -> None:
@@ -444,6 +465,7 @@ def main() -> int:
 
     _test_sleeves()
     _test_periods()
+    _test_mirrors()
 
     try:
         models = _test_pull(cfg)
