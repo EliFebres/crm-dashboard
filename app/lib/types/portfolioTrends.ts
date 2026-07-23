@@ -122,6 +122,11 @@ export interface Characteristics {
   priceToBook?: number;
   priceToEarnings?: number;
   priceToSales?: number;
+  /**
+   * Gross profits over assets — a bare ratio, NOT a percentage. Runs roughly 0.00–5.00,
+   * with most clients between 0.20 and 0.60. Format it as `'ratio'`; multiplying by 100
+   * would present 0.29 as "29%" and invite reading it as a share of something.
+   */
   profitability?: number;
   dividendYield?: number;
   returnOnEquity?: number;

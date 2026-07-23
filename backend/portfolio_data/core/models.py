@@ -163,7 +163,11 @@ class Characteristics:
     price_to_book: Optional[float] = None
     price_to_earnings: Optional[float] = None
     price_to_sales: Optional[float] = None
-    profitability: Optional[float] = None         # gross profits / total assets
+    #: Gross profits / total assets. A bare ratio, not a percentage and not a fraction of
+    #: anything — it runs roughly 0.00 to 5.00, with most clients between 0.20 and 0.60.
+    #: Deliberately absent from the percent-vs-fraction magnitude check for that reason:
+    #: a profitability of 2.4 is a real reading, not a misplaced decimal point.
+    profitability: Optional[float] = None
     dividend_yield: Optional[float] = None        # decimal fraction
     return_on_equity: Optional[float] = None      # decimal fraction
     underlying_companies: Optional[int] = None    # look-through issuer count
