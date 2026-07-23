@@ -157,7 +157,8 @@ function Card({
 
 const EQUITY_METRICS: MetricSpec[] = [
   { key: 'underlyingCompanies', label: 'Underlying cos.', format: 'count' },
-  { key: 'wtdAvgMarketCap', label: 'Wtd avg mkt cap', format: 'money' },
+  // Market cap is quoted in millions, the unit it is screened and compared in.
+  { key: 'wtdAvgMarketCap', label: 'Wtd avg mkt cap', format: 'millions' },
   { key: 'priceToBook', label: 'Price/Book', format: 'ratio' },
   // Profitability is a bare ratio (gross profits / assets), not a percentage. It runs
   // roughly 0.00–5.00 with most clients between 0.20 and 0.60, so it is shown as the
@@ -502,7 +503,7 @@ export default function PortfolioTrendsDashboard() {
                     xLabel="Price/Book"
                     yLabel="Wtd avg market cap"
                     xFormat="ratio"
-                    yFormat="money"
+                    yFormat="millions"
                   />
                 </Card>
               ) : (

@@ -17,7 +17,13 @@ import { BENCHMARK_COLOR, DELTA_INK, cohortColor } from './chartTokens';
  * models and an average over forty look identical otherwise.
  */
 
-export type MetricFormat = 'money' | 'ratio' | 'percent' | 'count' | 'years' | 'text';
+/**
+ * `money` auto-scales to K/M/B/T; `millions` pins the unit at millions regardless of
+ * magnitude, which is the convention market cap is quoted in — an analyst comparing a
+ * portfolio against a screen reads $242,100M, not $242.1B, and a fixed unit is what makes
+ * two figures comparable at a glance.
+ */
+export type MetricFormat = 'money' | 'millions' | 'ratio' | 'percent' | 'count' | 'years' | 'text';
 
 export interface MetricSpec {
   key: keyof Characteristics;
@@ -49,6 +55,7 @@ export function formatMetric(value: number | string | undefined, format: MetricF
   if (!Number.isFinite(n)) return EM_DASH;
   switch (format) {
     case 'money': return formatCompactMoney(n);
+    case 'millions': return `$${(n / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}M`;
     // Stored as decimal fractions throughout, so the x100 happens here and only here.
     case 'percent': return `${(n * 100).toFixed(1)}%`;
     case 'count': return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -77,6 +84,7 @@ function formatDelta(delta: number, format: MetricFormat): string {
   const sign = delta >= 0 ? '+' : '';
   switch (format) {
     case 'money': return `${sign}${formatCompactMoney(delta).replace('$-', '-$')}`;
+    case 'millions': return `${sign}${formatMetric(delta, 'millions').replace('$-', '-$')}`;
     case 'percent': return `${sign}${(delta * 100).toFixed(1)}pp`;
     case 'count': return `${sign}${Math.round(delta).toLocaleString()}`;
     case 'years': return `${sign}${delta.toFixed(1)}`;
