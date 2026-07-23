@@ -8,6 +8,9 @@
 /** The synthetic cohort: each client collapsed to its single main model. */
 export const AVG_CLIENT = 'Avg. Client';
 
+/** The three portfolios a model is analysed as. Mirrors portfolio_data's sleeve vocabulary. */
+export type Sleeve = 'total' | 'equity' | 'fixed_income';
+
 export interface PortfolioTrendsFilters {
   departments?: string[];
   offices?: string[];
@@ -16,6 +19,13 @@ export interface PortfolioTrendsFilters {
   cohorts?: string[];
   /** Strict lower bound in dollars. Models with a NULL aum never match. */
   minAum?: number | null;
+  /**
+   * Quarter end to read analytics at, as `YYYY-MM-DD`. Omitted means "the most recent
+   * period that actually has data" — which is not the same as the most recent completed
+   * quarter, since an upload can lag. The resolved value comes back as
+   * `marketData.asOf` so the page can show which period it actually got.
+   */
+  asOf?: string | null;
 }
 
 export interface PortfolioTrendsSummary {
@@ -39,17 +49,138 @@ export interface PortfolioTrendsFilterOptions {
   offices: string[];
   teams: string[];
   cohorts: PortfolioCohort[];
+  /**
+   * Quarter ends that actually hold analytics, newest first. The period dropdown is
+   * built from these rather than from the calendar: offering a quarter with no uploaded
+   * data would render every card empty and look like a bug.
+   */
+  periods: string[];
+}
+
+// ---------------------------------------------------------------------------------
+// Market data — populated from the pf_* tables written by backend/portfolio_data.
+//
+// Everything below is null or empty until an analytics upload lands. Cards check their
+// own slice and fall back to the "requires market data" state individually, so a partial
+// ingest (characteristics but no breakdowns, say) lights up what it can instead of
+// blanking the page.
+// ---------------------------------------------------------------------------------
+
+/**
+ * Portfolio characteristics, as decimal fractions where they are ratios — matching how
+ * portfolio_data stores them. 8.4% is 0.084 here too; the formatters do the ×100.
+ */
+export interface Characteristics {
+  wtdAvgMarketCap?: number;
+  medianMarketCap?: number;
+  priceToBook?: number;
+  priceToEarnings?: number;
+  priceToSales?: number;
+  profitability?: number;
+  dividendYield?: number;
+  returnOnEquity?: number;
+  underlyingCompanies?: number;
+  effectiveDuration?: number;
+  effectiveMaturity?: number;
+  yieldToMaturity?: number;
+  secYield?: number;
+  avgCoupon?: number;
+  avgCreditQuality?: string;
+  numHoldings?: number;
+  expenseRatio?: number;
+  turnover?: number;
+}
+
+/**
+ * One cohort's aggregate for a sleeve at a period.
+ *
+ * `modelCount` is how many models carried *any* analytics, and each metric is an equal-
+ * weighted mean over the models that reported that specific metric. Equal-weighted, not
+ * AUM-weighted, because AUM is frequently unrecorded (the summary strip counts how many)
+ * and an AUM weighting that silently ignores those models would be worse than an honest
+ * average. `metricCounts` exposes the denominator per metric so a number computed from
+ * two models out of forty is not mistaken for a settled figure.
+ */
+export interface CohortAggregate {
+  cohort: string;
+  modelCount: number;
+  characteristics: Characteristics;
+  metricCounts: Record<string, number>;
+}
+
+/** One model's position on a scatter — the cloud behind a cohort average. */
+export interface ModelPoint {
+  modelId: string;
+  clientName: string;
+  modelName: string;
+  isMain: boolean;
+  characteristics: Characteristics;
+}
+
+/**
+ * A weight distribution over ordered buckets, per cohort, against the benchmark.
+ * `buckets` is the canonical order (worst-to-best credit, shortest-to-longest maturity),
+ * so the chart never sorts by value and never reorders between renders.
+ */
+export interface BreakdownSeries {
+  dimension: string;
+  buckets: string[];
+  /** cohort name -> bucket -> weight (0..1). Missing buckets mean zero. */
+  cohorts: Record<string, Record<string, number>>;
+  /** The benchmark's distribution over the same buckets, or null when not uploaded. */
+  benchmark: Record<string, number> | null;
+}
+
+export interface BenchmarkRef {
+  id: string;
+  name: string;
+}
+
+/** Everything one sleeve contributes to the page. */
+export interface SleeveMarketData {
+  /** Aggregates for the cohorts currently selected, in selection order. */
+  cohorts: CohortAggregate[];
+  /** The reference index for this sleeve, or null when nothing was uploaded for it. */
+  benchmark: (CohortAggregate & { ref: BenchmarkRef }) | null;
+  /** Every model in the filtered set that has analytics — the scatter cloud. */
+  models: ModelPoint[];
+  /** dimension -> distribution. Absent dimensions simply were not uploaded. */
+  breakdowns: Record<string, BreakdownSeries>;
+}
+
+/** One point on the Treasury par-yield curve. `yield` is a decimal fraction. */
+export interface YieldCurvePoint {
+  tenor: string;
+  yield: number;
+}
+
+/** One date's credit spreads, in basis points. */
+export interface CreditSpreadPoint {
+  asOf: string;
+  ig: number | null;
+  hy: number | null;
+}
+
+export interface PortfolioMarketData {
+  /** The period actually read — may lag the requested one when no data exists for it. */
+  asOf: string;
+  equity: SleeveMarketData;
+  fixedIncome: SleeveMarketData;
+  /** Curve as of the latest date on or before `asOf`. Empty when never uploaded. */
+  yieldCurve: YieldCurvePoint[];
+  /** Full history up to `asOf`, oldest first. Empty when never uploaded. */
+  creditSpreads: CreditSpreadPoint[];
 }
 
 export interface PortfolioTrendsResponse {
   summary: PortfolioTrendsSummary;
   filterOptions: PortfolioTrendsFilterOptions;
   /**
-   * Market data for the style / profitability / fixed-income cards. Always null today:
-   * deriving market cap, price-to-book, profitability, duration, credit quality, yields
-   * or maturity from a ticker needs a security master this app does not have. Those cards
-   * render an explicit "requires market data" state while this is null, rather than
-   * showing invented numbers.
+   * Analytics for the style / profitability / fixed-income cards, read from the pf_*
+   * tables that `backend/portfolio_data` writes. Null when no analytics have been
+   * uploaded at all — the cards then render their "requires market data" state rather
+   * than an empty plot, which is the honest distinction between "nothing ingested" and
+   * "ingested, and the answer is zero".
    */
-  marketData: null;
+  marketData: PortfolioMarketData | null;
 }
