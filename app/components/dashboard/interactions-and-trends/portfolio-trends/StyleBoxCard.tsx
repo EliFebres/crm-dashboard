@@ -133,10 +133,10 @@ export default function StyleBoxCard({
           no positioning depends on them. */}
       <div className="flex min-w-0 flex-col">
         <div className="flex min-h-0 flex-1">
-          <div className="flex w-10 flex-shrink-0 flex-col justify-around pr-2 text-right">
-            <span className="text-xs leading-none text-muted">Large</span>
-            <span className="text-xs leading-none text-muted">Mid</span>
-            <span className="text-xs leading-none text-muted">Small</span>
+          <div className="flex w-12 flex-shrink-0 flex-col justify-around pr-2 text-right">
+            <span className="text-sm leading-none text-muted">Large</span>
+            <span className="text-sm leading-none text-muted">Mid</span>
+            <span className="text-sm leading-none text-muted">Small</span>
           </div>
           <div className="relative h-full w-3/4 rounded-sm border-4 border-zinc-600/80">
             <div className="absolute left-0 right-0 border-t-[3px] border-zinc-700/70" style={{ top: '33.333%' }} />
@@ -183,11 +183,11 @@ export default function StyleBoxCard({
         {/* Mirrors the row above — same gutter, same 75% — so the labels stay under their
             columns whatever the cell width. */}
         <div className="mt-1 flex">
-          <div className="w-10 flex-shrink-0" />
+          <div className="w-12 flex-shrink-0" />
           <div className="flex w-3/4">
-            <span className="flex-1 text-center text-xs leading-none text-muted">Value</span>
-            <span className="flex-1 text-center text-xs leading-none text-muted">Core</span>
-            <span className="flex-1 text-center text-xs leading-none text-muted">Growth</span>
+            <span className="flex-1 text-center text-sm leading-none text-muted">Value</span>
+            <span className="flex-1 text-center text-sm leading-none text-muted">Core</span>
+            <span className="flex-1 text-center text-sm leading-none text-muted">Growth</span>
           </div>
         </div>
       </div>
