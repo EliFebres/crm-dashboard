@@ -17,6 +17,11 @@ import { BENCHMARK_COLOR, DELTA_INK, MODEL_CLOUD_COLOR, cohortColor } from './ch
  * Each cell shows the weight and, beneath it, how many names carry that weight. The count
  * is not decoration: 45% large cap across 12 names and across 400 names are different
  * portfolios, and the weight alone cannot tell them apart.
+ *
+ * The index and each cohort are directly labelled, as on the XY scatters, so identity
+ * never depends on hovering or on matching a color to a legend. The model cloud is not:
+ * sixty-nine names would bury the three that matter, and those points are there for their
+ * distribution rather than individually.
  */
 
 /** Where a portfolio sits on the size axis. 0 = all large cap (top), 1 = all small (bottom). */
@@ -54,6 +59,16 @@ interface Dot {
   isModel?: boolean;
   sublabel?: string;
   detail: string[];
+  /**
+   * Vertical offset of the direct label from the dot's centre, in pixels.
+   *
+   * Same arrangement as the XY scatters: cohorts stack upward, the index sits below, and
+   * every label is centred on its own dot. A cohort average and the index routinely land
+   * a few pixels apart — that closeness is the finding — so a shared offset would put the
+   * two labels on top of each other exactly when the card is most worth reading.
+   * Cloud dots are not labelled at all; sixty-nine names would bury the three that matter.
+   */
+  labelDy: number;
 }
 
 const pct = (v: number | undefined) => `${Math.round((v ?? 0) * 100)}%`;
@@ -105,6 +120,7 @@ export default function StyleBoxCard({
       color: MODEL_CLOUD_COLOR,
       isBenchmark: false,
       isModel: true,
+      labelDy: 0, // never labelled
       detail: [
         `Large/Mid/Small: ${pct(cap?.['Large'])} / ${pct(cap?.['Mid'])} / ${pct(cap?.['Small'])}`,
         `Value/Blend/Growth: ${pct(sty?.['Value'])} / ${pct(sty?.['Blend'])} / ${pct(sty?.['Growth'])}`,
@@ -123,6 +139,9 @@ export default function StyleBoxCard({
       y: indexY,
       color: BENCHMARK_COLOR.hex,
       isBenchmark: true,
+      // Below the dot — the opposite side from the cohorts, which is what keeps the two
+      // apart when a cohort average sits right on top of the index.
+      labelDy: 18,
       detail: [
         `Large/Mid/Small: ${pct(marketCap?.benchmark?.['Large'])} / ${pct(marketCap?.benchmark?.['Mid'])} / ${pct(marketCap?.benchmark?.['Small'])}`,
         `Value/Blend/Growth: ${pct(style?.benchmark?.['Value'])} / ${pct(style?.benchmark?.['Blend'])} / ${pct(style?.benchmark?.['Growth'])}`,
@@ -130,12 +149,12 @@ export default function StyleBoxCard({
     });
   }
 
-  for (const cohort of cohorts) {
+  cohorts.forEach((cohort, i) => {
     const cap = marketCap?.cohorts[cohort];
     const sty = style?.cohorts[cohort];
     const x = styleAxis(sty);
     const y = sizeAxis(cap);
-    if (x == null || y == null) continue;
+    if (x == null || y == null) return;
     const color = cohortColor(cohort, allCohorts);
     dots.push({
       key: cohort,
@@ -145,12 +164,14 @@ export default function StyleBoxCard({
       color: color.hex,
       glow: color.glow,
       isBenchmark: false,
+      // Clears both its own dot and the index's, then stacks for further cohorts.
+      labelDy: -17 - i * 13,
       detail: [
         `Large/Mid/Small: ${pct(cap?.['Large'])} / ${pct(cap?.['Mid'])} / ${pct(cap?.['Small'])}`,
         `Value/Blend/Growth: ${pct(sty?.['Value'])} / ${pct(sty?.['Blend'])} / ${pct(sty?.['Growth'])}`,
       ],
     });
-  }
+  });
 
   const modelDotCount = dots.filter((d) => d.isModel).length;
   const seriesFor = (dimension: 'market_cap' | 'style') => (dimension === 'market_cap' ? marketCap : style);
@@ -193,6 +214,27 @@ export default function StyleBoxCard({
                 onMouseEnter={() => setHover(dot)}
                 onMouseLeave={() => setHover((h) => (h?.key === dot.key ? null : h))}
               />
+            ))}
+
+            {/* Direct labels, as on the XY scatters. Rendered after every dot so they sit
+                on top, and carrying a surface-colored halo instead of a background box so
+                they stay legible over the gridlines and the cloud without masking them.
+                pointer-events-none keeps a label from stealing its own dot's hover. */}
+            {dots.filter((d) => !d.isModel).map((dot) => (
+              <span
+                key={`label:${dot.key}`}
+                className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] leading-none"
+                style={{
+                  left: `${dot.x * 100}%`,
+                  top: `${dot.y * 100}%`,
+                  transform: `translate(-50%, calc(-50% + ${dot.labelDy}px))`,
+                  color: dot.isBenchmark ? '#a1a1aa' : '#e4e4e7',
+                  textShadow:
+                    '0 0 3px #131316, 0 0 3px #131316, 0 0 3px #131316, 0 0 3px #131316',
+                }}
+              >
+                {dot.label}
+              </span>
             ))}
 
             {hover && (
