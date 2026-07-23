@@ -25,4 +25,8 @@ packages = [
     "crm_sync.validation",
     "crm_sync.utils",
     "crm_sync.tests",
+    "portfolio_data",
+    "portfolio_data.core",
+    "portfolio_data.db",
+    "portfolio_data.validation",
 ]
