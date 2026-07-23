@@ -341,8 +341,8 @@ export default function CharacteristicScatter({
               tick={{ fill: CHART_INK.tick, fontSize: 10 }}
               tickLine={false}
               axisLine={false}
-              // '$500,000M' needs a good deal more room than '3.92'.
-              width={yFormat === 'millions' ? 70 : yFormat === 'money' ? 58 : 46}
+              // '$1,234.5B' needs more room than '3.92'.
+              width={yFormat === 'money' ? 58 : 46}
               tickFormatter={(v: number) => formatAxisTick(v, yFormat)}
               label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: CHART_INK.muted, fontSize: 10, style: { textAnchor: 'middle' } }}
             />
