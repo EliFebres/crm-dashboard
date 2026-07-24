@@ -43,7 +43,7 @@ export async function GET() {
     }
   };
 
-  addValidation('B', '"Portfolio,Morningstar-Fund,Security,Index"');
+  addValidation('B', '"Portfolio,Morningstar-Fund,Security,Index,Cash"');
   addValidation('C', '"Equity,Fixed Income,Alternatives,Crypto,Fund of Funds,Multi-Asset,Cash"');
 
   // Example rows
@@ -79,7 +79,7 @@ export async function GET() {
 
   const refData: [string, string][] = [
     ['Identifier',       'Ticker, ISIN, or CUSIP. Will be auto-uppercased.'],
-    ['Constituent Type', 'Portfolio | Morningstar-Fund | Security | Index'],
+    ['Constituent Type', 'Portfolio | Morningstar-Fund | Security | Index | Cash'],
     ['Asset Class',      'Equity | Fixed Income | Alternatives | Crypto | Fund of Funds | Multi-Asset | Cash'],
     ['Weight (%)',       'Enter as a percentage (e.g. 25 = 25%). Weights are auto-normalized to sum to 100%.'],
     ['', ''],

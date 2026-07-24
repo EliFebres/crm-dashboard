@@ -62,7 +62,7 @@ ASSET_CLASSES: Tuple[str, ...] = (
 )
 
 #: Mirror of CONSTITUENT_TYPES.
-CONSTITUENT_TYPES: Tuple[str, ...] = ("Portfolio", "Morningstar-Fund", "Security", "Index")
+CONSTITUENT_TYPES: Tuple[str, ...] = ("Portfolio", "Morningstar-Fund", "Security", "Index", "Cash")
 
 #: The two asset classes that define a sleeve. Everything else in ASSET_CLASSES appears
 #: only in the total portfolio — see core/sleeves.py for why they cannot be split.

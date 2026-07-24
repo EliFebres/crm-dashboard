@@ -73,7 +73,7 @@ export interface Client {
 }
 
 export type AssetClass = 'Equity' | 'Fixed Income' | 'Alternatives' | 'Crypto' | 'Fund of Funds' | 'Multi-Asset' | 'Cash';
-export type ConstituentType = 'Portfolio' | 'Morningstar-Fund' | 'Security' | 'Index';
+export type ConstituentType = 'Portfolio' | 'Morningstar-Fund' | 'Security' | 'Index' | 'Cash';
 
 export interface PortfolioHolding {
   identifier: string; // Ticker, ISIN, or CUSIP

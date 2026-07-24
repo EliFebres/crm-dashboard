@@ -68,7 +68,7 @@ class Holding:
     """One position. `weight` is relative to the sleeve it sits in, not to the portfolio."""
 
     identifier: str          # ticker / ISIN / CUSIP, uppercased during normalization
-    constituent_type: str    # Portfolio | Morningstar-Fund | Security | Index
+    constituent_type: str    # Portfolio | Morningstar-Fund | Security | Index | Cash
     asset_class: str
     weight: float
 

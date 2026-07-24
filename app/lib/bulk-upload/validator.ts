@@ -25,7 +25,7 @@ const VALID_AD_HOC_CHANNELS = ['In-Person', 'Email', 'Teams'];
 const VALID_PROJECT_TYPES = ['Meeting', 'Discovery Meeting', 'Data Request', 'Data Update', 'PCR', 'Other', 'Follow-up Material', 'Follow-up Meeting'];
 const VALID_DEPARTMENTS = ['Advisory', 'Brokerage', 'Institutional', 'Retirement'];
 const VALID_STATUSES: string[] = [...STATUS_ENUM];
-const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index'];
+const VALID_CONSTITUENT_TYPES = ['Portfolio', 'Morningstar-Fund', 'Security', 'Index', 'Cash'];
 const VALID_ASSET_CLASSES = ['Equity', 'Fixed Income', 'Alternatives', 'Crypto', 'Fund of Funds', 'Multi-Asset', 'Cash'];
 
 // Fuzzy normalize for enum matching — case-insensitive, strip spaces/hyphens

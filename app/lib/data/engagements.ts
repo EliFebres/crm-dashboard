@@ -2,7 +2,7 @@
 // Used for mock data (when SQLITE_DIR is not set) and by scripts/seed-db.ts
 
 
-import type { Engagement, Client, DayData, AdHocChannel, PortfolioHolding, AssetClass } from '../types/engagements';
+import type { Engagement, Client, DayData, AdHocChannel, PortfolioHolding, AssetClass, ConstituentType } from '../types/engagements';
 import { getContributionWindow } from '../db/dateUtils';
 
 // Sample tickers for portfolio generation
@@ -51,8 +51,13 @@ function generatePortfolio(seed: number): PortfolioHolding[] {
 
     // Determine asset class based on ticker prefix / membership
     let assetClass: AssetClass;
+    let constituentType: ConstituentType = 'Security';
+    let identifier = ticker;
     if (CASH_TICKERS.includes(ticker)) {
+      // Cash positions carry the dedicated Cash constituent type and a plain CASH ticker.
       assetClass = 'Cash';
+      constituentType = 'Cash';
+      identifier = 'CASH';
     } else if (CRYPTO_TICKERS.includes(ticker)) {
       assetClass = 'Crypto';
     } else if (MULTI_TICKERS.includes(ticker)) {
@@ -68,8 +73,8 @@ function generatePortfolio(seed: number): PortfolioHolding[] {
     }
 
     holdings.push({
-      identifier: ticker,
-      constituentType: 'Security',
+      identifier,
+      constituentType,
       assetClass,
       weight: rawWeights[i] / totalWeight, // Normalized weight
     });
