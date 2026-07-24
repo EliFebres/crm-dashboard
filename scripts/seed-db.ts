@@ -321,8 +321,7 @@ function synthHoldings(seed: number, style: 'balanced' | 'growth' | 'conservativ
   }
   // Every model carries a small cash sleeve so the Cash class is broadly seeded.
   holdings.push({
-    identifier: CASH_TICKERS[Math.floor(rng(seed + 90) * CASH_TICKERS.length)],
-    constituentType: 'Security', assetClass: 'Cash', weight: 5,
+    identifier: 'CASH', constituentType: 'Cash', assetClass: 'Cash', weight: 5,
   });
   // ~60% of models additionally run a newer-class sleeve — rotating Crypto /
   // Multi-Asset / Fund of Funds so each class ends up with real rows across the
