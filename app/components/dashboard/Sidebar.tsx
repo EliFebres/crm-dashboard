@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ChevronDown, PieChart, Flame, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Bell, Activity, FileChartPie, Settings } from 'lucide-react';
+import { LayoutDashboard, ChevronDown, PieChart, User, LogOut, Users, PanelLeftClose, PanelLeftOpen, Bell, Activity, FileChartPie, Settings } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { useAlerts } from '@/app/lib/hooks/useAlerts';
 import { NotificationsPopover } from '@/app/components/dashboard/NotificationsPopover';
@@ -34,7 +34,9 @@ const navSections: NavSection[] = [
     title: 'Client Trends',
     items: [
       { label: 'Portfolio Trends', href: '/dashboard/interactions-and-trends/portfolio-trends', icon: PieChart },
-      { label: 'Ticker Trends', href: '/dashboard/interactions-and-trends/ticker-trends', icon: Flame },
+      // Ticker Trends is hidden for now — its page lives at
+      // app/dashboard/interactions-and-trends/_ticker-trends (underscore keeps it
+      // off the router). Restore this entry and drop the underscore to re-enable.
     ],
   },
 ];
