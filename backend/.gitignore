@@ -9,3 +9,6 @@ dist/
 # Local virtualenvs
 .venv/
 venv/
+
+# Jupyter's autosaves. The notebooks themselves are committed, outputs cleared.
+.ipynb_checkpoints/

@@ -5,12 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "crm-sync"
 version = "2.0.0"
-description = "Create CRM client interactions from Python, straight into the dashboard's SQLite database."
+description = "Create CRM client interactions and upload portfolio analytics from Python, straight into the dashboard's SQLite databases."
 readme = "crm_sync/docs/README.md"
 requires-python = ">=3.9"
 
-# Deliberately empty: crm_sync uses only the standard library. See requirements.txt.
-dependencies = []
+# `crm_sync` itself still imports only the standard library. The distribution does not:
+# portfolio_data's documented way in and out is a DataFrame, and the notebooks need a
+# server to open in. See requirements.txt for the exact pins.
+dependencies = [
+    "pandas>=2.0",      # portfolio_data/frames.py — the DataFrame layer
+    "jupyterlab>=4.4",  # backend/notebooks/*.ipynb — nothing under backend/ imports it
+]
 
 [project.urls]
 Documentation = "https://github.com/../backend/crm_sync/docs/README.md"

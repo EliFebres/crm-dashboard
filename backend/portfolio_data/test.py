@@ -15,9 +15,9 @@ to the repo's `.env`, the same file the Next.js app reads.
 
 What it does: checks the sleeve arithmetic on synthetic holdings, pulls the real models and
 asserts their weights, round-trips an upload against a real model id, proves each
-validation rule actually rejects what it claims to, and writes two market points. Then it
-deletes everything it created. Cleanup runs in a `finally`, so a failed assertion still
-leaves the database exactly as it was found.
+validation rule actually rejects what it claims to, exercises the DataFrame layer both ways,
+and writes two market points. Then it deletes everything it created. Cleanup runs in a
+`finally`, so a failed assertion still leaves the database exactly as it was found.
 
 **It writes to whatever database SQLITE_DIR names — including a live one.** Two things make
 that safe. Every row it creates is stamped `as_of = 1900-03-31`: a real quarter end, so it
@@ -35,6 +35,9 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = "portfolio_data"
 
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+
 from .core.config import TABLE_MARKET_SERIES, load_config  # noqa: E402
 from .core.exceptions import ConfigError  # noqa: E402
 from .core.models import (  # noqa: E402
@@ -50,9 +53,31 @@ from .db.connection import open_portfolio, open_portfolio_readonly, write_tx  # 
 from .db.reader import read_breakdowns, read_characteristics, read_performance  # noqa: E402
 from .db.schema import ALL_TABLES, bootstrap  # noqa: E402
 from .db.writer import delete_subject  # noqa: E402
-from .pull import get_market_series, get_models, to_rows  # noqa: E402
+from .frames import (  # noqa: E402
+    BREAKDOWN_COLUMNS,
+    CHARACTERISTIC_COLUMNS,
+    CONTEXT_COLUMNS,
+    KEY_COLUMNS,
+    NAMES_COLUMNS,
+    PERFORMANCE_COLUMNS,
+    _as_of,
+    _classify,
+    _scalar,
+    blank_frame,
+    fill,
+    holdings_frame,
+    market_frame,
+    market_template,
+    models_frame,
+    stored_frame,
+    template_columns,
+    upload_frame,
+    upload_market_frame,
+)
+from .pull import PULLABLE_SLEEVES, get_market_series, get_models, to_rows  # noqa: E402
 from .push import upload_market_series, upload_pf_data  # noqa: E402
 from .validation.mirrors import check_mirrors  # noqa: E402
+from .validation.vocabulary import BREAKDOWN_DIMENSIONS  # noqa: E402
 
 MARKER = "PORTFOLIO_DATA_TEST_DELETE_ME"
 
@@ -186,6 +211,73 @@ def _test_mirrors() -> None:
           not findings, "; ".join(str(f) for f in findings))
 
 
+def _test_frames_offline() -> None:
+    """
+    The frame layer's pure parts: which columns exist, and what a cell converts to.
+
+    Runs before anything opens a database, because a broken classifier would otherwise be
+    discovered halfway through a write.
+    """
+    print("\nFrames (offline): columns, conversion, classification")
+
+    columns = template_columns()
+    expected = 4 + len(CONTEXT_COLUMNS) + 36 + len(BREAKDOWN_COLUMNS) + 1
+    check("template has every column exactly once", len(columns) == len(set(columns)) == expected,
+          f"{len(columns)} columns, {len(set(columns))} distinct, expected {expected}")
+    check("template starts with the key", tuple(columns[:4]) == KEY_COLUMNS, str(columns[:4]))
+    check("source is last", columns[-1] == "source", columns[-1])
+    wide = template_columns(include_names=True)
+    check("counts are opt-in, and adding them shifts nothing else",
+          len(wide) == len(columns) + len(NAMES_COLUMNS)
+          and [c for c in wide if c not in NAMES_COLUMNS] == columns)
+
+    missing = [c for c in CHARACTERISTIC_COLUMNS + PERFORMANCE_COLUMNS if c not in columns]
+    check("every metric field is a column", not missing, str(missing))
+    buckets = [f"{d}.{b}" for d, bs in BREAKDOWN_DIMENSIONS.items() for b in bs]
+    check("every breakdown bucket is a column", all(b in columns for b in buckets),
+          str([b for b in buckets if b not in columns]))
+
+    blanks = [np.nan, None, pd.NA, pd.NaT, "", "   ", float("nan")]
+    check("every spelling of missing becomes None", all(_scalar(b) is None for b in blanks),
+          str([(b, _scalar(b)) for b in blanks if _scalar(b) is not None]))
+    check("a string keeps its value, stripped", _scalar("  AA-  ") == "AA-")
+
+    # A numpy scalar cannot be bound by sqlite3, and validation's holding-count rule tests
+    # `isinstance(v, int)`, which numpy.int64 fails. If this regresses, uploads start
+    # failing with InterfaceError deep inside the writer.
+    check("numpy int becomes a Python int",
+          type(_scalar(np.int64(3184))) is int and _scalar(np.int64(3184)) == 3184)
+    check("numpy float becomes a Python float",
+          type(_scalar(np.float64(2.87))) is float)
+    check("a list cell is not mistaken for missing", _scalar(["a", "b"]) == ["a", "b"])
+
+    check("Timestamp becomes an ISO date", _as_of(pd.Timestamp("2026-03-31")) == "2026-03-31")
+    check("a period label resolves", _as_of("Q1 2026") == "2026-03-31")
+    check("a bad date passes through for validation to explain",
+          _as_of("2026-02-14") == "2026-02-14")
+
+    try:
+        _classify(["subject_id", "sleeve", "as_of", "price_to_books"])
+        check("a misspelled column is rejected, not dropped", False, "no exception")
+    except ValueError as exc:
+        check("a misspelled column is rejected, not dropped",
+              "price_to_books" in str(exc) and "price_to_book'" in str(exc), str(exc)[:120])
+
+    try:
+        classified = _classify(
+            list(KEY_COLUMNS) + list(CONTEXT_COLUMNS)
+            + ["price_to_book", "return_1y", "region.US", "names.region.US", "source", "_note"]
+        )
+        check("context and underscore columns are ignored, not rejected",
+              classified.characteristics == ("price_to_book",)
+              and classified.performance == ("return_1y",)
+              and classified.weights == {"region": (("region.US", "US"),)}
+              and classified.counts == {"region": (("names.region.US", "US"),)}
+              and classified.has_source)
+    except ValueError as exc:
+        check("context and underscore columns are ignored, not rejected", False, str(exc)[:120])
+
+
 def _test_periods() -> None:
     print("\nPeriods: quarter ends match the dashboard's dropdown")
     check("Q1 2026 -> 2026-03-31", quarter_end_for_label("Q1 2026") == "2026-03-31")
@@ -231,10 +323,214 @@ def _test_pull(cfg):
     check("to_rows flattens the equity sleeve", len(rows) == equity_positions,
           f"{len(rows)} vs {equity_positions}")
 
+    # Regression: the default used to be every name in SLEEVES, including the three
+    # upload-only equity_* sleeves that no LoggedModel carries — so the no-argument call
+    # raised. It was never caught because every caller in this file passed `sleeves=`.
+    all_positions = sum(len(m.total) + len(m.equity) + len(m.fixed_income) for m in models)
+    try:
+        default_rows = to_rows(models)
+        check("to_rows with no sleeves argument covers the three pullable sleeves",
+              len(default_rows) == all_positions, f"{len(default_rows)} vs {all_positions}")
+    except ValueError as exc:
+        check("to_rows with no sleeves argument covers the three pullable sleeves", False, str(exc))
+
+    try:
+        to_rows(models, sleeves=["equity_us"])
+        check("an upload-only sleeve explains itself", False, "no exception")
+    except ValueError as exc:
+        check("an upload-only sleeve explains itself", "upload-only" in str(exc), str(exc)[:100])
+
     if models:
         check("main_only is a subset",
               len(get_models(main_only=True, cfg=cfg)) <= len(models))
     return models
+
+
+def _test_pull_frames(cfg, models):
+    print("\nFrames: the pull side")
+    frame = models_frame(cfg=cfg)
+    check("models_frame has a row per model", len(frame) == len(models),
+          f"{len(frame)} vs {len(models)}")
+    check("aum is a nullable integer, not a float",
+          str(frame["aum"].dtype) == "Int64", str(frame["aum"].dtype))
+
+    holdings = holdings_frame(models, sleeves=list(PULLABLE_SLEEVES))
+    expected = sum(len(m.total) + len(m.equity) + len(m.fixed_income) for m in models)
+    check("holdings_frame has a row per position", len(holdings) == expected,
+          f"{len(holdings)} vs {expected}")
+
+    if len(holdings):
+        sums = holdings.groupby(["subject_id", "sleeve"]).weight.sum()
+        check("every sleeve's weights sum to 1 in the frame",
+              bool(((sums - 1.0).abs() < 1e-6).all()), str(sums[(sums - 1.0).abs() >= 1e-6][:3]))
+        product = (holdings.weight * holdings.weight_of_total - holdings.portfolio_weight).abs()
+        check("portfolio_weight is weight x weight_of_total", bool((product < 1e-12).all()))
+
+
+# ---------------------------------------------------------------------------------
+# Section 4 — the frame round trip
+# ---------------------------------------------------------------------------------
+
+def _test_frames(cfg, model):
+    """
+    The DataFrame layer against the real database.
+
+    Runs on the `total` sleeve so it cannot interfere with `_test_round_trip`, which owns
+    `equity` at the same date. Cleanup is the existing one — `delete_subject` is scoped by
+    subject and date, not by sleeve.
+    """
+    print(f"\nFrames: round trip against {model.describe()} at {TEST_AS_OF}")
+    sleeve = "total"
+
+    template = blank_frame([model], sleeves=[sleeve], as_of=TEST_AS_OF, cfg=cfg)
+    check("template has one row for one model and one sleeve", len(template) == 1, str(len(template)))
+    check("template columns match the declared order",
+          list(template.columns) == template_columns(), "columns differ")
+    check("every metric cell starts blank",
+          bool(template[list(CHARACTERISTIC_COLUMNS) + list(BREAKDOWN_COLUMNS)].isna().all().all()))
+    check("a holding count is a nullable integer column",
+          str(template["underlying_companies"].dtype) == "Int64",
+          str(template["underlying_companies"].dtype))
+    check("free text stays object, not float",
+          str(template["avg_credit_quality"].dtype) == "object",
+          str(template["avg_credit_quality"].dtype))
+    check("context is filled in for reading",
+          template["client_name"].iloc[0] == model.client_name
+          and template["quarter"].iloc[0] == quarter_label(TEST_AS_OF))
+
+    filled = template.copy()
+    filled.loc[:, "price_to_book"] = 2.87
+    filled.loc[:, "underlying_companies"] = 3184
+    filled.loc[:, ["region.US", "region.Developed ex-US", "region.Emerging Markets"]] = [
+        0.62, 0.28, 0.10,
+    ]
+    summary = upload_frame(filled, source=MARKER, cfg=cfg)
+    check("filled template uploads", summary.written == 1 and summary.failed == 0,
+          summary.render())
+
+    stored = read_characteristics(cfg, model.id, sleeve, TEST_AS_OF)
+    check("the frame's values reached the database", stored is not None
+          and abs(float(stored["price_to_book"]) - 2.87) < 1e-9)
+    # The one that catches a numpy scalar leaking through: the column is INTEGER, and a
+    # numpy.int64 either raises in sqlite3 or binds as REAL and stores 3184.0.
+    check("an integer metric survives as an integer, not 3184.0",
+          stored is not None and isinstance(stored["underlying_companies"], int)
+          and stored["underlying_companies"] == 3184,
+          repr(None if stored is None else stored["underlying_companies"]))
+
+    # Blank means "leave alone" — the COALESCE behaviour, seen from the frame.
+    second = template.copy()
+    second.loc[:, "return_1y"] = 0.084
+    upload_frame(second, source=MARKER, cfg=cfg)
+    after = read_characteristics(cfg, model.id, sleeve, TEST_AS_OF)
+    check("a blank cell leaves the stored value alone",
+          after is not None and abs(float(after["price_to_book"]) - 2.87) < 1e-9,
+          repr(None if after is None else after["price_to_book"]))
+    regions = {b.dimension: b for b in read_breakdowns(cfg, model.id, sleeve, TEST_AS_OF)}
+    check("a wholly blank dimension is not deleted",
+          "region" in regions and abs(regions["region"].weights["US"] - 0.62) < 1e-9)
+
+    # A different dimension must not disturb the first.
+    third = template.copy()
+    third.loc[:, ["style.Value", "style.Blend", "style.Growth"]] = [0.3, 0.4, 0.3]
+    upload_frame(third, source=MARKER, cfg=cfg)
+    dims = {b.dimension for b in read_breakdowns(cfg, model.id, sleeve, TEST_AS_OF)}
+    check("writing one dimension keeps the other", dims == {"region", "style"}, str(dims))
+
+    # Round-trip identity: what comes back is the shape that went out.
+    back = stored_frame(as_of=TEST_AS_OF, subject_ids=[model.id], sleeves=[sleeve], cfg=cfg)
+    check("stored_frame has the template's columns",
+          list(back.columns) == template_columns() + ["uploaded_at"], "columns differ")
+    check("stored_frame carries the written values", len(back) == 1
+          and abs(float(back["price_to_book"].iloc[0]) - 2.87) < 1e-9
+          and abs(float(back["region.US"].iloc[0]) - 0.62) < 1e-9)
+    replay = upload_frame(back, dry_run=True, cfg=cfg)
+    check("what stored_frame returns can be uploaded again unchanged",
+          replay.failed == 0 and replay.written == 1, replay.render())
+
+    # Blank rows are skipped and counted, not silently dropped or noisily warned about.
+    two = pd.concat([filled, template], ignore_index=True)
+    two.loc[1, "as_of"] = "1900-06-30"      # a second, distinct key so it is not a duplicate
+    mixed = upload_frame(two, source=MARKER, dry_run=True, cfg=cfg)
+    check("a row with nothing filled in is skipped and reported",
+          mixed.total == 2 and mixed.written == 1 and mixed.skipped == 1 and mixed.failed == 0,
+          mixed.render())
+
+    # Structural problems refuse to start, and leave the database as they found it.
+    def refuses(label, mutate):
+        before = read_characteristics(cfg, model.id, sleeve, TEST_AS_OF)
+        try:
+            upload_frame(mutate(filled.copy()), source=MARKER, cfg=cfg)
+            check(label, False, "no exception")
+        except ValueError:
+            unchanged = read_characteristics(cfg, model.id, sleeve, TEST_AS_OF)
+            check(label, (before is None) == (unchanged is None)
+                  and (before is None or before["price_to_book"] == unchanged["price_to_book"]))
+
+    refuses("an unknown column refuses the whole frame",
+            lambda d: d.assign(price_to_books=2.87))
+    refuses("a blank key refuses the whole frame",
+            lambda d: d.assign(subject_id=[None] * len(d)))
+    refuses("duplicate keys refuse the whole frame",
+            lambda d: pd.concat([d, d], ignore_index=True))
+    refuses("a holding count with no weight beside it refuses the whole frame",
+            lambda d: d.assign(**{"names.credit_rating.AAA": 12}))
+
+    # fill(): the alignment helper, and the dtype it must not lose.
+    values = pd.DataFrame({
+        "subject_id": [model.id],
+        "sleeve": [sleeve],
+        "as_of": [TEST_AS_OF],
+        "num_holdings": [412],
+        "return_3y": [0.061],
+    })
+    merged = fill(template, values)
+    check("fill copies values in on the key",
+          merged["num_holdings"].iloc[0] == 412 and abs(merged["return_3y"].iloc[0] - 0.061) < 1e-9)
+    check("fill keeps Int64 rather than upcasting to float",
+          str(merged["num_holdings"].dtype) == "Int64", str(merged["num_holdings"].dtype))
+    check("fill leaves untouched cells blank", bool(pd.isna(merged["price_to_book"].iloc[0])))
+
+    try:
+        fill(template, values.assign(subject_id=["not-a-model"]))
+        check("fill refuses a key it cannot match", False, "no exception")
+    except ValueError as exc:
+        check("fill refuses a key it cannot match", "match no template row" in str(exc),
+              str(exc)[:100])
+    appended = fill(template, values.assign(subject_id=["not-a-model"]), add_missing=True)
+    check("add_missing appends the unmatched row", len(appended) == len(template) + 1)
+
+
+def _test_market_frames(cfg) -> None:
+    print("\nFrames: market series")
+    template = market_template(series=[TEST_SERIES], as_of=TEST_AS_OF, tenors=["2Y", "10Y"])
+    check("market template has a row per tenor", len(template) == 2, str(len(template)))
+    check("market template starts blank", bool(template["value"].isna().all()))
+
+    template.loc[template.tenor == "2Y", "value"] = 0.0412
+    template.loc[template.tenor == "10Y", "value"] = 0.0435
+    summary = upload_market_frame(template, source=MARKER, cfg=cfg)
+    check("market frame uploads", summary.written == 2 and summary.failed == 0, summary.render())
+
+    back = market_frame(series=[TEST_SERIES], start=TEST_AS_OF, end=TEST_AS_OF, cfg=cfg)
+    ours = back[back.source == MARKER].set_index("tenor")
+    # A superset, not an exact match: _test_market_series wrote its own tenors at this date.
+    check("market frame reads back with tenors intact",
+          {"2Y", "10Y"} <= set(ours.index)
+          and abs(float(ours.loc["10Y", "value"]) - 0.0435) < 1e-9,
+          str(sorted(set(ours.index))))
+
+    partial = market_template(series=[TEST_SERIES], as_of=TEST_AS_OF, tenors=["1M", "3M"])
+    partial.loc[partial.tenor == "1M", "value"] = 0.0400
+    half = upload_market_frame(partial, source=MARKER, cfg=cfg)
+    check("a row with no value is skipped, not written",
+          half.written == 1 and half.skipped == 1 and half.failed == 0, half.render())
+
+    # A series with no term structure defaults to tenor '' — never NULL, which SQLite
+    # would accept into the primary key and then allow duplicates of.
+    spread = market_template(series=["ig_oas"], as_of=TEST_AS_OF)
+    check("a series with no term structure gets tenor ''",
+          len(spread) == 1 and spread["tenor"].iloc[0] == "")
 
 
 # ---------------------------------------------------------------------------------
@@ -465,10 +761,12 @@ def main() -> int:
 
     _test_sleeves()
     _test_periods()
+    _test_frames_offline()
     _test_mirrors()
 
     try:
         models = _test_pull(cfg)
+        _test_pull_frames(cfg, models)
         usable = next((m for m in models if m.equity), None)
 
         if usable is None:
@@ -478,8 +776,10 @@ def main() -> int:
             subjects = [("model", usable.id), ("benchmark", "MSCI-ACWI-IMI")]
             _test_round_trip(cfg, usable)
             _test_rejections(cfg, usable)
+            _test_frames(cfg, usable)
 
         _test_market_series(cfg)
+        _test_market_frames(cfg)
 
     except Exception as exc:  # noqa: BLE001 — report, then always clean up
         print(f"\n  FAIL  unexpected {type(exc).__name__}: {exc}")

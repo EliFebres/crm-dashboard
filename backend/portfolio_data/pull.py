@@ -19,16 +19,29 @@ The counterpart is `upload_pf_data` in push.py: pass `model.id` straight back as
 """
 
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .core.config import PortfolioConfig, resolve
 from .core.models import LoggedModel, MarketPoint
 from .db.reader import read_market_series, read_models
-from .validation.vocabulary import SLEEVES
+from .validation.vocabulary import (
+    SLEEVE_EQUITY,
+    SLEEVE_FIXED_INCOME,
+    SLEEVE_TOTAL,
+    SLEEVES,
+)
 
-__all__ = ["get_models", "get_market_series", "to_rows"]
+__all__ = ["get_models", "get_market_series", "to_rows", "PULLABLE_SLEEVES"]
 
 _log = logging.getLogger("portfolio_data")
+
+#: The sleeves a pull can actually produce, which is not all of `SLEEVES`.
+#:
+#: The three `equity_*` region sleeves are upload-only: a holding record carries an
+#: identifier, a constituent type, an asset class and a weight — and no domicile. There is
+#: nothing here to split on, so `LoggedModel` does not carry them and `LoggedModel.sleeve()`
+#: raises for them. Anything iterating "every sleeve" on the pull side wants this tuple.
+PULLABLE_SLEEVES: Tuple[str, ...] = (SLEEVE_TOTAL, SLEEVE_EQUITY, SLEEVE_FIXED_INCOME)
 
 
 def get_models(
@@ -114,11 +127,24 @@ def to_rows(
 
     `weight` is within the sleeve; `weight_of_total` is the sleeve's share of the whole
     portfolio, so `weight * weight_of_total` is the position's true portfolio weight.
+
+    Defaults to `PULLABLE_SLEEVES`, not to every name in `SLEEVES`: the three `equity_*`
+    region sleeves are upload-only and no `LoggedModel` carries them.
     """
-    wanted = list(sleeves) if sleeves is not None else list(SLEEVES)
+    wanted = list(sleeves) if sleeves is not None else list(PULLABLE_SLEEVES)
+
     unknown = [s for s in wanted if s not in SLEEVES]
     if unknown:
         raise ValueError(f"Unknown sleeve(s): {', '.join(unknown)}. Valid: {', '.join(SLEEVES)}")
+
+    upload_only = [s for s in wanted if s not in PULLABLE_SLEEVES]
+    if upload_only:
+        raise ValueError(
+            f"{', '.join(upload_only)} is upload-only: get_models() cannot produce it, "
+            "because a holding record carries an identifier, an asset class and a weight — "
+            "and no domicile. Split the equity sleeve by region yourself and upload each "
+            f"slice under that name. Pullable sleeves: {', '.join(PULLABLE_SLEEVES)}."
+        )
 
     rows: List[Dict[str, Any]] = []
     for model in models:

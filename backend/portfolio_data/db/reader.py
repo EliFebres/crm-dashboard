@@ -44,6 +44,7 @@ __all__ = [
     "read_characteristics",
     "read_performance",
     "read_breakdowns",
+    "read_stored",
 ]
 
 #: Mirrors the SELECT in syncPortfolioModels (app/lib/db/portfolioSync.ts). The LEFT JOIN
@@ -236,6 +237,98 @@ def read_breakdowns(
         Breakdown(dimension=d, weights=w, names=counts.get(d, {}))
         for d, w in grouped.items()
     ]
+
+
+#: How many bound parameters to put in one `IN (...)`. SQLite's compiled-in limit is 999 on
+#: older builds and 32766 on newer ones; 400 is comfortably under the floor and costs one
+#: extra query per 400 subjects.
+_PARAM_CHUNK = 400
+
+
+def _chunk(values: Sequence[str]) -> List[List[str]]:
+    return [list(values[i:i + _PARAM_CHUNK]) for i in range(0, len(values), _PARAM_CHUNK)]
+
+
+def _stored_filters(
+    subject_kind: Optional[str],
+    sleeves: Optional[Iterable[str]],
+    as_of: Optional[Iterable[str]],
+) -> Tuple[List[str], List[object]]:
+    """The WHERE fragments shared by all three stored tables, minus the subject_id chunk."""
+    conditions: List[str] = []
+    params: List[object] = []
+
+    if subject_kind:
+        conditions.append("subject_kind = ?")
+        params.append(subject_kind)
+    for column, values in (("sleeve", sleeves), ("as_of", as_of)):
+        listed = [v for v in (values or ()) if v]
+        if listed:
+            clause, bound = _in_clause(column, listed)
+            conditions.append(clause)
+            params.extend(bound)
+    return conditions, params
+
+
+def read_stored(
+    cfg: PortfolioConfig,
+    *,
+    subject_kind: Optional[str] = None,
+    subject_ids: Optional[Iterable[str]] = None,
+    sleeves: Optional[Iterable[str]] = None,
+    as_of: Optional[Iterable[str]] = None,
+) -> Tuple[List[Dict[str, object]], List[Dict[str, object]], List[Dict[str, object]]]:
+    """
+    Bulk read of everything uploaded, as `(characteristics, performance, breakdowns)`.
+
+    The `read_characteristics` / `read_performance` / `read_breakdowns` trio above answers
+    one key at a time, which is the right shape for a verify-after-write and the wrong one
+    for "show me the quarter" — that would be three queries per model per sleeve. This is
+    the set version: three queries total, whatever the filters select.
+
+    Rows come back as plain dicts with their key columns intact, deliberately unpivoted.
+    Turning breakdown rows into `dimension.bucket` columns is a presentation decision and
+    belongs to `frames.py`; a reader that made it here would have to be undone by anyone
+    who wanted the rows.
+
+    Filters AND together; passing none reads every stored row.
+    """
+    conditions, base_params = _stored_filters(subject_kind, sleeves, as_of)
+    listed_ids = [s for s in (subject_ids or ()) if s]
+    chunks = _chunk(listed_ids) if listed_ids else [None]
+
+    selects = (
+        (TABLE_CHARACTERISTICS, "*"),
+        (TABLE_PERFORMANCE, "*"),
+        (
+            TABLE_BREAKDOWNS,
+            ", ".join(SUBJECT_KEY_COLUMNS) + ", dimension, bucket, weight, names, "
+            "source, uploaded_at",
+        ),
+    )
+
+    results: List[List[Dict[str, object]]] = []
+    conn = open_portfolio_readonly(cfg)
+    try:
+        for table, columns in selects:
+            rows: List[Dict[str, object]] = []
+            for chunk in chunks:
+                where = list(conditions)
+                params = list(base_params)
+                if chunk is not None:
+                    clause, bound = _in_clause("subject_id", chunk)
+                    where.append(clause)
+                    params.extend(bound)
+
+                sql = f"SELECT {columns} FROM {table}"
+                if where:
+                    sql += " WHERE " + " AND ".join(where)
+                rows.extend(dict(r) for r in conn.execute(sql, params).fetchall())
+            results.append(rows)
+    finally:
+        conn.close()
+
+    return results[0], results[1], results[2]
 
 
 def read_market_series(

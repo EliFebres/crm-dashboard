@@ -7,20 +7,23 @@ validating it against the live registries, resolving the external client to a CR
 the row in one atomic transaction, proving it will actually render on the dashboard, and
 raising an alarm when it won't.
 
-Pure standard library — no third-party dependencies. Python 3.9+.
+`crm_sync` itself imports only the standard library. The distribution around it does not:
+`portfolio_data`'s DataFrame layer needs pandas and the notebooks need JupyterLab, so
+`pip install -e backend` brings both. Python 3.9+.
 
 ---
 
 ## Install
 
 ```
-pip install -e backend           # puts `crm_sync` on sys.path; installs nothing else
+pip install -e backend           # puts `crm_sync` on sys.path, with pandas and JupyterLab
 python -m crm_sync.test          # smoke test: inserts one engagement, checks it, deletes it
+python -m jupyterlab backend/notebooks
 ```
 
-`backend/requirements.txt` is intentionally empty. Everything tunable lives in
-[`crm_sync/config.py`](../config.py): database location, table names, lookup queries, and
-the defaults a new engagement is created with.
+`backend/requirements.txt` has the exact pins and says what each is for. Everything tunable
+lives in [`crm_sync/config.py`](../config.py): database location, table names, lookup
+queries, and the defaults a new engagement is created with.
 
 ### Where `SQLITE_DIR` comes from
 
@@ -51,6 +54,11 @@ A real environment variable always beats `.env`, and `os.environ` is never mutat
 ---
 
 ## Quick start
+
+Prefer a notebook? [`backend/notebooks/crm_sync.ipynb`](../../notebooks/crm_sync.ipynb)
+walks through every call below and prints your database's live intake types, project types,
+departments and teams, so you can see what is legal right now rather than what was legal
+when this file was written.
 
 One function, one row. Validation, client registration, the transaction, and post-write
 verification are all internal.

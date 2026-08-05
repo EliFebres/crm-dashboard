@@ -6,7 +6,8 @@ You write the code that *runs the analytics*. This package owns everything on ei
 that: splitting each model into the portfolios an analytics engine can actually consume,
 validating what comes back, writing it where the dashboard reads, and proving it landed.
 
-Pure standard library — no third-party dependencies. Python 3.9+.
+Needs pandas: the documented way in and out is a DataFrame. `pip install -e backend` puts it
+there. Python 3.9+.
 
 ---
 
@@ -23,7 +24,7 @@ per card: a dimension nobody has uploaded keeps its placeholder while the rest o
 draws.
 
 ```
-get_models()  ──►  your analytics engine  ──►  upload_pf_data()
+blank_frame()  ──►  your analytics engine  ──►  upload_frame()
      ▲                                                │
 client_models                                  portfolio.sqlite
 (engagements.sqlite)                          (what the dashboard reads)
@@ -31,12 +32,40 @@ client_models                                  portfolio.sqlite
 
 ---
 
+## Start here
+
+Pull a table, fill in the blanks, hand it back.
+
+```python
+from portfolio_data import models_frame, blank_frame, upload_frame
+
+models = models_frame(min_aum=1_000_000_000)              # who is there
+df = blank_frame(models, sleeves=["equity"], as_of="Q1 2026")
+
+df.loc[df.sleeve == "equity", "price_to_book"] = 2.87     # fill in what you measured
+df.loc[df.sleeve == "equity",
+       ["region.US", "region.Developed ex-US", "region.Emerging Markets"]] = [0.62, 0.28, 0.10]
+
+print(upload_frame(df, source="Morningstar Direct 2026-04-02", dry_run=True).render())
+```
+
+One row per (subject, sleeve, quarter), one column per thing you could measure, every metric
+blank until you fill it. **A blank cell means "not measured", which means "leave whatever is
+stored alone"** — so returns can land in a different pass from characteristics without either
+wiping the other.
+
+Or open [`backend/notebooks/portfolio_data.ipynb`](../../notebooks/portfolio_data.ipynb),
+which is this README with the cells already written.
+
+---
+
 ## Install
 
 ```
-pip install -e backend              # puts `portfolio_data` on sys.path; installs nothing
+pip install -e backend              # pandas, JupyterLab, and both packages on sys.path
 npm run sync:portfolio              # creates portfolio.sqlite if it doesn't exist yet
 python -m portfolio_data.test       # smoke test: pulls, pushes, verifies, cleans up
+python -m jupyterlab backend/notebooks
 ```
 
 `SQLITE_DIR` — the folder holding `engagements.sqlite` and `portfolio.sqlite` — is resolved
@@ -50,7 +79,137 @@ thresholds, strictness, and whether to verify after writing.
 
 ---
 
+## The frame
+
+`blank_frame()` produces the template; `upload_frame()` consumes it. Between them it is an
+ordinary DataFrame — `.loc`, `.to_csv`, whatever you like.
+
+### The column families
+
+81 columns by default, in seven groups. `template_columns()` returns them in order.
+
+| Family | Columns | On upload |
+|---|---|---|
+| key | `subject_kind`, `subject_id`, `sleeve`, `as_of` | required |
+| context | `crn`, `client_name`, `model_name`, `is_main`, `aum`, `client_dept`, `logged_team`, `logged_office`, `quarter`, `sleeve_weight_of_total`, `sleeve_positions` | **ignored** — they are there so you can read the table |
+| characteristics | the 18 fields of `Characteristics` | written |
+| performance | the 18 fields of `Performance` | written |
+| breakdown buckets | `region.US`, `credit_rating.CCC & Below`, … (29) | written |
+| holding counts | `names.region.US`, … (29) | written — opt in with `include_names=True` |
+| `source` | where the numbers came from | written |
+| `_anything` | scratch space | ignored |
+
+Nothing above is hand-listed in code. The metric columns are reflected from the dataclasses
+in [`core/models.py`](../core/models.py) and the buckets from
+[`validation/vocabulary.py`](../validation/vocabulary.py), the same way the SQL schema is —
+so a new field on `Characteristics` becomes a template column with no second edit.
+
+A bucket column is `dimension.bucket` with the bucket spelled **verbatim**, spaces and `&`
+included, because validation matches those exact strings. That costs you
+`df["region.Developed ex-US"]` rather than attribute access, and buys one spelling of every
+bucket instead of two. The dot is also what makes classification unambiguous: no dataclass
+field name contains one.
+
+### Blank means "leave it alone"
+
+An empty cell becomes `None`, is written as SQL NULL, and is coalesced away by the upsert —
+the same partial-update behaviour described under
+[Partial updates don't erase](#partial-updates-dont-erase), seen from the frame. Fill what
+you have and ignore the rest; there is nothing to remember.
+
+Breakdowns need one extra rule, because each dimension is replaced wholesale:
+
+- a dimension left **entirely** blank is not sent at all, so whatever is stored survives;
+- a dimension filled **completely** replaces what was there;
+- a dimension filled **halfway** is rejected by `breakdown_does_not_sum`, correctly — a
+  distribution summing to 0.6 draws a chart that quietly stops short of the edge.
+
+### Filling it in
+
+```python
+# by mask
+df.loc[df.sleeve == "equity", "price_to_book"] = 2.87
+
+# a whole dimension at once
+df.loc[df.sleeve == "equity",
+       ["style.Value", "style.Blend", "style.Growth"]] = [0.31, 0.36, 0.33]
+
+# from your engine's own frame — keys plus whatever it computed
+df = fill(df, results)
+```
+
+`fill()` matches on the four key columns and copies every non-blank cell across, leaving the
+rest alone, so two engines can fill the same template in either order. A key in `results`
+that matches no template row **raises** unless you pass `add_missing=True`. That is the
+whole reason it exists rather than `DataFrame.update`, which is index-aligned and drops
+unmatched rows without a word.
+
+### Reading back
+
+`stored_frame()` returns what has already been uploaded in **exactly** the template's
+columns, plus a trailing `uploaded_at`. That identity is deliberate:
+
+```python
+df = stored_frame(as_of="Q1 2026")     # pull what's there
+df.loc[df.subject_id == mid, "price_to_book"] = 2.91
+upload_frame(df)                        # send it back
+```
+
+`upload_frame(stored_frame(...))` is a no-op round trip, which makes read-modify-write the
+natural way to correct three cells without rebuilding anything. The smoke test asserts it.
+
+### Unknown columns are rejected, not dropped
+
+```
+ValueError: Unknown column(s) in the frame: 'price_to_books' (did you mean 'price_to_book'?).
+Context columns are ignored rather than rejected: crn, client_name, model_name, ...
+Prefix a column with '_' to have it ignored too.
+```
+
+This is [`PortfolioData.from_dict`](../core/models.py)'s philosophy applied one level up,
+and it is the justification for the whole layer. Silently dropping a misspelled column
+produces an upload that reports success and stores nothing, and nothing downstream ever
+says so. The escape hatch is the `_` prefix rather than an `ignore=[...]` argument, because
+an ignore list is where somebody eventually silences a real typo.
+
+### Two kinds of problem, handled two ways
+
+| Refuses to start (raises, writes nothing) | Recorded per row in the summary |
+|---|---|
+| an unknown or misspelled column | every rule in the validation matrix below |
+| a blank cell in a key column | a non-integral holding count |
+| two rows sharing a key | an orphaned model id, an unregistered benchmark |
+| a `names.*` cell with no bucket weight beside it | percent-vs-fraction, breakdown sums, unknown buckets |
+
+The left column is about how the *table* was built, and every entry is silent if allowed
+through: two rows with one key upsert over each other and still report two written, and a
+holding count with no weight beside it is dropped by the writer without a word.
+
+### The functions
+
+| | |
+|---|---|
+| `models_frame(...)` | one row per logged model — takes `get_models`' filters |
+| `holdings_frame(models, sleeves=...)` | one row per position, plus a precomputed `portfolio_weight` |
+| `blank_frame(models, sleeves=, as_of=, ...)` | the template |
+| `fill(template, values, add_missing=False)` | copy filled cells across on the key |
+| `upload_frame(df, source=, dry_run=, ...)` | validate and write |
+| `stored_frame(as_of=, subject_ids=, ...)` | what is already uploaded, same columns |
+| `market_frame(...)` / `market_template(...)` / `upload_market_frame(...)` | the market series, same idea |
+| `findings_frame(summary)` | an upload's findings as a table |
+
+---
+
 ## Pulling models
+
+```python
+models = models_frame(departments=["Brokerage"], min_aum=1_000_000_000)
+equity = holdings_frame(models, sleeves=["equity"])
+
+tickers = equity.identifier.unique()      # what you hand a security master
+```
+
+Or as objects, which is what the frames are built from:
 
 ```python
 from portfolio_data import get_models
@@ -118,8 +277,12 @@ matched".
 
 ### Flattening
 
-`to_rows()` gives you one row per (model, sleeve, holding) — the shape a CSV, a DataFrame
-or a request body actually wants:
+`holdings_frame()` gives you one row per (model, sleeve, holding), with
+`portfolio_weight = weight * weight_of_total` already computed — the position's true weight
+in the client's book, which everyone needs and half of us get backwards.
+
+`to_rows()` is the same flattening as a list of dicts, for anyone who would rather not hold
+a DataFrame:
 
 ```python
 from portfolio_data import get_models, to_rows
@@ -129,11 +292,17 @@ rows = to_rows(get_models(), sleeves=["equity"])
 #  'weight_of_total': 0.6, 'asset_class': 'Equity', 'client_name': ..., ...}
 ```
 
-`weight * weight_of_total` is the position's true portfolio weight.
+It defaults to the three sleeves a pull can produce (`PULLABLE_SLEEVES`), not to every name
+in `SLEEVES` — asking it for a regional sleeve raises, because no `LoggedModel` carries one.
 
 ---
 
-## Pushing results
+## Advanced: the dataclass API
+
+Everything above is a thin layer over what follows. `upload_frame()` builds exactly these
+objects and calls exactly this function, so the validation, the verify-after-write and the
+per-record failure isolation are the same code either way. They remain fully supported, and
+they are what you want inside a scheduled job where a frame buys you nothing.
 
 ```python
 from portfolio_data import (PortfolioData, Characteristics, Performance, Breakdown,
@@ -281,6 +450,22 @@ Treasury par yields and credit spreads belong to the market, not to anybody's po
 they get their own pull and upload:
 
 ```python
+from portfolio_data import market_frame, market_template, upload_market_frame
+
+have = set(market_frame(series=["ig_oas"]).as_of)      # find the gap before a backfill
+
+curve = market_template(series=["ust_par_yield"], as_of="2026-03-31")
+curve.loc[curve.tenor == "10Y", "value"] = 0.0435      # 4.35%, as a fraction
+upload_market_frame(curve, source="Curve pull 2026-04-02")
+```
+
+`market_template()` produces a row per valid tenor — eleven for `ust_par_yield`, one for
+each spread series with `tenor=''` already correct. Rows you leave blank are skipped and
+counted, not written as nulls.
+
+The same thing with the dataclasses:
+
+```python
 from portfolio_data import MarketPoint, get_market_series, upload_market_series
 
 # What do I already have?
@@ -342,6 +527,15 @@ record costs nothing.
 | Non-negative where negative is impossible | A negative market cap inverts an axis rather than erroring. Deliberately short: P/E, duration and profitability all go legitimately negative. |
 | Equity metrics on a bond sleeve (or vice versa) | **WARN.** Usually a column shifted by one in the export, but occasionally defensible. |
 | A payload carrying nothing at all | **WARN.** It would write nothing and still report success. |
+
+Three more run in the frame layer, before a connection is opened, because they are problems
+with the table rather than with a value:
+
+| Check | Why |
+|---|---|
+| Every column is one the package recognizes | A misspelled `price_to_books` would otherwise be dropped, and the upload would report success having stored nothing. |
+| No two rows share a key | They would upsert over each other and still report two rows written. |
+| No `names.*` cell without its bucket weight | The writer looks counts up per weight bucket, so a count with no weight beside it is dropped silently. |
 
 **After the commit**, [`db/verify.py`](../db/verify.py) re-reads each row through a *fresh,
 read-only connection*. That is the point: it proves the row is durable and visible to **other
@@ -423,12 +617,13 @@ three `sqlite3` defaults that would otherwise corrupt or deadlock this.
 
 ## Files
 
-Three files at the root are the whole surface a user needs. Everything else is internal.
+Four files at the root are the whole surface a user needs. Everything else is internal.
 
 | Module | Responsibility |
 |---|---|
-| `pull.py` | **`get_models()`**, `get_market_series()`, `to_rows()` |
-| `push.py` | **`upload_pf_data()`**, `upload_market_series()`, `prune_orphans()` |
+| `frames.py` | **The DataFrame layer** — `models_frame()`, `holdings_frame()`, `blank_frame()`, `fill()`, `upload_frame()`, `stored_frame()`, the market trio |
+| `pull.py` | `get_models()`, `get_market_series()`, `to_rows()` |
+| `push.py` | `upload_pf_data()`, `upload_market_series()`, `prune_orphans()` |
 | `test.py` | Runnable smoke test: pulls, pushes, verifies, deletes what it created |
 | `core/config.py` | Database name, table names, validation thresholds, strictness |
 | `core/models.py` | The dataclasses — and, by reflection, the schema |
@@ -437,7 +632,7 @@ Three files at the root are the whole surface a user needs. Everything else is i
 | `core/exceptions.py` | The `PortfolioDataError` hierarchy |
 | `db/connection.py` | The one place this package couples to crm_sync |
 | `db/schema.py` | The sidecar tables, created idempotently |
-| `db/reader.py` | The `client_models` query, and every read-back |
+| `db/reader.py` | The `client_models` query, and every read-back including the bulk `read_stored()` |
 | `db/writer.py` | The upsert transactions, and orphan pruning |
 | `db/verify.py` | Post-write "is this readable?" assertions |
 | `validation/rules.py` | The pre-write matrix |
