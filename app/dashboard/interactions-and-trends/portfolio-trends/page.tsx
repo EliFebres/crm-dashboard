@@ -23,8 +23,8 @@ import type {
 
 // Every number on this page comes from portfolio.sqlite. Model rows and holdings are
 // refreshed by `npm run sync:portfolio`; the analytics behind the charts — characteristics,
-// breakdowns, the Treasury curve, credit spreads — are uploaded by backend/portfolio_data
-// into the pf_* tables in the same file. A card whose slice has not been uploaded keeps the
+// breakdowns, the Treasury curve, credit spreads — live in the pf_* tables in the same
+// file, which this app reads but never writes. A card whose slice has not been uploaded keeps the
 // explicit "requires market data" state rather than drawing an empty plot, so "not ingested"
 // stays distinguishable from "ingested, and the answer is zero".
 

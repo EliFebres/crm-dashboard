@@ -24,8 +24,7 @@ import { logActivity } from '@/app/lib/activity/log';
 // both fields at once or the row would stay stranded in the global inbox.
 //
 // An engagement with team = NULL and team_members = [] is UNASSIGNED: visible to
-// every user, claimable by any of them. That is how automated jobs (backend/crm_sync)
-// hand work over to the department. Passing an empty teamMembers array returns an
+// every user, claimable by any of them. Passing an empty teamMembers array returns an
 // engagement to that inbox.
 export async function PATCH(
   req: NextRequest,

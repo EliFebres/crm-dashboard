@@ -8,7 +8,7 @@
  *    and AUM are denormalized onto the model row, so every filter resolves here with no
  *    ATTACH and no join back to engagements.sqlite.
  *  - `pf_characteristics` / `pf_performance` / `pf_breakdowns` / `pf_benchmarks` /
- *    `pf_market_series` — the analytics written by `backend/portfolio_data`. These are
+ *    `pf_market_series` — the analytics, written outside this app. These are
  *    sidecar tables: the app never creates them, and their absence is a normal state
  *    (nobody has uploaded yet), not an error.
  *
@@ -52,13 +52,11 @@ const EQUITY_DOMINANCE = 0.5;
 const RECENT_DAYS = 30;
 
 /**
- * Canonical bucket order per dimension. Mirrors BREAKDOWN_DIMENSIONS in
- * backend/portfolio_data/validation/vocabulary.py, which owns it.
+ * Canonical bucket order per dimension.
  *
  * Order is the axis order, so a mismatch is a wrong chart rather than a cosmetic
  * difference — and an omission is worse, because the fallback below sorts alphabetically
  * and would render credit quality as AA, AAA, B, BB, BBB: plausible, and backwards.
- * `portfolio_data`'s smoke test parses this object and fails on any drift.
  */
 const DIMENSION_BUCKETS: Record<string, string[]> = {
   region: ['US', 'Developed ex-US', 'Emerging Markets'],
@@ -70,9 +68,7 @@ const DIMENSION_BUCKETS: Record<string, string[]> = {
 };
 
 /**
- * Which benchmark each sleeve is measured against. Mirrors SLEEVE_BENCHMARK in
- * backend/portfolio_data/validation/vocabulary.py, which owns it; the smoke test there
- * fails on drift.
+ * Which benchmark each sleeve is measured against.
  *
  * A regional sleeve needs a regional index: measuring a US-only book against an
  * all-country index would report a US overweight that is an artifact of the scope rather
@@ -188,7 +184,7 @@ interface SummaryRow {
 /**
  * True when the analytics tables exist at all.
  *
- * They are created by `backend/portfolio_data`, not by this app, so on a database where
+ * They are not created by this app, so on a database where
  * nobody has uploaded yet they are simply absent — and querying a missing table throws.
  * Checked once per request rather than guarded per query.
  */
