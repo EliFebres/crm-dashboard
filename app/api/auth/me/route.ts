@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { queryUsers } from '@/app/lib/db/users';
+import { queryUsers, getFounderId } from '@/app/lib/db/users';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToUser } from '@/app/lib/auth/types';
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Account is not active.' }, { status: 401 });
     }
 
-    const user = rowToUser(row);
+    const user = { ...rowToUser(row), isFounder: (await getFounderId()) === payload.sub };
     return NextResponse.json(user, { status: 200 });
   } catch (err) {
     console.error('[GET /api/auth/me]', err);

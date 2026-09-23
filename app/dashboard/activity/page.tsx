@@ -89,6 +89,7 @@ function actionBadge(action: string): { label: string; tone: BadgeTone } {
   if (action.endsWith('.delete')) return { label: 'Deleted', tone: 'red' };
   if (action.endsWith('.update') || action.endsWith('_change')) return { label: 'Updated', tone: 'amber' };
   if (action === 'engagement.export') return { label: 'Exported', tone: 'blue' };
+  if (action === 'kpi.report') return { label: 'Report', tone: 'blue' };
   if (action === 'auth.login') return { label: 'Login', tone: 'emerald' };
   if (action === 'auth.login_failed') return { label: 'Failed', tone: 'red' };
   if (action === 'auth.logout') return { label: 'Logout', tone: 'grey' };
@@ -127,6 +128,11 @@ function detailsSummary(row: LogRow): string {
     case 'engagement.export': {
       const n = typeof d?.rowCount === 'number' ? d.rowCount : 0;
       return `${n} interaction${n === 1 ? '' : 's'} exported`;
+    }
+    case 'kpi.report': {
+      const who = typeof d?.subject === 'string' ? d.subject : 'KPI';
+      const period = typeof d?.period === 'string' ? ` · ${d.period}` : '';
+      return `${who} report generated${period}`;
     }
     case 'note.create': return `Note added to ${interaction}`;
     case 'note.update': return `Note edited on ${interaction}`;

@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
+import { getKpiDashboardData, type KpiDashboardData, type KpiReportSubject, type KpiScope } from '@/app/lib/api/kpi';
+import { generateReport } from '@/app/components/dashboard/kpis/report/generateReport';
 
 import Masthead from '@/app/components/dashboard/kpis/briefing/Masthead';
 import { GroupDivider, QHeader, BriefingRow } from '@/app/components/dashboard/kpis/briefing/Blocks';
@@ -108,6 +109,11 @@ export default function KpiDashboard() {
     };
   }, []);
 
+  const handleGenerateReport = useCallback(
+    (subject: KpiReportSubject) => generateReport({ scope, period, subject }),
+    [scope, period]
+  );
+
   const staleRows: EvidenceRow[] = (data?.staleEngagements ?? []).slice(0, 8).map(r => ({
     key: String(r.id),
     name: r.clientName,
@@ -140,7 +146,14 @@ export default function KpiDashboard() {
     <div className="flex-1 flex flex-col min-h-0" style={{ background: C.bg, color: '#ededed' }}>
       <div className="flex-1 overflow-y-auto">
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 48px 110px' }}>
-          <Masthead scope={scope} period={period} onScopeChange={setScope} onPeriodChange={setPeriod} loading={isLoading} />
+          <Masthead
+            scope={scope}
+            period={period}
+            onScopeChange={setScope}
+            onPeriodChange={setPeriod}
+            loading={isLoading}
+            onGenerateReport={handleGenerateReport}
+          />
 
           {data ? (
             <>

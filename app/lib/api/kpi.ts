@@ -5,6 +5,9 @@
  *
  * Team-oriented KPI dashboard. Scope is always team-level or cross-team —
  * no individual-level views. No team-vs-team competitive comparisons.
+ *
+ * The one exception is the downloadable PDF report (getKpiReport), which can cover a
+ * single person: yourself, or anyone if you are the founder. /api/kpi/report enforces that.
  */
 
 const API_BASE_URL = '/api';
@@ -244,6 +247,76 @@ export interface KpiDashboardData {
   extended: KpiExtendedData;
 }
 
+// ---------- PDF report ----------
+
+/** Who a report covers: the page's current scope, or one person by display name. */
+export type KpiReportSubject = { kind: 'team' } | { kind: 'person'; displayName: string };
+
+/** A headline number for the report, with the previous equal-length period's value. */
+export interface KpiReportStat {
+  value: number;
+  prev: number;
+  deltaPercent: number;
+}
+
+export interface KpiReportBreakdownRow {
+  name: string;
+  count: number;
+  nna: number;
+  color: string;
+}
+
+export interface KpiReportData {
+  subject: {
+    kind: 'team' | 'all' | 'person';
+    /** Person's full name, team name, or "All teams". */
+    name: string;
+    /** Person reports only. */
+    title?: string;
+    team?: string;
+  };
+  period: string;
+  /** Inclusive ISO dates the report covers. */
+  range: { start: string; end: string };
+  /** False for ALL, which has no previous period to compare against. */
+  hasComparison: boolean;
+  comparisonLabel: string;
+  generatedAt: string;
+  totals: {
+    interactions: KpiReportStat;
+    completed: KpiReportStat;
+    nna: KpiReportStat;
+    avgNna: KpiReportStat;
+    /** 0–100. */
+    completionRate: KpiReportStat;
+    clientsServed: KpiReportStat;
+    newClients: number;
+    inProgress: number;
+  };
+  /** Opened (by start date) vs completed (by finish date) per bucket. */
+  series: {
+    granularity: 'week' | 'month' | 'year';
+    points: { label: string; opened: number; completed: number }[];
+  };
+  byDept: KpiReportBreakdownRow[];
+  byType: KpiReportBreakdownRow[];
+  topWins: {
+    clientName: string;
+    clientDept: string;
+    externalClient: string | null;
+    type: string;
+    dateFinished: string | null;
+    nna: number;
+  }[];
+  topClients: { clientName: string; clientDept: string; nna: number; share: number }[];
+  cycle: {
+    /** Median days from start to finish over completed work; null when none finished. */
+    overallMedian: number | null;
+    finishedCount: number;
+    byType: { type: string; median: number; count: number; color: string }[];
+  };
+}
+
 // =============================================================================
 // API FUNCTIONS
 // =============================================================================
@@ -267,6 +340,24 @@ export async function getKpiDashboardData(
   if (!response.ok) {
     if (response.status === 400) throw new Error('Invalid KPI scope.');
     throw new Error('Failed to load KPI dashboard data.');
+  }
+  return response.json();
+}
+
+/** Data for the downloadable PDF report. Throws with a user-facing message on failure. */
+export async function getKpiReport(req: {
+  scope: KpiScope;
+  period: string;
+  subject: KpiReportSubject;
+}): Promise<KpiReportData> {
+  const response = await fetch(`${API_BASE_URL}/kpi/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    if (response.status === 403) throw new Error("You don't have access to that report.");
+    throw new Error("Couldn't build the report.");
   }
   return response.json();
 }

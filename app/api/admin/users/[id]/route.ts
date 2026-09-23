@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { queryUsers, executeUsers } from '@/app/lib/db/users';
+import { queryUsers, executeUsers, getFounderId } from '@/app/lib/db/users';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToUser, toDisplayName } from '@/app/lib/auth/types';
 import { emitUserChange } from '@/app/lib/events';
@@ -45,12 +45,9 @@ export async function PATCH(
 
     // Identify the founding account (earliest created_at) — their admin can only be
     // removed by themselves, not by any other admin.
-    const founderRows = await queryUsers<{ id: string }>(
-      'SELECT id FROM users ORDER BY created_at ASC LIMIT 1'
-    );
-    const founderId = (founderRows[0] as Record<string, unknown>)?.id as string | undefined;
-    const isTargetFounder = founderId !== undefined && id === founderId;
-    const isRequesterFounder = founderId !== undefined && payload.sub === founderId;
+    const founderId = await getFounderId();
+    const isTargetFounder = founderId !== null && id === founderId;
+    const isRequesterFounder = founderId !== null && payload.sub === founderId;
 
     // Block any admin from removing the founder's admin privileges (except the founder themselves)
     if (role === 'user' && isTargetFounder && !isRequesterFounder) {

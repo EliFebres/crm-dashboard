@@ -231,6 +231,17 @@ export async function getUserOffice(userId: string): Promise<string | null> {
   return rows[0]?.office || null;
 }
 
+/**
+ * The founding account: the earliest-created user. Its admin role can only be removed
+ * by itself, and it alone may generate a KPI report about someone other than itself.
+ */
+export async function getFounderId(): Promise<string | null> {
+  const rows = await queryUsers<{ id: string }>(
+    'SELECT id FROM users ORDER BY created_at ASC LIMIT 1'
+  );
+  return rows[0]?.id ?? null;
+}
+
 /** Helpers passed to a {@link usersTransaction} callback for synchronous reads/writes. */
 export interface UsersTx {
   get<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | undefined;

@@ -26,6 +26,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-select": "^2.2.6",
+    "@react-pdf/renderer": "^4.9.0",
     "@tiptap/react": "^3.21.0",
     "@tiptap/starter-kit": "^3.21.0",
     "better-sqlite3": "^12.11.1",

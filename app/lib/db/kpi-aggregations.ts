@@ -2,8 +2,10 @@
  * Server-side aggregation functions for the KPI dashboard.
  *
  * Scope model: 'all' (cross-team aggregate) or 'team:<name>' (single team
- * aggregate). There is no individual-level attribution anywhere in this
- * module — team privacy is a hard constraint.
+ * aggregate). None of the dashboard functions here attribute work to an
+ * individual — team privacy is a hard constraint. The one person-level reader is
+ * the PDF report (kpi-report.ts), which passes `member` to buildKpiWhere behind
+ * its own access check in /api/kpi/report.
  *
  * DATA SOURCE:
  * - If SQLITE_DIR is set → queries SQLite.
@@ -42,21 +44,24 @@ import type {
 // SHARED HELPERS
 // =============================================================================
 
-type SqlClause = { whereClause: string; params: unknown[] };
+export type SqlClause = { whereClause: string; params: unknown[] };
 
 /**
  * Builds a WHERE clause for KPI queries. Unlike buildFilterClause in
  * queries.ts, this is self-contained and only handles the KPI filter shape.
  *
- * `periodOverride` lets callers skip the period filter (e.g. for dormant-
+ * `includePeriod: false` lets callers skip the period filter (e.g. for dormant-
  * client lookups where period is inherent to the metric's definition).
+ *
+ * `member` narrows to engagements whose team_members array contains that display
+ * name. Only the report path uses it; see the module header.
  */
-function buildKpiWhere(
+export function buildKpiWhere(
   filters: KpiFilters,
   constraints: ServerConstraints,
-  opts: { includePeriod?: boolean; tableAlias?: string } = {}
+  opts: { includePeriod?: boolean; tableAlias?: string; member?: string } = {}
 ): SqlClause {
-  const { includePeriod = true, tableAlias } = opts;
+  const { includePeriod = true, tableAlias, member } = opts;
   const col = (c: string) => (tableAlias ? `${tableAlias}.${c}` : c);
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -64,6 +69,11 @@ function buildKpiWhere(
   if (constraints.team) {
     conditions.push(`${col('team')} = ?`);
     params.push(constraints.team);
+  }
+
+  if (member) {
+    conditions.push(`EXISTS (SELECT 1 FROM json_each(${col('team_members')}) WHERE value = ?)`);
+    params.push(member);
   }
 
   if (includePeriod && filters.period) {
@@ -90,12 +100,12 @@ function buildKpiWhere(
   return { whereClause, params };
 }
 
-function pct(num: number, denom: number): number {
+export function pct(num: number, denom: number): number {
   if (!denom) return 0;
   return Math.round((num / denom) * 1000) / 10;
 }
 
-function deltaPercent(curr: number, prev: number): number {
+export function deltaPercent(curr: number, prev: number): number {
   if (prev === 0) return curr === 0 ? 0 : 100;
   return Math.round(((curr - prev) / prev) * 100);
 }
@@ -620,7 +630,7 @@ function andWhere(base: string, condition: string): string {
 }
 
 /** Linear-interpolated quantile over a pre-sorted ascending array (matches the redesign spec). */
-function quantile(sorted: number[], q: number): number {
+export function quantile(sorted: number[], q: number): number {
   if (!sorted.length) return 0;
   const pos = (sorted.length - 1) * q;
   const lo = Math.floor(pos);
