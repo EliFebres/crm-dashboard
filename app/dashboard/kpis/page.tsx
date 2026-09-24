@@ -117,7 +117,7 @@ export default function KpiDashboard() {
   const staleRows: EvidenceRow[] = (data?.staleEngagements ?? []).slice(0, 8).map(r => ({
     key: String(r.id),
     name: r.clientName,
-    meta: `${r.clientDept} · ${r.type}`,
+    meta: [r.clientDept, r.type, r.status].filter(Boolean).join(' · '),
     badge: `${r.daysOpen}d`,
     badgeColor: r.daysOpen >= 180 ? '#fb7185' : r.daysOpen >= 90 ? '#fb923c' : '#fbbf24',
   }));
