@@ -15,6 +15,7 @@
     "lint": "eslint",
     "seed": "tsx scripts/seed-db.ts",
     "seed:mock": "tsx scripts/seed-db.ts --with-mock",
+    "seed:reset": "tsx scripts/seed-db.ts --with-mock --reset",
     "db:backup": "tsx scripts/backup-db.ts",
     "db:restore": "tsx scripts/restore-db.ts",
     "db:migrate-from-duckdb": "tsx scripts/migrate-duckdb-to-sqlite.ts",
