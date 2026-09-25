@@ -6,6 +6,7 @@
  * and the API routes parameterize it by {@link OrgKind}.
  */
 import { queryUsers, executeUsers, usersTransaction } from './users';
+import { execute, hasDb } from './index';
 import { randomUUID } from 'crypto';
 
 export type OrgKind = 'team' | 'office';
@@ -70,15 +71,21 @@ export async function createOrg(kind: OrgKind, rawName: string): Promise<OrgItem
 /**
  * Rename a team/office and cascade the new name into every `users` and
  * `team_members` row that referenced the old one. Atomic.
+ *
+ * A team rename also carries into `engagements.team`, which the KPI team scope
+ * filters on. That table lives in the engagements DB, so it can't join the users
+ * transaction; it runs right after the commit.
  */
 export async function renameOrg(kind: OrgKind, id: string, rawName: string): Promise<OrgItem> {
   const { table, column, label } = CONFIG[kind];
   const name = rawName.trim();
   if (!name) throw new OrgError(400, `A ${label} name is required.`);
 
-  return usersTransaction<OrgItem>((tx) => {
+  let previousName = '';
+  const result = await usersTransaction<OrgItem>((tx) => {
     const current = tx.get<{ name: string; sort_order: number }>(`SELECT name, sort_order FROM ${table} WHERE id = ?`, [id]);
     if (!current) throw new OrgError(404, `That ${label} no longer exists.`);
+    previousName = current.name;
 
     if (current.name !== name) {
       const dupe = tx.get(`SELECT 1 FROM ${table} WHERE name = ? COLLATE NOCASE AND id != ?`, [name, id]);
@@ -95,6 +102,11 @@ export async function renameOrg(kind: OrgKind, id: string, rawName: string): Pro
 
     return { id, name, sortOrder: Number(current.sort_order), assignedCount: Number(assigned) };
   });
+
+  if (kind === 'team' && previousName !== name && hasDb()) {
+    await execute(`UPDATE engagements SET team = ? WHERE team = ?`, [name, previousName]);
+  }
+  return result;
 }
 
 /**
