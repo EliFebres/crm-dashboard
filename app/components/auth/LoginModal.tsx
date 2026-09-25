@@ -45,6 +45,9 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
         return;
       }
 
+      // Full reload on purpose: the session cookie just changed, so drop all
+      // client state and the router cache rather than soft-navigating.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = '/dashboard/interactions-and-trends/client-interactions';
     } catch {
       setError('Unable to connect. Please try again.');
