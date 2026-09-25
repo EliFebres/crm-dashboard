@@ -97,7 +97,7 @@ export async function takePreRestoreSnapshot(
   const target = path.join(backupDir, `pre-restore-${backupTimestamp()}`);
   fs.mkdirSync(target, { recursive: true });
   for (const f of DB_FILES) {
-    await backupSqliteFile(path.join(dbDir, f), path.join(target, f));
+    await backupSqliteFile(path.join(/*turbopackIgnore: true*/ dbDir, f), path.join(target, f));
   }
   return target;
 }
@@ -144,7 +144,8 @@ export async function runBackup(opts: {
 
   let any = false;
   for (const f of DB_FILES) {
-    const src = path.join(dbDir, f);
+    // DB dir is runtime-only; see the note in connection.ts on turbopackIgnore.
+    const src = path.join(/*turbopackIgnore: true*/ dbDir, f);
     const dest = path.join(target, f);
     try {
       const copied = await backupSqliteFile(src, dest);

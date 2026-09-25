@@ -14,6 +14,7 @@ import {
   computeJourneyTemplates,
   computeClientDeptBreakdown,
   computeNnaConcentration,
+  computeTickerNna,
   computeStaleEngagements,
   computeDormantClients,
   computeWeeklyFlow,
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
       journeyTemplates,
       clientDepts,
       nnaConcentration,
+      tickerNna,
       staleEngagements,
       dormantClients,
       // Extended "Briefing" metrics — scope(team)-only, fixed intrinsic windows.
@@ -84,6 +86,7 @@ export async function POST(req: NextRequest) {
       computeJourneyTemplates(filters, constraints),
       computeClientDeptBreakdown(filters, constraints),
       computeNnaConcentration(filters, constraints),
+      computeTickerNna(filters, constraints),
       computeStaleEngagements(filters, constraints),
       computeDormantClients(filters, constraints),
       computeWeeklyFlow(constraints),
@@ -106,6 +109,7 @@ export async function POST(req: NextRequest) {
       journeyTemplates,
       clientDepts,
       nnaConcentration,
+      tickerNna,
       staleEngagements,
       dormantClients,
       extended: {

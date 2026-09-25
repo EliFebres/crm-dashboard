@@ -377,6 +377,9 @@ export default function Sidebar({ className = '' }: SidebarProps) {
             className={`w-full flex items-center text-red-400/70 hover:bg-red-500/[0.06] hover:text-red-400 border-l-2 border-transparent transition-colors ${isCollapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-2 py-2'}`}
             onClick={async () => {
               await fetch('/api/auth/logout', { method: 'POST' });
+              // Full reload on purpose so no signed-in client state or cached
+              // RSC payloads survive logout.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination
               window.location.href = '/';
             }}
           >

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 import LoginModal from '@/app/components/auth/LoginModal';
 import SignupModal from '@/app/components/auth/SignupModal';
@@ -17,6 +18,7 @@ import PlatformRoadmap from '@/app/components/landing-page/PlatformRoadmap';
 const DASHBOARD_HOME = '/dashboard/interactions-and-trends/client-interactions';
 
 export default function Home() {
+  const router = useRouter();
   const [authModal, setAuthModal] = useState<'login' | 'signup' | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -65,7 +67,7 @@ export default function Home() {
         onLogIn={() => setAuthModal('login')}
         isAuthenticated={isAuthenticated}
         dashboardLabel="Go to Dashboard"
-        onGoToDashboard={() => { window.location.href = DASHBOARD_HOME; }}
+        onGoToDashboard={() => router.push(DASHBOARD_HOME)}
       />
 
       {/* ── Hero product image ──────────────────────────────────── */}

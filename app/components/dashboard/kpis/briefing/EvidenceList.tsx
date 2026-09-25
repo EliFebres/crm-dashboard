@@ -15,7 +15,7 @@ export interface EvidenceRow {
   badgeColor: string;
 }
 
-/** Shared hairline-separated list used by Q5 (stale), Q10 (chase), Q14 (dormant). */
+/** Shared hairline-separated list used by Q5 (stale), Q12 (chase), Q16 (dormant). */
 export default function EvidenceList({ rows, empty, caption }: { rows: EvidenceRow[]; empty: string; caption?: string }) {
   if (rows.length === 0) {
     return <div style={{ fontSize: 13, color: C.textMuted, paddingTop: 4 }}>{empty}</div>;

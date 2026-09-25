@@ -91,6 +91,25 @@ export interface ClientDeptRow {
   color: string; // Chart color, resolved from the managed departments table
 }
 
+/** One ticker's share of NNA (or the 'Unallocated' remainder), split by source. */
+export interface TickerNnaRow {
+  ticker: string; // uppercase ticker, or 'Unallocated'
+  nna: number;
+  engagements: number; // engagements contributing to this ticker
+  share: number; // % of total NNA in scope/period
+  byType: Record<string, number>; // project type -> $
+  byDept: Record<string, number>; // internal_client_dept -> $
+}
+
+export interface TickerNnaData {
+  totalNna: number;
+  allocatedPct: number; // % of totalNna assigned to tickers
+  tickers: TickerNnaRow[]; // sorted by nna desc, excludes Unallocated
+  unallocated: TickerNnaRow; // ticker: 'Unallocated'
+  typeColors: Record<string, string>;
+  deptColors: Record<string, string>;
+}
+
 export interface NnaConcentrationPoint {
   rank: number;
   clientName: string;
@@ -127,7 +146,7 @@ export interface DormantClient {
 }
 
 // -----------------------------------------------------------------------------
-// EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
+// EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q10, Q11, Q12, Q14, Q15)
 //
 // These are intentionally scope-only (team or personal): they use fixed windows (26 weeks /
 // 12 months / all-completed / all-history) and do NOT respond to the period,
@@ -161,7 +180,7 @@ export interface CycleTimeRow {
   color: string;
 }
 
-/** Q8 — chain-rolled NNA attribution for one originating project type. */
+/** Q10 — chain-rolled NNA attribution for one originating project type. */
 export interface ChainRolledRow {
   type: string;
   directNna: number;
@@ -172,21 +191,21 @@ export interface ChainRolledRow {
   color: string;
 }
 
-/** Q9 — one cell of the type × department conversion matrix. */
+/** Q11 — one cell of the type × department conversion matrix. */
 export interface SegmentCell {
   n: number;
   hitRate: number;
   medianNna: number;
 }
 
-/** Q9 — the full type × department matrix. `cells` keyed by `"<type>|<dept>"`. */
+/** Q11 — the full type × department matrix. `cells` keyed by `"<type>|<dept>"`. */
 export interface SegmentMatrix {
   depts: string[];
   types: string[];
   cells: Record<string, SegmentCell | null>;
 }
 
-/** Q10 — a "Follow Up" project (delivered, NNA outcome pending) worth chasing. */
+/** Q12 — a "Follow Up" project (delivered, NNA outcome pending) worth chasing. */
 export interface ChaseRow {
   clientName: string;
   clientDept: string;
@@ -199,7 +218,7 @@ export interface ChaseRow {
   assignees: string[];
 }
 
-/** Q12 — follow-up spawn rate for one originating project type. */
+/** Q14 — follow-up spawn rate for one originating project type. */
 export interface SpawnRateRow {
   type: string;
   count: number;
@@ -208,14 +227,14 @@ export interface SpawnRateRow {
   color: string;
 }
 
-/** Q13 — new vs returning unique clients for one month. */
+/** Q15 — new vs returning unique clients for one month. */
 export interface ClientBasePoint {
   label: string;
   newN: number;
   returningN: number;
 }
 
-/** Q13 — unique-client count for one department over the last year. */
+/** Q15 — unique-client count for one department over the last year. */
 export interface UniquePerDeptRow {
   dept: string;
   color: string;
@@ -242,9 +261,10 @@ export interface KpiDashboardData {
   journeyTemplates: JourneyTemplate[];
   clientDepts: ClientDeptRow[];
   nnaConcentration: NnaConcentration;
+  tickerNna: TickerNnaData;
   staleEngagements: StaleEngagement[];
   dormantClients: DormantClient[];
-  /** The "Briefing" redesign's extended metrics (Q2–Q13). */
+  /** The "Briefing" redesign's extended metrics (Q2–Q15). */
   extended: KpiExtendedData;
 }
 

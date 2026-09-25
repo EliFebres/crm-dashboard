@@ -15,6 +15,17 @@ import type { KpiDashboardData, SegmentMatrix } from '@/app/lib/api/kpi';
 
 export const fmtCur = formatCurrency;
 export const fmtInt = formatNumber;
+/** Hero-card currency: like fmtCur, but drops the decimal once the figure reaches 100 ("$236M", not "$235.9M"). */
+export function fmtCurHero(value: number): string {
+  const tiers: [number, string][] = [[1e9, 'B'], [1e6, 'M']];
+  for (const [div, suffix] of tiers) {
+    if (value >= div) {
+      const scaled = value / div;
+      return Number(scaled.toFixed(1)) >= 100 ? `$${Math.round(scaled)}${suffix}` : `$${scaled.toFixed(1)}${suffix}`;
+    }
+  }
+  return formatCurrency(value);
+}
 /** "Jan 6, 2025" from an ISO ("YYYY-MM-DD") date string. */
 export const fmtDate = (iso: string) => toDisplayDate(iso);
 
@@ -100,14 +111,14 @@ export function buildHeroCards(data: KpiDashboardData, period: string): HeroCard
   return [
     heroCard('Total interactions', fmtInt(hk.interactions.value), hk.interactions.deltaPercent, comp, false, isAll),
     heroCard('In-progress', fmtInt(hk.inProgress.value), hk.inProgress.deltaPercent, comp, false, isAll),
-    heroCard('Total NNA', fmtCur(hk.nna.value), hk.nna.deltaPercent, comp, false, isAll),
-    heroCard('NNA per interaction', fmtCur(hk.avgNnaPerInteraction.value), hk.avgNnaPerInteraction.deltaPercent, comp, false, isAll),
+    heroCard('Total NNA', fmtCurHero(hk.nna.value), hk.nna.deltaPercent, comp, false, isAll),
+    heroCard('NNA per interaction', fmtCurHero(hk.avgNnaPerInteraction.value), hk.avgNnaPerInteraction.deltaPercent, comp, false, isAll),
     heroCard('Completion rate', Math.round(hk.completionRate.value) + '%', hk.completionRate.deltaPercent, comp, false, isAll),
     heroCard('Zero-NNA rate', Math.round(hk.zeroNnaRate.value) + '%', hk.zeroNnaRate.deltaPercent, 'of completed', true, isAll),
   ];
 }
 
-// ---------- segment matrix: best-converting cell (Q9) ----------
+// ---------- segment matrix: best-converting cell (Q11) ----------
 
 export interface BestCell {
   t: string;
@@ -195,21 +206,38 @@ export function subtitleConc(data: KpiDashboardData): string {
     : 'No NNA data yet.';
 }
 
-export function verdictQ8(data: KpiDashboardData): string {
+export function verdictTickers(data: KpiDashboardData): string {
+  const t = data.tickerNna;
+  if (!t.totalNna) return 'No NNA recorded yet.';
+  const top = t.tickers[0];
+  if (!top) return `None of our ${fmtCur(t.totalNna)} in NNA has been broken down by ticker yet.`;
+  const rest = t.unallocated.nna > 0 ? ` ${fmtCur(t.unallocated.nna)} is still unallocated.` : ' Every dollar is allocated.';
+  return `${Math.round(t.allocatedPct)}% of NNA is tied to tickers; ${top.ticker} leads at ${fmtCur(top.nna)} (${Math.round(top.share)}%).${rest}`;
+}
+
+export function verdictTickerSources(data: KpiDashboardData): string {
+  const top = data.tickerNna.tickers[0];
+  if (!top) return 'Once NNA is broken down by ticker, this shows which work and departments feed each one.';
+  const [type, amt] = Object.entries(top.byType).sort((a, b) => b[1] - a[1])[0] ?? ['', 0];
+  if (!type || !top.nna) return '';
+  return `${top.ticker}'s NNA comes mostly from ${type} work (${Math.round((amt / top.nna) * 100)}%). Toggle to see which client departments feed each ticker.`;
+}
+
+export function verdictQ10(data: KpiDashboardData): string {
   const top = data.extended.chainRolled.find(r => r.downstream > 0);
   return top
     ? `${top.type} work originates ${fmtCur(top.rolledNna)} once the chains it starts are rolled up ${DASH} ${Math.round(top.uplift)}% more than its direct NNA alone.`
     : 'Little downstream value is currently attributable through chains.';
 }
 
-export function verdictQ9(data: KpiDashboardData): string {
+export function verdictQ11(data: KpiDashboardData): string {
   const best = findBestCell(data.extended.segmentMatrix);
   return best
     ? `${best.t} for ${best.d} converts best ${DASH} ${Math.round(best.hitRate)}% of completed work lands NNA, at a median of ${fmtCur(best.medianNna)}.`
     : '';
 }
 
-export function verdictQ10(data: KpiDashboardData): string {
+export function verdictQ12(data: KpiDashboardData): string {
   const n = data.extended.chaseList.length;
   if (!n) return `Nothing outstanding ${DASH} no "Follow Up" project has been open longer than 6 months.`;
   const label = `${n}${n >= 10 ? '+' : ''} project${n === 1 ? '' : 's'}`;
@@ -217,7 +245,7 @@ export function verdictQ10(data: KpiDashboardData): string {
   return `${label} flagged "Follow Up" ${verb} been open 6+ months with no NNA outcome recorded yet ${DASH} worth chasing the sales rep. Until then, our value numbers understate reality.`;
 }
 
-export function verdictQ12(data: KpiDashboardData): string {
+export function verdictQ14(data: KpiDashboardData): string {
   const top = data.extended.spawnRate[0];
   if (!top) return `Not enough data yet ${DASH} no completed work to measure follow-up rates.`;
   const pct = Math.round(top.pct);
@@ -226,14 +254,14 @@ export function verdictQ12(data: KpiDashboardData): string {
     : `No ${DASH} no type spawns follow-up work yet.`;
 }
 
-export function verdictQ13(data: KpiDashboardData): string {
+export function verdictQ15(data: KpiDashboardData): string {
   const totNew = data.extended.clientBase.reduce((s, b) => s + b.newN, 0);
   return totNew > 8
     ? `Growing ${DASH} ${totNew} first-time clients engaged us in the last 12 months on top of the recurring base.`
     : `Mostly recycling ${DASH} only ${totNew} first-time clients in the last 12 months; the rest is repeat business.`;
 }
 
-export function verdictQ14(data: KpiDashboardData): string {
+export function verdictQ16(data: KpiDashboardData): string {
   const n = data.dormantClients.length;
   return n
     ? `${n} client${n === 1 ? '' : 's'} with 3+ past engagements ${n === 1 ? 'has' : 'have'} had no activity for 60+ days ${DASH} long enough to count as dormant.`
