@@ -16,7 +16,8 @@ const API_BASE_URL = '/api';
 // TYPES
 // =============================================================================
 
-export type KpiScope = 'all' | `team:${string}`;
+/** 'me' = the signed-in user's own work (engagements they're assigned to, any team). */
+export type KpiScope = 'all' | 'me' | `team:${string}`;
 
 export interface KpiFilters {
   scope: KpiScope;
@@ -128,7 +129,7 @@ export interface DormantClient {
 // -----------------------------------------------------------------------------
 // EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
 //
-// These are intentionally scope(team)-only: they use fixed windows (26 weeks /
+// These are intentionally scope-only (team or personal): they use fixed windows (26 weeks /
 // 12 months / all-completed / all-history) and do NOT respond to the period,
 // clientDepts, or intakeTypes filters. See kpi-aggregations.ts.
 // -----------------------------------------------------------------------------
@@ -234,7 +235,7 @@ export interface KpiExtendedData {
 }
 
 export interface KpiDashboardData {
-  scope: { kind: 'all' | 'team'; team?: string };
+  scope: { kind: 'all' | 'me' | 'team'; team?: string };
   periodLabel: string;
   heroKpis: HeroKpis;
   journeySankey: JourneySankeyData;

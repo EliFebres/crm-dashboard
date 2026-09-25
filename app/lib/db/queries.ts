@@ -73,6 +73,8 @@ export const SORT_COLUMN_MAP: Record<string, string> = {
 
 export interface ServerConstraints {
   team?: string;
+  /** KPI personal scope: only engagements whose team_members includes this display name. */
+  member?: string;
 }
 
 /**

@@ -1,11 +1,12 @@
 /**
  * Server-side aggregation functions for the KPI dashboard.
  *
- * Scope model: 'all' (cross-team aggregate) or 'team:<name>' (single team
- * aggregate). None of the dashboard functions here attribute work to an
- * individual — team privacy is a hard constraint. The one person-level reader is
- * the PDF report (kpi-report.ts), which passes `member` to buildKpiWhere behind
- * its own access check in /api/kpi/report.
+ * Scope model: 'all' (cross-team aggregate), 'team:<name>' (single team
+ * aggregate), or 'me' (the caller's own engagements, via `constraints.member`).
+ * Team privacy is a hard constraint: the dashboard never attributes work to
+ * anyone but the caller — kpiConstraint derives `member` from the session, not
+ * the request. The PDF report (kpi-report.ts) passes `member` to buildKpiWhere
+ * for other people behind its own access check in /api/kpi/report.
  *
  * DATA SOURCE:
  * - If SQLITE_DIR is set → queries SQLite.
@@ -54,27 +55,17 @@ export type SqlClause = { whereClause: string; params: unknown[] };
  * client lookups where period is inherent to the metric's definition).
  *
  * `member` narrows to engagements whose team_members array contains that display
- * name. Only the report path uses it; see the module header.
+ * name. The report path passes it explicitly; otherwise it comes from the 'me'
+ * scope's `constraints.member`.
  */
 export function buildKpiWhere(
   filters: KpiFilters,
   constraints: ServerConstraints,
   opts: { includePeriod?: boolean; tableAlias?: string; member?: string } = {}
 ): SqlClause {
-  const { includePeriod = true, tableAlias, member } = opts;
+  const { includePeriod = true, tableAlias } = opts;
   const col = (c: string) => (tableAlias ? `${tableAlias}.${c}` : c);
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-
-  if (constraints.team) {
-    conditions.push(`${col('team')} = ?`);
-    params.push(constraints.team);
-  }
-
-  if (member) {
-    conditions.push(`EXISTS (SELECT 1 FROM json_each(${col('team_members')}) WHERE value = ?)`);
-    params.push(member);
-  }
+  const { conditions, params } = scopeConditions(constraints, col, opts.member);
 
   if (includePeriod && filters.period) {
     const startISO = getPeriodStartISO(filters.period);
@@ -98,6 +89,25 @@ export function buildKpiWhere(
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   return { whereClause, params };
+}
+
+/** The scope part of every KPI WHERE clause: team and/or assigned member. */
+function scopeConditions(
+  constraints: ServerConstraints,
+  col: (c: string) => string,
+  member = constraints.member
+): { conditions: string[]; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (constraints.team) {
+    conditions.push(`${col('team')} = ?`);
+    params.push(constraints.team);
+  }
+  if (member) {
+    conditions.push(`EXISTS (SELECT 1 FROM json_each(${col('team_members')}) WHERE value = ?)`);
+    params.push(member);
+  }
+  return { conditions, params };
 }
 
 export function pct(num: number, denom: number): number {
@@ -579,19 +589,20 @@ export async function computeDormantClients(
   }));
 
   // Attach the team member(s) from each dormant client's most recent engagement
-  // (the one that set their last-engaged date). Kept scope-consistent via `team`.
+  // (the one that set their last-engaged date). Kept consistent with the scope.
   if (mapped.length) {
     const names = mapped.map(m => m.clientName);
     const placeholders = names.map(() => '?').join(', ');
-    const teamClause = constraints.team ? 'AND team = ?' : '';
-    const latestParams = constraints.team ? [...names, constraints.team] : names;
+    const scope = scopeConditions(constraints, c => c);
+    const scopeClause = scope.conditions.map(c => `AND ${c}`).join(' ');
+    const latestParams = [...names, ...scope.params];
     const latest = await query<Record<string, unknown>>(
       `
         SELECT name, team_members FROM (
           SELECT internal_client_name AS name, team_members,
                  ROW_NUMBER() OVER (PARTITION BY internal_client_name ORDER BY date_started DESC, id DESC) AS rn
           FROM engagements
-          WHERE internal_client_name IN (${placeholders}) ${teamClause}
+          WHERE internal_client_name IN (${placeholders}) ${scopeClause}
         ) WHERE rn = 1
       `,
       latestParams
@@ -607,21 +618,19 @@ export async function computeDormantClients(
 // =============================================================================
 // EXTENDED METRICS — the "Briefing" redesign (Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
 //
-// These are intentionally SCOPE(team)-ONLY. Per the redesign spec, each uses a
-// fixed intrinsic window (26 weeks / 12 months / all-completed / all-history) and
-// does not respond to the period, clientDepts, or intakeTypes filters. So the only
-// constraint applied is the team scope; `buildTeamWhere` emits exactly that.
+// These are intentionally SCOPE-ONLY. Per the redesign spec, each uses a fixed
+// intrinsic window (26 weeks / 12 months / all-completed / all-history) and does
+// not respond to the period, clientDepts, or intakeTypes filters. So the only
+// constraint applied is the team / personal scope; `buildTeamWhere` emits exactly that.
 // =============================================================================
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Team-only WHERE clause (ignores period / dept / intake). */
+/** Scope-only WHERE clause (ignores period / dept / intake). */
 function buildTeamWhere(constraints: ServerConstraints, alias?: string): SqlClause {
   const col = (c: string) => (alias ? `${alias}.${c}` : c);
-  if (constraints.team) {
-    return { whereClause: `WHERE ${col('team')} = ?`, params: [constraints.team] };
-  }
-  return { whereClause: '', params: [] };
+  const { conditions, params } = scopeConditions(constraints, col);
+  return { whereClause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', params };
 }
 
 /** Append an extra condition to a (possibly empty) WHERE clause. */

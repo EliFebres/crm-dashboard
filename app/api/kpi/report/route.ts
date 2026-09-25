@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
 
   if (subjectKind === 'team') {
     const scope = body.scope;
-    if (!isValidKpiScope(scope)) {
+    // 'me' is a person, not a team; personal reports go through subject.kind 'person'.
+    if (!isValidKpiScope(scope) || scope === 'me') {
       return NextResponse.json({ error: 'Invalid scope.' }, { status: 400 });
     }
     if (!canAccessKpiScope(payload, scope as KpiScope)) {
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const constraints = subject.kind === 'person' ? {} : kpiConstraint(filters.scope);
+    const constraints = subject.kind === 'person' ? {} : kpiConstraint(filters.scope, payload);
     const report = await computeReport(filters, constraints, subject);
 
     void logActivity(req, {

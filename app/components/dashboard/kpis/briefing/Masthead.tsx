@@ -155,23 +155,27 @@ export default function Masthead({ scope, period, onScopeChange, onPeriodChange,
     return () => document.removeEventListener('mousedown', onDoc);
   }, [openMenu]);
 
-  // Scope options mirror ScopeSelector's access rules: admins see every team;
-  // non-admins are limited to the cross-team aggregate or their own team.
+  const myName = user ? toDisplayName(user.firstName, user.lastName) : null;
+  const myFullName = user ? `${user.firstName} ${user.lastName}`.trim() : '';
+
+  // Scope options mirror the server's access rules (canAccessKpiScope): your own
+  // work, the cross-team aggregate, and either every team (admins) or your own.
   const scopeOptions = useMemo<MenuOption[]>(() => {
     const all = { label: 'Cross-team aggregate', value: 'all', active: scope === 'all' };
     if (!user) return [all];
+    const me = { label: myFullName || 'My work', value: 'me', active: scope === 'me' };
     const teamList = user.role === 'admin' ? teams : user.team ? [user.team] : [];
-    return [all, ...teamList.map(t => ({ label: t, value: `team:${t}`, active: scope === `team:${t}` }))];
-  }, [user, teams, scope]);
+    return [me, all, ...teamList.map(t => ({ label: t, value: `team:${t}`, active: scope === `team:${t}` }))];
+  }, [user, teams, scope, myFullName]);
 
   const periodOptions = useMemo<MenuOption[]>(
     () => PERIODS.map(pk => ({ label: `${PERIOD_LONG[pk]} (${pk})`, value: pk, active: pk === period })),
     [period]
   );
 
-  const teamName = teamOf(scope);
-  const scopeTrigger = teamName || 'Cross-team aggregate';
-  const myName = user ? toDisplayName(user.firstName, user.lastName) : null;
+  // In the personal view, team-level report actions target the user's own team.
+  const teamName = teamOf(scope) ?? (scope === 'me' ? user?.team || null : null);
+  const scopeTrigger = scope === 'me' ? myFullName || 'My work' : teamOf(scope) || 'Cross-team aggregate';
 
   // The founder's roster follows the page's team scope; reset it when that changes.
   useEffect(() => {
