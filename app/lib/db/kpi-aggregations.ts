@@ -21,6 +21,7 @@ import type { ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
 import { STALE_THRESHOLDS, resolveStaleThreshold } from '../api/kpi';
+import { parseStoredAllocations, rollUpTickerNna } from '../nna';
 import type {
   KpiFilters,
   HeroKpis,
@@ -28,6 +29,7 @@ import type {
   JourneyTemplate,
   ClientDeptRow,
   NnaConcentration,
+  TickerNnaData,
   StaleEngagement,
   DormantClient,
   WeeklyFlowPoint,
@@ -500,6 +502,45 @@ export async function computeNnaConcentration(
 }
 
 // =============================================================================
+// 3c. NNA BY TICKER (per-ticker allocations + Unallocated remainder, by source)
+// =============================================================================
+
+export async function computeTickerNna(
+  filters: KpiFilters,
+  constraints: ServerConstraints
+): Promise<TickerNnaData> {
+  if (!hasDb()) {
+    return { ...rollUpTickerNna([]), typeColors: {}, deptColors: {} };
+  }
+  const { whereClause, params } = buildKpiWhere(filters, constraints);
+
+  // Rolled up in TS: the Unallocated remainder is per engagement (total minus its
+  // own breakdown), which json_each SQL can't express cleanly.
+  const [rows, typeColors, deptColors] = await Promise.all([
+    query<Record<string, unknown>>(
+      `
+        SELECT nna, nna_allocations, type, internal_client_dept AS dept
+        FROM engagements
+        ${andWhere(whereClause, 'nna IS NOT NULL AND nna > 0')}
+      `,
+      params
+    ),
+    projectTypeColorMap(),
+    departmentColorMap(),
+  ]);
+
+  const rollUp = rollUpTickerNna(
+    rows.map(r => ({
+      nna: Number(r.nna ?? 0),
+      allocations: parseStoredAllocations(r.nna_allocations),
+      type: String(r.type ?? ''),
+      dept: String(r.dept ?? ''),
+    }))
+  );
+  return { ...rollUp, typeColors, deptColors };
+}
+
+// =============================================================================
 // 6a. STALE IN-PROGRESS ENGAGEMENTS
 // =============================================================================
 
@@ -616,7 +657,7 @@ export async function computeDormantClients(
 }
 
 // =============================================================================
-// EXTENDED METRICS — the "Briefing" redesign (Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
+// EXTENDED METRICS — the "Briefing" redesign (Q2, Q3, Q4, Q10, Q11, Q12, Q14, Q15)
 //
 // These are intentionally SCOPE-ONLY. Per the redesign spec, each uses a fixed
 // intrinsic window (26 weeks / 12 months / all-completed / all-history) and does
@@ -800,7 +841,7 @@ export async function computeCycleTimes(constraints: ServerConstraints): Promise
 }
 
 // -----------------------------------------------------------------------------
-// Q8 — CHAIN-ROLLED NNA attribution by originating type
+// Q10 — CHAIN-ROLLED NNA attribution by originating type
 // -----------------------------------------------------------------------------
 
 export async function computeChainRolled(constraints: ServerConstraints): Promise<ChainRolledRow[]> {
@@ -848,7 +889,7 @@ export async function computeChainRolled(constraints: ServerConstraints): Promis
 }
 
 // -----------------------------------------------------------------------------
-// Q9 — SEGMENT CONVERSION MATRIX (project type × client department)
+// Q11 — SEGMENT CONVERSION MATRIX (project type × client department)
 // -----------------------------------------------------------------------------
 
 export async function computeSegmentMatrix(constraints: ServerConstraints): Promise<SegmentMatrix> {
@@ -904,7 +945,7 @@ export async function computeSegmentMatrix(constraints: ServerConstraints): Prom
 }
 
 // -----------------------------------------------------------------------------
-// Q10 — CHASE LIST ("Follow Up" projects open 6+ months, NNA outcome still pending)
+// Q12 — CHASE LIST ("Follow Up" projects open 6+ months, NNA outcome still pending)
 //
 // "Follow Up" is the workflow flag for a delivered project whose NNA outcome hasn't
 // come back yet. Since results take a long time, we surface only those open 6+ months
@@ -939,7 +980,7 @@ export async function computeChaseList(constraints: ServerConstraints): Promise<
 }
 
 // -----------------------------------------------------------------------------
-// Q12 — FOLLOW-UP SPAWN RATE by originating type
+// Q14 — FOLLOW-UP SPAWN RATE by originating type
 // -----------------------------------------------------------------------------
 
 export async function computeSpawnRate(constraints: ServerConstraints): Promise<SpawnRateRow[]> {
@@ -972,7 +1013,7 @@ export async function computeSpawnRate(constraints: ServerConstraints): Promise<
 }
 
 // -----------------------------------------------------------------------------
-// Q13 — CLIENT BASE (new vs returning per month, 12m) + unique clients per dept (1Y)
+// Q15 — CLIENT BASE (new vs returning per month, 12m) + unique clients per dept (1Y)
 // -----------------------------------------------------------------------------
 
 export async function computeClientBase(

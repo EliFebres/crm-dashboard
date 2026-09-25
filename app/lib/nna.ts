@@ -1,4 +1,5 @@
 import type { NnaAllocation } from '@/app/lib/types/engagements';
+import type { TickerNnaData, TickerNnaRow } from '@/app/lib/api/kpi';
 
 // Shared NNA helpers used by the NNA modal (client) and the engagement routes
 // (server). engagements.nna is the total; nna_allocations is an optional
@@ -163,4 +164,62 @@ export function normalizeNnaDetails(
   }
 
   return { ok: true, value: { nna, allocations, notes } };
+}
+
+export const UNALLOCATED_TICKER = 'Unallocated';
+
+export interface TickerNnaSource {
+  nna: number;
+  allocations: NnaAllocation[] | undefined;
+  type: string;
+  dept: string;
+}
+
+// Roll engagements up into NNA per ticker. Each allocation credits its ticker;
+// whatever of an engagement's total the breakdown doesn't cover (all of it, when
+// there is no breakdown) goes to 'Unallocated'. Every row is also split by the
+// engagement's project type and client department, so the tickers plus
+// Unallocated always sum to the total.
+export function rollUpTickerNna(
+  sources: TickerNnaSource[],
+): Omit<TickerNnaData, 'typeColors' | 'deptColors'> {
+  const newRow = (ticker: string): TickerNnaRow => ({
+    ticker, nna: 0, engagements: 0, share: 0, byType: {}, byDept: {},
+  });
+  const credit = (row: TickerNnaRow, amount: number, src: TickerNnaSource) => {
+    row.nna += amount;
+    row.engagements += 1;
+    row.byType[src.type] = (row.byType[src.type] ?? 0) + amount;
+    row.byDept[src.dept] = (row.byDept[src.dept] ?? 0) + amount;
+  };
+
+  const byTicker = new Map<string, TickerNnaRow>();
+  const unallocated = newRow(UNALLOCATED_TICKER);
+  let totalNna = 0;
+
+  for (const src of sources) {
+    if (!(src.nna > 0)) continue;
+    totalNna += src.nna;
+    const allocations = (src.allocations ?? []).filter(a => a.amount > 0);
+    for (const a of allocations) {
+      const ticker = a.ticker.trim().toUpperCase();
+      let row = byTicker.get(ticker);
+      if (!row) byTicker.set(ticker, (row = newRow(ticker)));
+      credit(row, a.amount, src);
+    }
+    const remainder = Math.max(0, src.nna - sumAllocations(allocations));
+    if (remainder > 0) credit(unallocated, remainder, src);
+  }
+
+  const share = (n: number) => (totalNna > 0 ? (n / totalNna) * 100 : 0);
+  const tickers = [...byTicker.values()].sort((a, b) => b.nna - a.nna);
+  for (const row of tickers) row.share = share(row.nna);
+  unallocated.share = share(unallocated.nna);
+
+  return {
+    totalNna,
+    allocatedPct: totalNna > 0 ? 100 - unallocated.share : 0,
+    tickers,
+    unallocated,
+  };
 }

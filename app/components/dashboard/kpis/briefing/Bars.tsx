@@ -7,11 +7,11 @@ import type { ClientDeptRow, ChainRolledRow, SpawnRateRow } from '@/app/lib/api/
 import { C, MONO } from './tokens';
 import { fmtCur, fmtInt } from './briefing-utils';
 
-const catTick = { fill: '#a1a1aa', fontSize: 12 } as const;
-const valueLabelStyle = { fill: '#a1a1aa', fontSize: 12, fontFamily: MONO } as const;
+export const catTick = { fill: '#a1a1aa', fontSize: 12 } as const;
+export const valueLabelStyle = { fill: '#a1a1aa', fontSize: 12, fontFamily: MONO } as const;
 
-/** Text tab (cyan underline when active) used by the Q6 metric toggle. */
-function TextTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+/** Text tab (cyan underline when active) used by the Q6 / Q9 toggles. */
+export function TextTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -71,7 +71,7 @@ export function DeptBars({ data }: { data: ClientDeptRow[] }) {
 }
 
 // -----------------------------------------------------------------------------
-// Q12 — follow-up spawn rate by originating type
+// Q14 — follow-up spawn rate by originating type
 // -----------------------------------------------------------------------------
 
 export function SpawnBars({ data }: { data: SpawnRateRow[] }) {
@@ -102,7 +102,7 @@ export function SpawnBars({ data }: { data: SpawnRateRow[] }) {
 }
 
 // -----------------------------------------------------------------------------
-// Q8 — chain-rolled NNA (direct solid + downstream faded), top 6 by rolled value
+// Q10 — chain-rolled NNA (direct solid + downstream faded), top 6 by rolled value
 // -----------------------------------------------------------------------------
 
 export function ChainRolledBars({ data }: { data: ChainRolledRow[] }) {

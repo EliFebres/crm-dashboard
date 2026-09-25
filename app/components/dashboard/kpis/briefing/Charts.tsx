@@ -16,7 +16,7 @@ import type { WeeklyFlowPoint, MixDriftPoint, NnaConcentration } from '@/app/lib
 import { C, MONO } from './tokens';
 import { fmtCur } from './briefing-utils';
 
-const TOOLTIP_STYLE = {
+export const TOOLTIP_STYLE = {
   background: 'rgba(24, 24, 27, 0.95)',
   border: '1px solid #3f3f46',
   borderRadius: 6,

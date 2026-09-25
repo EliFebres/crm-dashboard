@@ -273,7 +273,7 @@ function generateNnaDetails(
 // =============================================================================
 
 // Internal client (relationship owner/salesperson) roster mapped to client departments.
-// Engaged continuously, so they always read as "returning" (Q13), never "dormant" (Q14).
+// Engaged continuously, so they always read as "returning" (Q15), never "dormant" (Q16).
 const internalRoster: Array<{ name: string; clientDept: Dept }> = [
   { name: 'Avery Bennett', clientDept: 'Advisory' },
   { name: 'Cameron Brooks', clientDept: 'Advisory' },
@@ -677,11 +677,11 @@ function generateEngagements(): MockEngagement[] {
   });
 
   // ---------------------------------------------------------------------------
-  // 5. KPI fixtures keyed on INTERNAL relationship names (Q13 / Q14).
+  // 5. KPI fixtures keyed on INTERNAL relationship names (Q15 / Q16).
   //    • new internal clients  → first (and only) engagements inside the last ~11
-  //      months, 2 each, so Q13's client base reads as "Growing".
+  //      months, 2 each, so Q15's client base reads as "Growing".
   //    • dormant internal clients → 4 engagements that all stopped >60 days ago,
-  //      earliest older than a year, so Q14 lists them, longest-silent first.
+  //      earliest older than a year, so Q16 lists them, longest-silent first.
   // ---------------------------------------------------------------------------
   const fixture = (ic: { name: string; clientDept: Dept }, daysAgo: number, withPortfolio: boolean) => {
     const seed = 9800 + n * 7;

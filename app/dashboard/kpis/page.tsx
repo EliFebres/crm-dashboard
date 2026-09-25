@@ -12,6 +12,7 @@ import { WeeklyFlowChart, MixDriftChart, ParetoBlock } from '@/app/components/da
 import CycleDumbbell from '@/app/components/dashboard/kpis/briefing/CycleDumbbell';
 import EvidenceList, { type EvidenceRow } from '@/app/components/dashboard/kpis/briefing/EvidenceList';
 import { DeptBars, SpawnBars, ChainRolledBars } from '@/app/components/dashboard/kpis/briefing/Bars';
+import { TickerNnaBars, TickerSourceBars } from '@/app/components/dashboard/kpis/briefing/TickerBars';
 import SegmentMatrixTable from '@/app/components/dashboard/kpis/briefing/SegmentMatrixTable';
 import SankeyBlock from '@/app/components/dashboard/kpis/briefing/SankeyBlock';
 import ClientBaseBlock from '@/app/components/dashboard/kpis/briefing/ClientBaseBlock';
@@ -25,12 +26,14 @@ import {
   verdictQ5,
   verdictQ6,
   subtitleConc,
-  verdictQ8,
-  verdictQ9,
+  verdictTickers,
+  verdictTickerSources,
   verdictQ10,
+  verdictQ11,
   verdictQ12,
-  verdictQ13,
   verdictQ14,
+  verdictQ15,
+  verdictQ16,
 } from '@/app/components/dashboard/kpis/briefing/briefing-utils';
 import { C } from '@/app/components/dashboard/kpis/briefing/tokens';
 
@@ -214,20 +217,28 @@ export default function KpiDashboard() {
                 <ParetoBlock data={data.nnaConcentration} />
               </BriefingRow>
 
+              <BriefingRow q="Q8" question="Which tickers is our NNA landing in?" verdict={verdictTickers(data)}>
+                <TickerNnaBars data={data.tickerNna} />
+              </BriefingRow>
+
+              <BriefingRow q="Q9" question="Where does each ticker's NNA come from?" verdict={verdictTickerSources(data)}>
+                <TickerSourceBars data={data.tickerNna} />
+              </BriefingRow>
+
               <BriefingRow
-                q="Q8"
+                q="Q10"
                 question="What is the full value of work we originate, once downstream NNA rolls up the chain?"
-                verdict={verdictQ8(data)}
+                verdict={verdictQ10(data)}
                 evidencePadTop={14}
               >
                 <ChainRolledBars data={data.extended.chainRolled} />
               </BriefingRow>
 
-              <BriefingRow q="Q9" question="Which segments convert — and at what typical size?" verdict={verdictQ9(data)} evidencePadTop={14}>
+              <BriefingRow q="Q11" question="Which segments convert — and at what typical size?" verdict={verdictQ11(data)} evidencePadTop={14}>
                 <SegmentMatrixTable matrix={data.extended.segmentMatrix} />
               </BriefingRow>
 
-              <BriefingRow q="Q10" question="Which delivered projects are we still chasing for an NNA outcome?" verdict={verdictQ10(data)}>
+              <BriefingRow q="Q12" question="Which delivered projects are we still chasing for an NNA outcome?" verdict={verdictQ12(data)}>
                 <EvidenceList
                   rows={chaseRows}
                   caption="Status 'Follow Up' · open 6+ months · oldest first"
@@ -239,13 +250,13 @@ export default function KpiDashboard() {
               <GroupDivider n={4} name="Work journey" />
 
               <SankeyBlock
-                q="Q11"
+                q="Q13"
                 question="How does work flow from intake channel to project type to outcome?"
                 sankey={data.journeySankey}
                 templates={data.journeyTemplates}
               />
 
-              <BriefingRow q="Q12" question="Does our work generate more work?" verdict={verdictQ12(data)} evidencePadTop={14}>
+              <BriefingRow q="Q14" question="Does our work generate more work?" verdict={verdictQ14(data)} evidencePadTop={14}>
                 <SpawnBars data={data.extended.spawnRate} />
               </BriefingRow>
 
@@ -253,16 +264,16 @@ export default function KpiDashboard() {
               <GroupDivider n={5} name="People & relationships" />
 
               <BriefingRow
-                q="Q13"
+                q="Q15"
                 question="Is our internal client base growing — or just recycling?"
-                verdict={verdictQ13(data)}
+                verdict={verdictQ15(data)}
                 top={44}
                 evidencePadTop={14}
               >
                 <ClientBaseBlock clientBase={data.extended.clientBase} uniquePerDept={data.extended.uniquePerDept} />
               </BriefingRow>
 
-              <BriefingRow q="Q14" question="Which valuable clients have gone quiet?" verdict={verdictQ14(data)}>
+              <BriefingRow q="Q16" question="Which valuable clients have gone quiet?" verdict={verdictQ16(data)}>
                 <EvidenceList
                   rows={dormantRows}
                   caption="Dormant = no activity in 60+ days · 3+ past engagements · longest silent first"

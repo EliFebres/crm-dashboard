@@ -284,7 +284,7 @@ export default function Masthead({ scope, period, onScopeChange, onPeriodChange,
           maxWidth: 820,
         }}
       >
-        Fourteen questions about the work {headlineScope(scope)} did {HEAD_PERIOD[period]} — answered by the data.
+        Sixteen questions about the work {headlineScope(scope)} did {HEAD_PERIOD[period]} — answered by the data.
       </div>
       <div
         style={{

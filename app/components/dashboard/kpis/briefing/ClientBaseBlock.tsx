@@ -13,7 +13,7 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 } as const;
 
-/** Q13 evidence — monthly new vs returning clients + per-department unique counts. */
+/** Q15 evidence — monthly new vs returning clients + per-department unique counts. */
 export default function ClientBaseBlock({ clientBase, uniquePerDept }: { clientBase: ClientBasePoint[]; uniquePerDept: UniquePerDeptRow[] }) {
   return (
     <div style={{ paddingTop: 6 }}>
