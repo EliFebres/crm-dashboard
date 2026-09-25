@@ -111,6 +111,12 @@ export interface NoteEntry extends BaseNote {
   engagementId: number;
 }
 
+// One slice of an engagement's NNA: how many dollars went into a given ticker.
+export interface NnaAllocation {
+  ticker: string;
+  amount: number;
+}
+
 export interface Engagement {
   id: number;
   clientCrn: string; // CRN of the registered external client (required)
@@ -131,6 +137,8 @@ export interface Engagement {
   portfolioUnchanged: boolean; // Model carried over unchanged from a prior interaction (follow-up)
   portfolio?: PortfolioHolding[]; // Optional client portfolio holdings
   nna?: number; // Net New Assets - dollar amount of AUM moved into funds (optional)
+  nnaAllocations?: NnaAllocation[]; // Optional per-ticker breakdown of the NNA total
+  nnaNotes?: string | null; // Optional rich-text notes about the NNA
   notes?: string; // Optional notes field (legacy — used by engagement form)
   noteCount?: number; // Number of entries in engagement_notes table (undefined when not loaded)
   version?: number; // Optimistic locking counter — send back with PATCH to detect concurrent edits

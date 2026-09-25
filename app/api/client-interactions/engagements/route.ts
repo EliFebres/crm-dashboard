@@ -13,6 +13,8 @@ import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
 import { getUserOffice } from '@/app/lib/db/users';
+import { normalizeNnaDetails } from '@/app/lib/nna';
+import type { NnaAllocation } from '@/app/lib/types/engagements';
 
 // Parses repeated `sort=col:dir` params into a SortSpec[] (preserves order).
 function parseSortParams(sp: URLSearchParams): SortSpec[] {
@@ -104,6 +106,25 @@ export async function POST(req: NextRequest) {
       linkedFromId = n;
     }
 
+    // Optional NNA detail (per-ticker breakdown + notes). Only validated when sent,
+    // so callers that post a bare `nna` behave exactly as before.
+    let nnaValue: number | null = body.nna ?? null;
+    let nnaAllocations: NnaAllocation[] | null = null;
+    let nnaNotes: string | null = null;
+    if (body.nnaAllocations !== undefined || body.nnaNotes !== undefined) {
+      const nnaResult = normalizeNnaDetails({
+        nna: body.nna ?? null,
+        allocations: body.nnaAllocations ?? null,
+        notes: body.nnaNotes ?? null,
+      });
+      if (!nnaResult.ok) {
+        return NextResponse.json({ error: nnaResult.error }, { status: 400 });
+      }
+      nnaValue = nnaResult.value.nna;
+      nnaAllocations = nnaResult.value.allocations ?? null;
+      nnaNotes = nnaResult.value.notes ?? null;
+    }
+
     // Stamp the creator's office onto the interaction so "which office logged this"
     // stays true even after they transfer. Null when the account has no office set.
     const office = await getUserOffice(auth.payload.sub);
@@ -114,8 +135,8 @@ export async function POST(req: NextRequest) {
         intake_type, ad_hoc_channel, type, team_members, office, department,
         date_started, date_finished, status, portfolio_logged, portfolio_unchanged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
-        linked_from_id, project_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        linked_from_id, project_id, nna_allocations, nna_notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`,
       [
         clientCrn,
@@ -133,7 +154,7 @@ export async function POST(req: NextRequest) {
         body.portfolioLogged ? true : false,
         body.portfolioUnchanged ? true : false,
         body.portfolio ? JSON.stringify(body.portfolio) : null,
-        body.nna ?? null,
+        nnaValue,
         body.notes ?? null,
         body.tickersMentioned ? JSON.stringify(body.tickersMentioned) : null,
         auth.payload.team,
@@ -141,6 +162,8 @@ export async function POST(req: NextRequest) {
         `${auth.payload.firstName} ${auth.payload.lastName}`,
         linkedFromId,
         normalizeProjectId(body.projectId),
+        nnaAllocations ? JSON.stringify(nnaAllocations) : null,
+        nnaNotes,
       ]
     );
     const id = Number(insertRows[0].id);

@@ -7,7 +7,7 @@ import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/c
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import LinkInteractionModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/LinkInteractionModal';
 import { Select } from '@/app/components/ui/Select';
-import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
+import { PortfolioHolding, EngagementLinkSummary, Client, type NnaAllocation } from '@/app/lib/types/engagements';
 import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
@@ -39,6 +39,8 @@ export interface InteractionFormData {
   portfolioUnchanged: boolean; // "Same model, carried over" — follow-up with no change
   portfolio?: PortfolioHolding[];
   nna: number | null;
+  nnaAllocations?: NnaAllocation[]; // Optional per-ticker breakdown of the NNA total
+  nnaNotes?: string | null;         // Optional rich-text NNA notes
   tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
   linkedFromId?: number | null; // Parent engagement this one is the result of (funnel KPIs)
   linkedFromPreview?: EngagementLinkSummary | null; // Cached preview so we can render the chip without re-fetching
@@ -93,6 +95,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     portfolioUnchanged: false,
     portfolio: undefined,
     nna: null,
+    nnaAllocations: [],
+    nnaNotes: null,
     tickersMentioned: [],
     linkedFromId: null,
     linkedFromPreview: null,
@@ -1060,6 +1064,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   >
                     <DollarSign className="w-4 h-4" />
                     {formData.nna ? <span className="font-mono">{formData.nna.toLocaleString('en-US')}</span> : '+ Add NNA'}
+                    {!!formData.nnaAllocations?.length && (
+                      <span className="text-xs text-muted truncate">
+                        · {formData.nnaAllocations.length} ticker{formData.nnaAllocations.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </button>
                 </div>
 
@@ -1208,8 +1217,15 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         externalClient={formData.externalClient}
         internalClient={formData.internalClient}
         currentNNA={formData.nna ?? undefined}
-        onSave={(_, nna) => {
-          setFormData(prev => ({ ...prev, nna: nna ?? null }));
+        currentAllocations={formData.nnaAllocations}
+        currentNotes={formData.nnaNotes}
+        onSave={(_, update) => {
+          setFormData(prev => ({
+            ...prev,
+            nna: update.nna ?? null,
+            nnaAllocations: update.allocations,
+            nnaNotes: update.notes,
+          }));
         }}
       />
 

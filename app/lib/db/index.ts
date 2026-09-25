@@ -159,6 +159,17 @@ function bootstrap(db: DB): void {
     db.exec(`ALTER TABLE engagements ADD COLUMN project_id TEXT`);
   }
 
+  // One-time migration: optional NNA detail. nna_allocations is a JSON array of
+  // { ticker, amount } (dollars); nna_notes is rich-text HTML. Both nullable — every
+  // existing row reads as "no breakdown / no notes". engagements.nna stays the total
+  // and the single source of truth for every KPI/aggregation.
+  if (!columnExists(db, 'engagements', 'nna_allocations')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN nna_allocations TEXT`);
+  }
+  if (!columnExists(db, 'engagements', 'nna_notes')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN nna_notes TEXT`);
+  }
+
   // Client registry link: every engagement references its external client by CRN.
   // foreign_keys = ON (see connection.ts) rejects inserts without a valid CRN.
   // The legacy free-text `external_client` column is retired — kept physically to

@@ -539,7 +539,7 @@ Optimized endpoint for status updates only.
 
 ### PATCH /engagements/:id/nna
 
-Optimized endpoint for NNA updates only.
+Optimized endpoint for NNA updates: the total, an optional per-ticker breakdown, and optional NNA notes.
 
 **URL Parameters:**
 - `id`: Engagement ID (number)
@@ -548,11 +548,20 @@ Optimized endpoint for NNA updates only.
 
 ```json
 {
-  "nna": 50000000
+  "nna": 75000000,
+  "allocations": [
+    { "ticker": "VTI", "amount": 40000000 },
+    { "ticker": "BND", "amount": 20000000 }
+  ],
+  "notes": "<p>Rolled over from a competitor's platform.</p>"
 }
 ```
 
-To clear NNA:
+- `allocations` and `notes` are optional. Omitting one leaves the stored value unchanged, so `{ "nna": 50000000 }` still works on its own. `null` clears it.
+- Tickers are trimmed, uppercased and must be unique. Amounts must be positive.
+- `nna` may exceed the sum of the allocations (the rest is "unallocated") but may not be below it (400). If `nna` is `null` and allocations are sent, the total becomes their sum.
+
+To clear the NNA (this also clears the breakdown and notes):
 ```json
 {
   "nna": null
@@ -564,7 +573,9 @@ To clear NNA:
 ```json
 {
   "id": 1234,
-  "nna": 50000000
+  "nna": 75000000,
+  "nnaAllocations": [{ "ticker": "VTI", "amount": 40000000 }, { "ticker": "BND", "amount": 20000000 }],
+  "nnaNotes": "<p>Rolled over from a competitor's platform.</p>"
 }
 ```
 
