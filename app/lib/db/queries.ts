@@ -2,6 +2,7 @@ import { toDisplayDate } from './dateUtils';
 import { getPeriodStartISO } from './dateUtils';
 import { queryUsers } from './users';
 import type { Engagement } from '../types/engagements';
+import { parseStoredAllocations } from '../nna';
 import type { EngagementFilters } from '../api/client-interactions';
 
 // Internal-only extension of EngagementFilters: when teamMember is an Office
@@ -73,6 +74,8 @@ export const SORT_COLUMN_MAP: Record<string, string> = {
 
 export interface ServerConstraints {
   team?: string;
+  /** KPI personal scope: only engagements whose team_members includes this display name. */
+  member?: string;
 }
 
 /**
@@ -236,6 +239,8 @@ export function rowToEngagement(row: Record<string, unknown>): Engagement {
       ? JSON.parse(row.portfolio as string)
       : undefined,
     nna: row.nna != null ? Number(row.nna) : undefined,
+    nnaAllocations: parseStoredAllocations(row.nna_allocations),
+    nnaNotes: (row.nna_notes as string | null | undefined) ?? null,
     notes: (row.notes as string | undefined) || undefined,
     noteCount: Number(row.note_count ?? 0),
     version: Number(row.version ?? 1),

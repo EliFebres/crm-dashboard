@@ -23,6 +23,7 @@ import {
 } from '@/app/lib/api/client-interactions';
 import type { DashboardData, DashboardMetrics, EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import type { EngagementMetric, Engagement } from '@/app/lib/types/engagements';
+import type { NnaUpdate } from '@/app/lib/nna';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { toDisplayName, isReadOnlyUser, canUserEditEngagement } from '@/app/lib/auth/types';
@@ -359,6 +360,8 @@ export default function EngagementsDashboard() {
         portfolioUnchanged: data.portfolioUnchanged,
         portfolio: data.portfolio,
         nna: data.nna || undefined,
+        nnaAllocations: data.nnaAllocations?.length ? data.nnaAllocations : undefined,
+        nnaNotes: data.nnaNotes ?? null,
         notes: data.notes?.trim() || undefined,
         tickersMentioned: data.tickersMentioned?.length ? data.tickersMentioned : undefined,
         linkedFromId: data.linkedFromId ?? null,
@@ -442,11 +445,20 @@ export default function EngagementsDashboard() {
     patchEngagements(e => ({ ...e, filepath }), engagementId);
   };
 
-  const handleNNAChange = (engagementId: number, nna: number | undefined) => {
+  const handleNNAChange = (engagementId: number, update: NnaUpdate) => {
     const target = engagements.find(e => e.id === engagementId);
     if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
-    patchEngagements(e => ({ ...e, nna }), engagementId);
-    updateEngagementNNA(engagementId, nna).catch(console.error);
+    patchEngagements(e => ({
+      ...e,
+      nna: update.nna,
+      nnaAllocations: update.allocations.length ? update.allocations : undefined,
+      nnaNotes: update.notes,
+    }), engagementId);
+    updateEngagementNNA(engagementId, update).catch(err => {
+      console.error(err);
+      // Roll the optimistic edit back to the server's state.
+      reloadData();
+    });
   };
 
   const handleRowClick = (engagement: Engagement) => {
@@ -474,6 +486,8 @@ export default function EngagementsDashboard() {
         portfolioUnchanged: engagement.portfolioUnchanged,
         portfolio: engagement.portfolio,
         nna: engagement.nna || null,
+        nnaAllocations: engagement.nnaAllocations ?? [],
+        nnaNotes: engagement.nnaNotes ?? null,
         tickersMentioned: engagement.tickersMentioned || [],
         linkedFromId: engagement.linkedFromId ?? null,
         linkedFromPreview: null,
@@ -517,7 +531,11 @@ export default function EngagementsDashboard() {
         portfolioLogged: data.portfolioLogged,
         portfolioUnchanged: data.portfolioUnchanged,
         portfolio: data.portfolio,
-        nna: data.nna ?? undefined,
+        // Explicit nulls so clearing the NNA / breakdown / notes in the form persists
+        // (PATCH treats undefined as "leave unchanged").
+        nna: data.nna,
+        nnaAllocations: data.nnaAllocations?.length ? data.nnaAllocations : null,
+        nnaNotes: data.nnaNotes ?? null,
         tickersMentioned: data.tickersMentioned?.length ? data.tickersMentioned : undefined,
         linkedFromId: data.linkedFromId ?? null,
         version,

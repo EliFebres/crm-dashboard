@@ -142,6 +142,8 @@ Team determines **write access** and **data scope** on the dashboards. There are
 
 **Additional privacy rule (applies to everyone):** the Team Member filter on the Client Interactions dashboard only exposes "All Team Members" and the current user's own name. A user cannot filter down to another team member's activity, regardless of role or team.
 
+**Team KPIs PDF report:** the Generate PDF button on Team KPIs can build a *team* report for any scope the user can already view on that page, and a *personal* report for the user themselves. Only the founder (the earliest-created account) can generate a personal report about someone else; every other user, admins included, gets a 403 from `/api/kpi/report`.
+
 ---
 
 ## Currently-Available Dashboards
@@ -168,5 +170,6 @@ This means the role/team differences described above materialize only on the Cli
 | Dashboard UI gating (buttons, row clicks) | `app/dashboard/interactions-and-trends/client-interactions/page.tsx` |
 | User management page | `app/admin/users/page.tsx` |
 | Team members management page | `app/admin/team-members/page.tsx` |
+| KPI PDF report access (self / team / founder) | `app/api/kpi/report/route.ts` |
 
 Every write API route in `app/api/client-interactions/**` calls `requireAuth` → `canModify` → `readOnlyError()` as a guard, so read-only enforcement cannot be bypassed by skipping the UI.

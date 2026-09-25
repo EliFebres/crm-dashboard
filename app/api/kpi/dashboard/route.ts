@@ -29,7 +29,8 @@ import { resolveStaleThreshold, type KpiFilters } from '@/app/lib/api/kpi';
 
 // POST /api/kpi/dashboard
 // Body: { scope, period, clientDepts, intakeTypes }
-// Returns team-level / cross-team KPI aggregates. No individual-level data.
+// Returns team-level / cross-team KPI aggregates, or the caller's own ('me').
+// Never another individual's data.
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     staleThreshold: resolveStaleThreshold(body.staleThreshold),
   };
 
-  const constraints = kpiConstraint(filters.scope);
+  const constraints = kpiConstraint(filters.scope, auth.payload);
 
   try {
     const [
@@ -96,8 +97,8 @@ export async function POST(req: NextRequest) {
     ]);
 
     return NextResponse.json({
-      scope: filters.scope === 'all'
-        ? { kind: 'all' }
+      scope: filters.scope === 'all' || filters.scope === 'me'
+        ? { kind: filters.scope }
         : { kind: 'team', team: filters.scope.slice('team:'.length) },
       periodLabel: heroKpis.periodLabel,
       heroKpis,

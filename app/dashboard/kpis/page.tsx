@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCurrentUser } from '@/app/lib/auth/context';
-import { getKpiDashboardData, type KpiDashboardData, type KpiScope } from '@/app/lib/api/kpi';
+import { getKpiDashboardData, type KpiDashboardData, type KpiReportSubject, type KpiScope } from '@/app/lib/api/kpi';
+import { generateReport } from '@/app/components/dashboard/kpis/report/generateReport';
 
 import Masthead from '@/app/components/dashboard/kpis/briefing/Masthead';
 import { GroupDivider, QHeader, BriefingRow } from '@/app/components/dashboard/kpis/briefing/Blocks';
@@ -36,18 +37,17 @@ import { C } from '@/app/components/dashboard/kpis/briefing/tokens';
 export default function KpiDashboard() {
   const { user, isLoading: authLoading } = useCurrentUser();
 
-  const [scope, setScope] = useState<KpiScope>('all');
+  // null until auth resolves, so the first fetch is already the default scope.
+  const [scope, setScope] = useState<KpiScope | null>(null);
   const [period, setPeriod] = useState('1Y');
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Default scope once auth resolves: non-admins land on their own team, admins on
-  // the cross-team aggregate. Guarded so a later refetch never stomps a manual pick.
-  const defaultScopeAppliedRef = useRef(false);
+  // Default scope once auth resolves: everyone lands on their own work ('me').
+  // Only set while still null, so a later auth refresh never stomps a manual pick.
   useEffect(() => {
-    if (authLoading || !user || defaultScopeAppliedRef.current) return;
-    defaultScopeAppliedRef.current = true;
-    if (user.role !== 'admin' && user.team) setScope(`team:${user.team}`);
+    if (authLoading || !user) return;
+    setScope(s => s ?? 'me');
   }, [authLoading, user]);
 
   // Fetch the dashboard for the current (scope, period). `silent` skips the
@@ -56,7 +56,7 @@ export default function KpiDashboard() {
   const abortRef = useRef<AbortController | null>(null);
   const reloadData = useCallback(
     async (opts?: { silent?: boolean }) => {
-      if (authLoading) return;
+      if (authLoading || !scope) return;
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -108,10 +108,17 @@ export default function KpiDashboard() {
     };
   }, []);
 
+  // A "team report" from the personal view covers the user's own team.
+  const reportScope: KpiScope = scope === 'me' || !scope ? (user?.team ? `team:${user.team}` : 'all') : scope;
+  const handleGenerateReport = useCallback(
+    (subject: KpiReportSubject) => generateReport({ scope: reportScope, period, subject }),
+    [reportScope, period]
+  );
+
   const staleRows: EvidenceRow[] = (data?.staleEngagements ?? []).slice(0, 8).map(r => ({
     key: String(r.id),
     name: r.clientName,
-    meta: `${r.clientDept} · ${r.type}`,
+    meta: [r.clientDept, r.type, r.status].filter(Boolean).join(' · '),
     badge: `${r.daysOpen}d`,
     badgeColor: r.daysOpen >= 180 ? '#fb7185' : r.daysOpen >= 90 ? '#fb923c' : '#fbbf24',
   }));
@@ -140,7 +147,14 @@ export default function KpiDashboard() {
     <div className="flex-1 flex flex-col min-h-0" style={{ background: C.bg, color: '#ededed' }}>
       <div className="flex-1 overflow-y-auto">
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 48px 110px' }}>
-          <Masthead scope={scope} period={period} onScopeChange={setScope} onPeriodChange={setPeriod} loading={isLoading} />
+          <Masthead
+            scope={scope ?? 'me'}
+            period={period}
+            onScopeChange={setScope}
+            onPeriodChange={setPeriod}
+            loading={isLoading}
+            onGenerateReport={handleGenerateReport}
+          />
 
           {data ? (
             <>
@@ -151,7 +165,7 @@ export default function KpiDashboard() {
                 <QHeader
                   q="Q1"
                   question="How much work are we doing — and is it trending up or down?"
-                  verdict={verdictQ1(data, scope, period)}
+                  verdict={verdictQ1(data, scope ?? 'me', period)}
                   maxWidth={640}
                 />
                 <HeroStats cards={buildHeroCards(data, period)} />

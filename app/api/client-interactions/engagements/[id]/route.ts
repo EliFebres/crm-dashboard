@@ -10,6 +10,7 @@ import { normalizeProjectId } from '@/app/lib/utils/text';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
+import { normalizeNnaDetails, parseStoredAllocations } from '@/app/lib/nna';
 
 // GET /api/client-interactions/engagements/:id
 export async function GET(
@@ -128,9 +129,36 @@ export async function PATCH(
       setClauses.push('portfolio = ?');
       values.push(body.portfolio ? JSON.stringify(body.portfolio) : null);
     }
-    if (body.nna !== undefined) {
+    // NNA total + optional per-ticker breakdown + notes are validated together so
+    // the total can never fall below the breakdown. Omitted fields keep their
+    // stored values (and are what the new values are checked against).
+    if (body.nna !== undefined || body.nnaAllocations !== undefined || body.nnaNotes !== undefined) {
+      const stored = await query<{ nna: number | null; nna_allocations: string | null }>(
+        `SELECT nna, nna_allocations FROM engagements WHERE id = ?`,
+        [engagementId]
+      );
+      const nnaResult = normalizeNnaDetails(
+        {
+          nna: body.nna !== undefined ? body.nna : stored[0]?.nna ?? null,
+          allocations: body.nnaAllocations,
+          notes: body.nnaNotes,
+        },
+        parseStoredAllocations(stored[0]?.nna_allocations)
+      );
+      if (!nnaResult.ok) {
+        return NextResponse.json({ error: nnaResult.error }, { status: 400 });
+      }
+      const { nna, allocations, notes } = nnaResult.value;
       setClauses.push('nna = ?');
-      values.push(body.nna ?? null);
+      values.push(nna);
+      if (allocations !== undefined) {
+        setClauses.push('nna_allocations = ?');
+        values.push(allocations ? JSON.stringify(allocations) : null);
+      }
+      if (notes !== undefined) {
+        setClauses.push('nna_notes = ?');
+        values.push(notes);
+      }
     }
     if (body.notes !== undefined) {
       setClauses.push('notes = ?');

@@ -14,6 +14,7 @@
 import type {
   Engagement,
   EngagementLinkSummary,
+  NnaAllocation,
   Client,
   ClientModel,
   NoteEntry,
@@ -23,6 +24,7 @@ import type {
   IntakeSourceBreakdown,
   NNATier,
 } from '../types/engagements';
+import type { NnaUpdate } from '../nna';
 
 const API_BASE_URL = '/api';
 
@@ -300,7 +302,11 @@ export async function createEngagement(engagement: Omit<Engagement, 'id'>): Prom
  */
 export async function updateEngagement(
   id: number,
-  updates: Partial<Omit<Engagement, 'id'>>
+  // nna / nnaAllocations also accept null, which clears them (undefined = unchanged).
+  updates: Partial<Omit<Engagement, 'id' | 'nna' | 'nnaAllocations'>> & {
+    nna?: number | null;
+    nnaAllocations?: NnaAllocation[] | null;
+  }
 ): Promise<Engagement> {
   const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/${id}`, {
     method: 'PATCH',
@@ -362,19 +368,27 @@ export async function assignEngagement(
 }
 
 /**
- * Optimized endpoint for quick NNA updates.
+ * Optimized endpoint for quick NNA updates: the total, its per-ticker breakdown,
+ * and NNA notes, written together.
  * Endpoint: PATCH /api/client-interactions/engagements/:id/nna
  */
 export async function updateEngagementNNA(
   id: number,
-  nna: number | undefined
-): Promise<{ id: number; nna: number | undefined }> {
+  update: NnaUpdate
+): Promise<{ id: number; nna: number | undefined; nnaAllocations?: NnaAllocation[]; nnaNotes: string | null }> {
   const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/${id}/nna`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nna: nna ?? null }),
+    body: JSON.stringify({
+      nna: update.nna ?? null,
+      allocations: update.allocations.length ? update.allocations : null,
+      notes: update.notes,
+    }),
   });
-  if (!response.ok) throw new Error('Failed to update NNA');
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error ?? 'Failed to update NNA');
+  }
   return response.json();
 }
 

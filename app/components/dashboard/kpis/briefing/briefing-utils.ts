@@ -49,6 +49,7 @@ export function teamOf(scope: string): string | null {
 }
 
 export function headlineScope(scope: string): string {
+  if (scope === 'me') return 'you';
   const t = teamOf(scope);
   return t ? `the ${t} team` : 'we';
 }
@@ -136,7 +137,7 @@ export function verdictQ1(data: KpiDashboardData, scope: string, period: string)
   const hk = data.heroKpis;
   const t = teamOf(scope);
   const dInt = Math.round(hk.interactions.deltaPercent);
-  const scopeSubj = t ? `The ${t} team logged ` : 'We logged ';
+  const scopeSubj = scope === 'me' ? 'You logged ' : t ? `The ${t} team logged ` : 'We logged ';
   const trend = isAll
     ? ''
     : ` ${DASH} ${dInt > 0 ? `up ${dInt}%` : dInt < 0 ? `down ${Math.abs(dInt)}%` : 'flat'} on the prior period`;

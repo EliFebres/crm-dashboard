@@ -78,26 +78,31 @@ export function teamConstraint(payload: JWTPayload): ServerConstraints {
   return { team: payload.team };
 }
 
-export type KpiScope = 'all' | `team:${string}`;
+export type KpiScope = 'all' | 'me' | `team:${string}`;
 
 // KPI dashboard allows cross-team aggregates, but non-admins may only scope
 // to 'all' (cross-team totals) or to their own team — no peeking at another
 // team's team-level breakdown. Admins may scope to any team.
-export function kpiConstraint(scope: KpiScope): ServerConstraints {
+//
+// 'me' is the caller's own work: engagements whose team_members includes their
+// display name, across every team. The name comes from the session, never the
+// request, so nobody can read another person's numbers through it.
+export function kpiConstraint(scope: KpiScope, payload: JWTPayload): ServerConstraints {
   if (scope === 'all') return {};
+  if (scope === 'me') return { member: toDisplayName(payload.firstName, payload.lastName) };
   const team = scope.slice('team:'.length);
   return { team };
 }
 
 export function canAccessKpiScope(payload: JWTPayload, scope: KpiScope): boolean {
-  if (scope === 'all') return true;
+  if (scope === 'all' || scope === 'me') return true;
   if (payload.role === 'admin') return true;
   const team = scope.slice('team:'.length);
   return team === payload.team;
 }
 
 export function isValidKpiScope(scope: unknown): scope is KpiScope {
-  if (scope === 'all') return true;
+  if (scope === 'all' || scope === 'me') return true;
   if (typeof scope !== 'string') return false;
   if (!scope.startsWith('team:')) return false;
   const team = scope.slice('team:'.length);

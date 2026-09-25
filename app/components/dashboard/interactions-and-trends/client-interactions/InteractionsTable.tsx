@@ -12,6 +12,7 @@ import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChang
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
 import { canUserEditEngagement, isReadOnlyUser, toDisplayName, type User } from '@/app/lib/auth/types';
 import { getIntakeTypes, getProjectTypes } from '@/app/lib/api/types';
+import { formatNNA, type NnaUpdate } from '@/app/lib/nna';
 
 type SortColumn =
   | 'externalClient'
@@ -74,7 +75,7 @@ interface InteractionsTableProps {
   onNoteAdded: (engagementId: number) => void;
   onNoteDeleted: (engagementId: number) => void;
   onFilepathSaved: (engagementId: number, filepath: string | null) => void;
-  onNNAChange: (engagementId: number, nna: number | undefined) => void;
+  onNNAChange: (engagementId: number, update: NnaUpdate) => void;
   /** Claim an unassigned engagement for the current user. */
   onAssignSelf: (engagementId: number) => void;
   onRowClick: (engagement: Engagement) => void;
@@ -259,6 +260,19 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
     return `$${value.toLocaleString()}`;
   };
 
+  // Hover text for the NNA cell listing the per-ticker breakdown (and whether NNA
+  // notes exist). Null when the engagement has no extra NNA detail.
+  const nnaDetailTitle = (e: Engagement): string | null => {
+    const lines = (e.nnaAllocations ?? []).map(a => `${a.ticker}  ${formatNNA(a.amount)}`);
+    if (e.nnaNotes) lines.push('Has NNA notes');
+    return lines.length ? lines.join('\n') : null;
+  };
+  // Small marker so rows carrying a breakdown or notes stand out at a glance.
+  const nnaDetailDot = (e: Engagement) =>
+    e.nnaAllocations?.length || e.nnaNotes ? (
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/70" aria-label="Has NNA details" />
+    ) : null;
+
   // Build a per-cell flash className based on the rowFieldChanges map for this id.
   const flashFor = (id: number, field: EngagementField): string => {
     const flash = rowFieldChanges?.get(id)?.[field];
@@ -425,8 +439,10 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
             className={`inline-flex items-center gap-1.5 px-2 py-1 text-sm font-mono ${
               engagement.nna ? 'text-emerald-400' : 'text-muted'
             } ${flashTextFor(engagement.id, 'nna')}`}
+            title={nnaDetailTitle(engagement) ?? undefined}
           >
             {engagement.nna ? formatTableNNA(engagement.nna) : '—'}
+            {nnaDetailDot(engagement)}
           </span>
         ) : (
           <button
@@ -436,10 +452,13 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
                 ? 'text-emerald-400 hover:bg-emerald-500/10'
                 : 'text-muted hover:text-muted hover:bg-zinc-700/30'
             } ${flashTextFor(engagement.id, 'nna')}`}
-            title={engagement.nna ? 'Edit NNA' : 'Add NNA'}
+            title={nnaDetailTitle(engagement) ?? (engagement.nna ? 'Edit NNA' : 'Add NNA')}
           >
             {engagement.nna ? (
-              formatTableNNA(engagement.nna)
+              <>
+                {formatTableNNA(engagement.nna)}
+                {nnaDetailDot(engagement)}
+              </>
             ) : (
               <>
                 <Plus className="w-3 h-3" />
@@ -599,6 +618,8 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
         externalClient={nnaModalEngagement?.externalClient ?? null}
         internalClient={nnaModalEngagement?.internalClient.name ?? ''}
         currentNNA={nnaModalEngagement?.nna}
+        currentAllocations={nnaModalEngagement?.nnaAllocations}
+        currentNotes={nnaModalEngagement?.nnaNotes}
         onSave={onNNAChange}
       />
 
