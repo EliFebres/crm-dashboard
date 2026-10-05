@@ -53,19 +53,32 @@ export function ColumnPairChart({
   );
 }
 
-/** Single-series columns per time bucket, in the same style as ColumnPairChart. */
+/** A dashed reference line spanning columns `from`–`to` (inclusive) at `value`. */
+export interface ColumnOverlaySegment {
+  from: number;
+  to: number;
+  value: number;
+}
+
+/**
+ * Single-series columns per time bucket, in the same style as ColumnPairChart. `overlay`
+ * draws dashed horizontal segments over the columns (e.g. a per-month average stepping
+ * across weekly bars); the scale stretches to fit them.
+ */
 export function ColumnChart({
   points,
   height,
   color,
   format = String,
+  overlay,
 }: {
   points: { label: string; value: number }[];
   height: number;
   color: string;
   format?: (v: number) => string;
+  overlay?: { segments: ColumnOverlaySegment[]; color: string };
 }) {
-  const max = Math.max(1, ...points.map(p => p.value));
+  const max = Math.max(1, ...points.map(p => p.value), ...(overlay?.segments.map(s => s.value) ?? []));
   const labelEvery = Math.max(1, Math.ceil(points.length / 12));
   const plotH = height - 14;
 
@@ -80,6 +93,18 @@ export function ColumnChart({
           <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' }}>
             <View style={{ width: '70%', height: (p.value / max) * plotH, backgroundColor: color }} />
           </View>
+        ))}
+        {overlay?.segments.map((s, i) => (
+          <View
+            key={`overlay-${i}`}
+            style={{
+              position: 'absolute',
+              left: `${(s.from / points.length) * 100}%`,
+              width: `${((s.to - s.from + 1) / points.length) * 100}%`,
+              bottom: (s.value / max) * plotH,
+              borderTop: `1.25pt dashed ${overlay.color}`,
+            }}
+          />
         ))}
       </View>
       {/* Labels are centered on their column but may be wider than it (e.g. "Mar 16" over

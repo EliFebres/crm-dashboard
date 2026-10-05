@@ -12,11 +12,13 @@ import type { DevReportData } from '@/app/lib/api/dev-report';
 import type { KpiReportData } from '@/app/lib/api/kpi';
 import { formatNumber } from '../utils';
 import { toDisplayDate } from '@/app/lib/db/dateUtils';
-import { P, MONO_FONT, RED_FILL } from './pdfTokens';
+import { P, MONO_FONT, RED_FILL, YELLOW_LINE } from './pdfTokens';
 import { ColumnChart, ColumnPairChart, HBarList, Swatch } from './pdfCharts';
 import { PAGE_STYLE, Eyebrow, Rule, StatTile, Empty, ReportHeader, SummaryLine, ReportFooter } from './reportParts';
 
 const MAX_BAR_ROWS = 6;
+/** Average month length (365.25 / 12), for turning a daily rate into a monthly one. */
+const DAYS_PER_MONTH = 30.44;
 const MAX_INVENTORY_ROWS = 6;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const STATUS_LABEL = { live: 'Live', beta: 'Beta', retired: 'Retired' } as const;
@@ -77,6 +79,10 @@ export default function DevReportPage({
   const subjectLine = [subject.title, subject.team].filter(Boolean).join(' · ');
   const { code, usage, impact, tools } = data;
   const monthsElapsed = Math.max(1, code.months.length);
+  // Average usage over the tracked period. The line sits on the weekly bars' scale;
+  // the legend states the same rate per month.
+  const avgPerWeek = usage.avgPerDay * 7;
+  const avgPerMonth = usage.avgPerDay * DAYS_PER_MONTH;
 
   const inventory = [...tools.list].sort((a, b) => b.uses - a.uses).slice(0, MAX_INVENTORY_ROWS);
   const moreTools = tools.list.length - inventory.length;
@@ -143,20 +149,38 @@ export default function DevReportPage({
         <View style={{ flex: 1.25 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Eyebrow>Tool uses by week</Eyebrow>
-            {usage.growth ? (
-              <Text style={{ fontFamily: MONO_FONT, fontSize: 7, color: P.muted }}>
-                <Text style={{ color: usage.growth.pct >= 0 ? P.green : P.red }}>
-                  {`${usage.growth.pct >= 0 ? '+' : ''}${Math.round(usage.growth.pct)}%`}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {usage.total > 0 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <View style={{ width: 10, borderTop: `1.25pt dashed ${YELLOW_LINE}` }} />
+                  <Text style={{ fontSize: 6.5, color: P.muted }}>{`Avg ${formatNumber(Math.round(avgPerMonth))} uses / month`}</Text>
+                </View>
+              ) : null}
+              {usage.growth ? (
+                <Text style={{ fontFamily: MONO_FONT, fontSize: 7, color: P.muted }}>
+                  <Text style={{ color: usage.growth.pct >= 0 ? P.green : P.red }}>
+                    {`${usage.growth.pct >= 0 ? '+' : ''}${Math.round(usage.growth.pct)}%`}
+                  </Text>
+                  {` ${usage.growth.toLabel} vs ${usage.growth.fromLabel}`}
                 </Text>
-                {` ${usage.growth.toLabel} vs ${usage.growth.fromLabel}`}
-              </Text>
-            ) : null}
+              ) : null}
+            </View>
           </View>
           {usage.weekly.length > 0 ? (
             <View style={{ marginTop: 8 }}>
-              <ColumnChart points={usage.weekly} height={118} color={P.cyanFill} format={compact} />
+              <ColumnChart
+                points={usage.weekly}
+                height={118}
+                color={P.cyanFill}
+                format={compact}
+                overlay={
+                  usage.total > 0
+                    ? { segments: [{ from: 0, to: usage.weekly.length - 1, value: avgPerWeek }], color: YELLOW_LINE }
+                    : undefined
+                }
+              />
               <Text style={{ fontSize: 6.5, color: P.muted, marginTop: 4 }}>
-                Weeks start Monday · the latest week is still in progress.
+                {`Weeks start Monday · the latest week is still in progress · dashed line: average week (${formatNumber(Math.round(avgPerWeek))} uses)`}
               </Text>
             </View>
           ) : (

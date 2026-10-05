@@ -28,3 +28,6 @@ export const MONO_FONT = 'Courier';
 /** Light red fill for "lines deleted" bars (the text red above is too heavy for a fill). */
 export const RED_FILL = '#fb7185';
 
+/** Yellow for dashed average/reference lines drawn over charts. */
+export const YELLOW_LINE = '#eab308';
+
