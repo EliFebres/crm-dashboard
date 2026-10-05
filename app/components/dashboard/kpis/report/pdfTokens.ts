@@ -24,3 +24,7 @@ export const P = {
 export const SANS_FONT = 'Helvetica';
 export const SANS_BOLD = 'Helvetica-Bold';
 export const MONO_FONT = 'Courier';
+
+/** Light red fill for "lines deleted" bars (the text red above is too heavy for a fill). */
+export const RED_FILL = '#fb7185';
+

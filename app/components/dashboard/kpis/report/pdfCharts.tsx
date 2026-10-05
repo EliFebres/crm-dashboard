@@ -7,13 +7,17 @@ import React from 'react';
 import { View, Text } from '@react-pdf/renderer';
 import { P, MONO_FONT } from './pdfTokens';
 
-/** Opened vs. completed columns per time bucket. */
+/** Opened vs. completed columns per time bucket. `colors` defaults to the KPI page's cyan/green. */
 export function ColumnPairChart({
   points,
   height,
+  colors = [P.cyanFill, P.greenFill],
+  format = String,
 }: {
   points: { label: string; opened: number; completed: number }[];
   height: number;
+  colors?: [string, string];
+  format?: (v: number) => string;
 }) {
   const max = Math.max(1, ...points.flatMap(p => [p.opened, p.completed]));
   // Label at most ~12 buckets so the axis never turns into a smear.
@@ -26,12 +30,12 @@ export function ColumnPairChart({
         {/* Top gridline with the scale's max value. */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, borderTop: `0.5pt dashed ${P.hairline}` }} />
         <Text style={{ position: 'absolute', top: -9, left: 0, fontFamily: MONO_FONT, fontSize: 6, color: P.faint }}>
-          {max}
+          {format(max)}
         </Text>
         {points.map((p, i) => (
           <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 1 }}>
-            <View style={{ width: '38%', height: (p.opened / max) * plotH, backgroundColor: P.cyanFill }} />
-            <View style={{ width: '38%', height: (p.completed / max) * plotH, backgroundColor: P.greenFill }} />
+            <View style={{ width: '38%', height: (p.opened / max) * plotH, backgroundColor: colors[0] }} />
+            <View style={{ width: '38%', height: (p.completed / max) * plotH, backgroundColor: colors[1] }} />
           </View>
         ))}
       </View>
@@ -44,6 +48,62 @@ export function ColumnPairChart({
             {i % labelEvery === 0 ? p.label : ''}
           </Text>
         ))}
+      </View>
+    </View>
+  );
+}
+
+/** Single-series columns per time bucket, in the same style as ColumnPairChart. */
+export function ColumnChart({
+  points,
+  height,
+  color,
+  format = String,
+}: {
+  points: { label: string; value: number }[];
+  height: number;
+  color: string;
+  format?: (v: number) => string;
+}) {
+  const max = Math.max(1, ...points.map(p => p.value));
+  const labelEvery = Math.max(1, Math.ceil(points.length / 12));
+  const plotH = height - 14;
+
+  return (
+    <View style={{ height }}>
+      <View style={{ height: plotH, flexDirection: 'row', alignItems: 'flex-end', borderBottom: `0.75pt solid ${P.axis}` }}>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, borderTop: `0.5pt dashed ${P.hairline}` }} />
+        <Text style={{ position: 'absolute', top: -9, left: 0, fontFamily: MONO_FONT, fontSize: 6, color: P.faint }}>
+          {format(max)}
+        </Text>
+        {points.map((p, i) => (
+          <View key={i} style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' }}>
+            <View style={{ width: '70%', height: (p.value / max) * plotH, backgroundColor: color }} />
+          </View>
+        ))}
+      </View>
+      {/* Labels are centered on their column but may be wider than it (e.g. "Mar 16" over
+          30 narrow weekly columns), so they're positioned absolutely instead of clipped. */}
+      <View style={{ height: 14 }}>
+        {points.map((p, i) =>
+          i % labelEvery === 0 ? (
+            <Text
+              key={i}
+              style={{
+                position: 'absolute',
+                left: `${((i + 0.5) / points.length) * 100}%`,
+                width: 40,
+                marginLeft: -20,
+                fontSize: 6,
+                color: P.muted,
+                textAlign: 'center',
+                paddingTop: 4,
+              }}
+            >
+              {p.label}
+            </Text>
+          ) : null
+        )}
       </View>
     </View>
   );

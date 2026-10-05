@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { openSqlite, dbAll, dbGet, dbRun, columnExists, type DB } from './connection';
 import { maybeRunDailyAutoBackup } from './autoBackup';
+import { DEV_REPORT_SCHEMA } from './devReportSchema';
 
 // Re-export the db-presence helper so routes can gate mock-vs-real data via the
 // barrel without importing the connection module directly.
@@ -449,6 +450,9 @@ function bootstrap(db: DB): void {
     FROM (SELECT DISTINCT type FROM engagements)
     WHERE type IS NOT NULL AND trim(type) != ''
   `);
+
+  // Founder-only development report tables (see devReportSchema.ts).
+  for (const sql of DEV_REPORT_SCHEMA) db.exec(sql);
 }
 
 function getDb(): DB {
