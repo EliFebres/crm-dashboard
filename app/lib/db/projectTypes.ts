@@ -11,6 +11,7 @@
  */
 import { query, executeTransaction } from './index';
 import { randomUUID } from 'crypto';
+import { memo } from './requestMemo';
 
 export interface ProjectTypeRow {
   id: string;
@@ -60,7 +61,11 @@ export async function listProjectTypes(): Promise<ProjectTypeRow[]> {
 }
 
 /** Plain list of project-type names (for filter options / form dropdowns). */
-export async function listProjectTypeNames(): Promise<string[]> {
+export function listProjectTypeNames(): Promise<string[]> {
+  return memo('listProjectTypeNames', loadListProjectTypeNames);
+}
+
+async function loadListProjectTypeNames(): Promise<string[]> {
   const rows = await query<{ name: string }>(
     `SELECT name FROM project_types ORDER BY sort_order, name COLLATE NOCASE`
   );
@@ -68,7 +73,11 @@ export async function listProjectTypeNames(): Promise<string[]> {
 }
 
 /** Name → color map (for chart coloring). */
-export async function projectTypeColorMap(): Promise<Record<string, string>> {
+export function projectTypeColorMap(): Promise<Record<string, string>> {
+  return memo('projectTypeColorMap', loadProjectTypeColorMap);
+}
+
+async function loadProjectTypeColorMap(): Promise<Record<string, string>> {
   const rows = await query<{ name: string; color: string }>(
     `SELECT name, color FROM project_types ORDER BY sort_order, name COLLATE NOCASE`
   );
@@ -82,7 +91,11 @@ export async function projectTypeColorMap(): Promise<Record<string, string>> {
  * admin renamed it to). Lets metric SQL reference the role instead of a hardcoded
  * literal so a rename never breaks a KPI. Falls back to the canonical literal.
  */
-export async function projectNameForRole(role: string): Promise<string> {
+export function projectNameForRole(role: string): Promise<string> {
+  return memo(`projectNameForRole:${role}`, () => loadProjectNameForRole(role));
+}
+
+async function loadProjectNameForRole(role: string): Promise<string> {
   const rows = await query<{ name: string }>(`SELECT name FROM project_types WHERE role = ? LIMIT 1`, [role]);
   return rows[0]?.name ?? ROLE_FALLBACK[role] ?? role;
 }

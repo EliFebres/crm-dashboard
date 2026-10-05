@@ -4,6 +4,7 @@ import { queryUsers } from './users';
 import type { Engagement } from '../types/engagements';
 import { parseStoredAllocations } from '../nna';
 import type { EngagementFilters } from '../api/client-interactions';
+import { memo } from './requestMemo';
 
 // Internal-only extension of EngagementFilters: when teamMember is an Office
 // pseudo-value, callers must populate this field with the live member-name list
@@ -36,18 +37,25 @@ export async function resolveOfficeMembers(
   if (!teamMember || teamMember === 'All Team Members' || teamMember === 'All Teams') {
     return filters;
   }
-  const isOffice = await queryUsers(
-    `SELECT 1 FROM offices WHERE name = ? COLLATE NOCASE LIMIT 1`,
-    [teamMember]
-  );
-  if (isOffice.length === 0) {
+  const members = await memo(`officeMembers:${teamMember}`, () => loadOfficeMembers(teamMember));
+  if (members === null) {
     return filters; // an individual member name, not an office
   }
+  return { ...filters, _officeMembers: [...members] };
+}
+
+/** Active members of the office named `name`, or null when it isn't an office. */
+async function loadOfficeMembers(name: string): Promise<string[] | null> {
+  const isOffice = await queryUsers(
+    `SELECT 1 FROM offices WHERE name = ? COLLATE NOCASE LIMIT 1`,
+    [name]
+  );
+  if (isOffice.length === 0) return null;
   const rows = await queryUsers<{ display_name: string }>(
     `SELECT display_name FROM team_members WHERE office = ? AND status = 'active'`,
-    [teamMember]
+    [name]
   );
-  return { ...filters, _officeMembers: rows.map(r => r.display_name) };
+  return rows.map(r => r.display_name);
 }
 
 // Shared JOIN that resolves an engagement's external client from the registry.

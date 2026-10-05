@@ -2,6 +2,7 @@
  * Client-side API for the managed Departments and Internal Clients registries.
  * Backed by /api/departments and /api/internal-clients. Mirrors app/lib/api/org.ts.
  */
+import { sharedGetJson } from './sharedGet';
 
 export interface DepartmentItem {
   id: string;
@@ -36,10 +37,9 @@ async function readError(res: Response, fallback: string): Promise<never> {
 // ── Departments ──────────────────────────────────────────────────────────────
 
 export async function getDepartments(): Promise<DepartmentItem[]> {
-  const res = await fetch('/api/departments');
+  const res = await sharedGetJson<{ departments: DepartmentItem[] }>('/api/departments');
   if (!res.ok) throw new Error('Failed to load departments.');
-  const data = await res.json();
-  return data.departments as DepartmentItem[];
+  return res.data.departments;
 }
 
 export async function createDepartment(name: string, color?: string): Promise<DepartmentItem> {

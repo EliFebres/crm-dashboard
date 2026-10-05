@@ -2,6 +2,7 @@
  * Client-side API for the editable rank Titles list.
  * Backed by the route handlers under /api/titles.
  */
+import { sharedGetJson } from './sharedGet';
 
 export interface TitleItem {
   id: string;
@@ -26,9 +27,9 @@ async function readError(res: Response, fallback: string): Promise<never> {
 }
 
 export async function getTitles(): Promise<TitleItem[]> {
-  const res = await fetch('/api/titles');
+  const res = await sharedGetJson<TitleItem[]>('/api/titles');
   if (!res.ok) throw new Error('Failed to load titles.');
-  return res.json();
+  return res.data;
 }
 
 export async function createTitle(name: string): Promise<TitleItem> {

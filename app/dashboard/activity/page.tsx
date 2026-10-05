@@ -302,6 +302,9 @@ export default function ActivityDashboardPage() {
   useEffect(() => {
     if (!isAdmin) return;
     const es = new EventSource('/api/activity/events');
+    // Rows land in the feed immediately; the stats recompute (several queries)
+    // waits for a 1s lull so a burst of events triggers it once.
+    let statsTimer: ReturnType<typeof setTimeout> | null = null;
     es.onmessage = (e) => {
       try {
         const parsed = JSON.parse(e.data);
@@ -324,7 +327,11 @@ export default function ActivityDashboardPage() {
             flashTimeouts.current.delete(row.id);
           }, 2000);
           flashTimeouts.current.set(row.id, t);
-          void loadStats();
+          if (statsTimer) clearTimeout(statsTimer);
+          statsTimer = setTimeout(() => {
+            statsTimer = null;
+            void loadStats();
+          }, 1000);
         }
       } catch { /* ignore malformed frames */ }
     };
@@ -332,6 +339,7 @@ export default function ActivityDashboardPage() {
     const timeoutsMap = flashTimeouts.current;
     return () => {
       es.close();
+      if (statsTimer) clearTimeout(statsTimer);
       timeoutsMap.forEach(clearTimeout);
       timeoutsMap.clear();
     };

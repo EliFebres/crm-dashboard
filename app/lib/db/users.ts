@@ -235,11 +235,21 @@ export async function getUserOffice(userId: string): Promise<string | null> {
  * The founding account: the earliest-created user. Its admin role can only be removed
  * by itself, and it alone may generate a KPI report about someone other than itself.
  */
+// Cached: it only changes when users are created or deleted, and those routes
+// call invalidateFounderId().
+let founderIdCache: string | null | undefined;
+
 export async function getFounderId(): Promise<string | null> {
+  if (founderIdCache !== undefined) return founderIdCache;
   const rows = await queryUsers<{ id: string }>(
     'SELECT id FROM users ORDER BY created_at ASC LIMIT 1'
   );
-  return rows[0]?.id ?? null;
+  founderIdCache = rows[0]?.id ?? null;
+  return founderIdCache;
+}
+
+export function invalidateFounderId(): void {
+  founderIdCache = undefined;
 }
 
 /** Helpers passed to a {@link usersTransaction} callback for synchronous reads/writes. */

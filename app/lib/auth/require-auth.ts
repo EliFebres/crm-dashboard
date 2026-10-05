@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyJWT, SESSION_COOKIE } from './jwt';
+import { verifyJWT, rememberVerified, SESSION_COOKIE } from './jwt';
 import type { JWTPayload } from './jwt';
 import type { ServerConstraints } from '../db/queries';
 import { READ_ONLY_TEAMS, toDisplayName } from './types';
@@ -20,6 +20,7 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult> {
     if (!payload.team && payload.role !== 'admin') {
       return { payload: null, error: NextResponse.json({ error: 'Session expired. Please log in again.' }, { status: 401 }) };
     }
+    rememberVerified(req, payload);
     void touchPresence(
       payload.sub,
       payload.email,

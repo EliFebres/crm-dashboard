@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/app/lib/db/requestMemo';
 import {
   computeMetrics,
   computeDepartmentBreakdown,
@@ -12,6 +13,8 @@ import {
   getProjectTypeNames,
   getOfficeNames,
 } from '@/app/lib/db/aggregations';
+import { intakeColorMap } from '@/app/lib/db/intakeTypes';
+import { projectTypeColorMap } from '@/app/lib/db/projectTypes';
 import { getMockFilterOptions } from '@/app/lib/api/mock-computations';
 import { hasDb } from '@/app/lib/db';
 import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
@@ -20,7 +23,12 @@ import type { EngagementFilters } from '@/app/lib/api/client-interactions';
 // POST /api/client-interactions/dashboard
 // Body: EngagementFilters (camelCase)
 // Returns all dashboard data in a single parallel request for fast initial page load.
-export async function POST(req: NextRequest) {
+// Registry lookups shared by the aggregations below run once per request.
+export function POST(req: NextRequest) {
+  return withRequestMemo(() => handlePost(req));
+}
+
+async function handlePost(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
   const sc = teamConstraint(auth.payload);
@@ -28,7 +36,7 @@ export async function POST(req: NextRequest) {
   try {
     const filters: EngagementFilters = await req.json();
 
-    const [metrics, departments, contributionData, engagements, deptNames, intakeNames, projectNames, officeNames] = await Promise.all([
+    const [metrics, departments, contributionData, engagements, deptNames, intakeNames, projectNames, officeNames, intakeColors, projectColors] = await Promise.all([
       computeMetrics(filters, sc),
       computeDepartmentBreakdown(filters, sc),
       computeContributionData(filters, sc),
@@ -37,6 +45,8 @@ export async function POST(req: NextRequest) {
       hasDb() ? getIntakeTypeNames() : Promise.resolve<string[] | null>(null),
       hasDb() ? getProjectTypeNames() : Promise.resolve<string[] | null>(null),
       hasDb() ? getOfficeNames() : Promise.resolve<string[] | null>(null),
+      hasDb() ? intakeColorMap() : Promise.resolve(null),
+      hasDb() ? projectTypeColorMap() : Promise.resolve(null),
     ]);
 
     return NextResponse.json({
@@ -57,6 +67,10 @@ export async function POST(req: NextRequest) {
             projectTypes: projectNames ?? STATIC_FILTER_OPTIONS.projectTypes,
           }
         : getMockFilterOptions(),
+      // Badge colors for the table, so it doesn't fetch the type registries itself.
+      typeColors: intakeColors && projectColors
+        ? { intake: intakeColors, project: projectColors }
+        : null,
     });
   } catch (err) {
     console.error('POST /api/client-interactions/dashboard error:', err);

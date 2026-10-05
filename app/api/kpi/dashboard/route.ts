@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/app/lib/db/requestMemo';
 import {
   requireAuth,
   kpiConstraint,
@@ -32,7 +33,12 @@ import { resolveStaleThreshold, type KpiFilters } from '@/app/lib/api/kpi';
 // Body: { scope, period, clientDepts, intakeTypes, projectTypes }
 // Returns team-level / cross-team KPI aggregates, or the caller's own ('me').
 // Never another individual's data.
-export async function POST(req: NextRequest) {
+// Registry lookups shared by the aggregations below run once per request.
+export function POST(req: NextRequest) {
+  return withRequestMemo(() => handlePost(req));
+}
+
+async function handlePost(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
 
