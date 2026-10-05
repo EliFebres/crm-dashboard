@@ -89,6 +89,10 @@ export function buildKpiWhere(
     params.push(...filters.intakeTypes);
   }
 
+  const types = typeConditions(filters.projectTypes, col);
+  conditions.push(...types.conditions);
+  params.push(...types.params);
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   return { whereClause, params };
 }
@@ -110,6 +114,16 @@ function scopeConditions(
     params.push(member);
   }
   return { conditions, params };
+}
+
+/** The optional project-type part of a KPI WHERE clause (empty selection = all types). */
+function typeConditions(
+  projectTypes: string[] | undefined,
+  col: (c: string) => string
+): { conditions: string[]; params: unknown[] } {
+  if (!projectTypes || projectTypes.length === 0) return { conditions: [], params: [] };
+  const placeholders = projectTypes.map(() => '?').join(', ');
+  return { conditions: [`${col('type')} IN (${placeholders})`], params: [...projectTypes] };
 }
 
 export function pct(num: number, denom: number): number {
@@ -635,8 +649,9 @@ export async function computeDormantClients(
     const names = mapped.map(m => m.clientName);
     const placeholders = names.map(() => '?').join(', ');
     const scope = scopeConditions(constraints, c => c);
-    const scopeClause = scope.conditions.map(c => `AND ${c}`).join(' ');
-    const latestParams = [...names, ...scope.params];
+    const types = typeConditions(filters.projectTypes, c => c);
+    const scopeClause = [...scope.conditions, ...types.conditions].map(c => `AND ${c}`).join(' ');
+    const latestParams = [...names, ...scope.params, ...types.params];
     const latest = await query<Record<string, unknown>>(
       `
         SELECT name, team_members FROM (
@@ -659,18 +674,21 @@ export async function computeDormantClients(
 // =============================================================================
 // EXTENDED METRICS — the "Briefing" redesign (Q2, Q3, Q4, Q10, Q11, Q12, Q14, Q15)
 //
-// These are intentionally SCOPE-ONLY. Per the redesign spec, each uses a fixed
-// intrinsic window (26 weeks / 12 months / all-completed / all-history) and does
-// not respond to the period, clientDepts, or intakeTypes filters. So the only
-// constraint applied is the team / personal scope; `buildTeamWhere` emits exactly that.
+// Per the redesign spec, each uses a fixed intrinsic window (26 weeks / 12 months /
+// all-completed / all-history) and does not respond to the period, clientDepts, or
+// intakeTypes filters. The only constraints applied are the team / personal scope and
+// the optional project-type selection; `buildTeamWhere` emits exactly that.
 // =============================================================================
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Scope-only WHERE clause (ignores period / dept / intake). */
-function buildTeamWhere(constraints: ServerConstraints, alias?: string): SqlClause {
+/** Scope + project-type WHERE clause (ignores period / dept / intake). */
+function buildTeamWhere(constraints: ServerConstraints, alias?: string, projectTypes: string[] = []): SqlClause {
   const col = (c: string) => (alias ? `${alias}.${c}` : c);
   const { conditions, params } = scopeConditions(constraints, col);
+  const types = typeConditions(projectTypes, col);
+  conditions.push(...types.conditions);
+  params.push(...types.params);
   return { whereClause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', params };
 }
 
@@ -699,7 +717,7 @@ function isoMonthKey(iso: string): number {
 // Q2 — WEEKLY OPENED vs COMPLETED (last 26 weeks)
 // -----------------------------------------------------------------------------
 
-export async function computeWeeklyFlow(constraints: ServerConstraints): Promise<WeeklyFlowPoint[]> {
+export async function computeWeeklyFlow(constraints: ServerConstraints, projectTypes: string[] = []): Promise<WeeklyFlowPoint[]> {
   const WEEKS = 26;
   const now = Date.now();
   const DAY = 86400000;
@@ -711,7 +729,7 @@ export async function computeWeeklyFlow(constraints: ServerConstraints): Promise
   });
   if (!hasDb()) return buckets;
 
-  const { whereClause, params } = buildTeamWhere(constraints);
+  const { whereClause, params } = buildTeamWhere(constraints, undefined, projectTypes);
   const [openedRows, completedRows] = await Promise.all([
     query<Record<string, unknown>>(
       `
@@ -749,7 +767,7 @@ export async function computeWeeklyFlow(constraints: ServerConstraints): Promise
 // Q3 — WORK-MIX DRIFT (high-touch vs data-task share, last 12 months)
 // -----------------------------------------------------------------------------
 
-export async function computeMixDrift(constraints: ServerConstraints): Promise<MixDriftPoint[]> {
+export async function computeMixDrift(constraints: ServerConstraints, projectTypes: string[] = []): Promise<MixDriftPoint[]> {
   const now = new Date();
   // 12 ordered month buckets ending on the current month.
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -764,7 +782,7 @@ export async function computeMixDrift(constraints: ServerConstraints): Promise<M
   const highSet = ['Discovery Meeting', 'Meeting', 'Follow-up Meeting'];
   const placeholders = highSet.map(() => '?').join(', ');
 
-  const { whereClause, params } = buildTeamWhere(constraints);
+  const { whereClause, params } = buildTeamWhere(constraints, undefined, projectTypes);
   const rows = await query<Record<string, unknown>>(
     `
       SELECT strftime('%Y-%m', date_started) AS ym,
@@ -774,7 +792,8 @@ export async function computeMixDrift(constraints: ServerConstraints): Promise<M
       ${andWhere(whereClause, `date_started >= date('now', '-11 months', 'start of month')`)}
       GROUP BY ym
     `,
-    [...params, ...highSet]
+    // highSet binds first: its placeholders sit in the SELECT, ahead of the WHERE.
+    [...highSet, ...params]
   );
 
   const byKey = new Map(months.map(m => [m.key, m]));
@@ -800,9 +819,9 @@ export async function computeMixDrift(constraints: ServerConstraints): Promise<M
 // Q4 — CYCLE TIME by project type (median + P90 days, completed work only)
 // -----------------------------------------------------------------------------
 
-export async function computeCycleTimes(constraints: ServerConstraints): Promise<CycleTimeRow[]> {
+export async function computeCycleTimes(constraints: ServerConstraints, projectTypes: string[] = []): Promise<CycleTimeRow[]> {
   if (!hasDb()) return [];
-  const { whereClause, params } = buildTeamWhere(constraints);
+  const { whereClause, params } = buildTeamWhere(constraints, undefined, projectTypes);
   const [rows, colors] = await Promise.all([
     query<Record<string, unknown>>(
       `
@@ -844,9 +863,9 @@ export async function computeCycleTimes(constraints: ServerConstraints): Promise
 // Q10 — CHAIN-ROLLED NNA attribution by originating type
 // -----------------------------------------------------------------------------
 
-export async function computeChainRolled(constraints: ServerConstraints): Promise<ChainRolledRow[]> {
+export async function computeChainRolled(constraints: ServerConstraints, projectTypes: string[] = []): Promise<ChainRolledRow[]> {
   if (!hasDb()) return [];
-  const { whereClause, params } = buildTeamWhere(constraints, 'e');
+  const { whereClause, params } = buildTeamWhere(constraints, 'e', projectTypes);
   const rootExtra = whereClause ? `AND ${whereClause.slice(6)}` : ''; // strip leading "WHERE "
 
   const [rows, colors] = await Promise.all([
@@ -892,14 +911,15 @@ export async function computeChainRolled(constraints: ServerConstraints): Promis
 // Q11 — SEGMENT CONVERSION MATRIX (project type × client department)
 // -----------------------------------------------------------------------------
 
-export async function computeSegmentMatrix(constraints: ServerConstraints): Promise<SegmentMatrix> {
+export async function computeSegmentMatrix(constraints: ServerConstraints, projectTypes: string[] = []): Promise<SegmentMatrix> {
   const [deptNames, typeNames] = await Promise.all([listDepartmentNames(), listProjectTypeNames()]);
   const depts = deptNames;
-  const types = typeNames.filter(t => t !== 'Other');
+  // A project-type selection narrows the matrix rows to just those types.
+  const types = typeNames.filter(t => t !== 'Other' && (!projectTypes.length || projectTypes.includes(t)));
   const empty: SegmentMatrix = { depts, types, cells: {} };
   if (!hasDb()) return empty;
 
-  const { whereClause, params } = buildTeamWhere(constraints);
+  const { whereClause, params } = buildTeamWhere(constraints, undefined, projectTypes);
   // Strict Completed only (excludes Follow Up), matching the redesign spec.
   const rows = await query<Record<string, unknown>>(
     `
@@ -953,9 +973,9 @@ export async function computeSegmentMatrix(constraints: ServerConstraints): Prom
 // (the app only stamps date_finished when a project is set to "Completed").
 // -----------------------------------------------------------------------------
 
-export async function computeChaseList(constraints: ServerConstraints): Promise<ChaseRow[]> {
+export async function computeChaseList(constraints: ServerConstraints, projectTypes: string[] = []): Promise<ChaseRow[]> {
   if (!hasDb()) return [];
-  const { whereClause, params } = buildTeamWhere(constraints);
+  const { whereClause, params } = buildTeamWhere(constraints, undefined, projectTypes);
   const rows = await query<Record<string, unknown>>(
     `
       SELECT internal_client_name AS client, internal_client_dept AS dept, type,
@@ -983,9 +1003,9 @@ export async function computeChaseList(constraints: ServerConstraints): Promise<
 // Q14 — FOLLOW-UP SPAWN RATE by originating type
 // -----------------------------------------------------------------------------
 
-export async function computeSpawnRate(constraints: ServerConstraints): Promise<SpawnRateRow[]> {
+export async function computeSpawnRate(constraints: ServerConstraints, projectTypes: string[] = []): Promise<SpawnRateRow[]> {
   if (!hasDb()) return [];
-  const { whereClause, params } = buildTeamWhere(constraints, 'e');
+  const { whereClause, params } = buildTeamWhere(constraints, 'e', projectTypes);
   const [rows, colors] = await Promise.all([
     query<Record<string, unknown>>(
       `
@@ -1017,7 +1037,8 @@ export async function computeSpawnRate(constraints: ServerConstraints): Promise<
 // -----------------------------------------------------------------------------
 
 export async function computeClientBase(
-  constraints: ServerConstraints
+  constraints: ServerConstraints,
+  projectTypes: string[] = []
 ): Promise<{ clientBase: ClientBasePoint[]; uniquePerDept: UniquePerDeptRow[] }> {
   const now = new Date();
   const months = Array.from({ length: 12 }, (_, i) => {
@@ -1034,7 +1055,7 @@ export async function computeClientBase(
     };
   }
 
-  const { whereClause, params } = buildTeamWhere(constraints);
+  const { whereClause, params } = buildTeamWhere(constraints, undefined, projectTypes);
 
   const [firstRows, scopeRows, uniqRows] = await Promise.all([
     // First-ever engagement per client, across ALL teams (defines "new").
