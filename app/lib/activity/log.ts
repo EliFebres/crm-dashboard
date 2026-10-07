@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { NextRequest } from 'next/server';
-import { verifyJWT, SESSION_COOKIE } from '../auth/jwt';
+import { verifyJWT, getVerified, SESSION_COOKIE } from '../auth/jwt';
 import type { JWTPayload } from '../auth/jwt';
 import { executeActivity } from '../db/activity';
 import { queryUsers } from '../db/users';
@@ -35,7 +35,9 @@ function maybeRunRetentionSweep(): void {
   if (now - _lastCleanup < CLEANUP_INTERVAL_MS) return;
   _lastCleanup = now;
   void executeActivity(
-    `DELETE FROM activity_logs WHERE datetime(timestamp) < datetime('now', '-${RETENTION_DAYS} days')`
+    `DELETE FROM activity_logs
+       WHERE timestamp < date('now', '-${RETENTION_DAYS - 1} days')
+         AND datetime(timestamp) < datetime('now', '-${RETENTION_DAYS} days')`
   ).catch(err => console.error('[activity] retention sweep failed:', err));
 }
 
@@ -69,6 +71,8 @@ function extractUserAgent(req: NextRequest | null): string | null {
 
 async function resolvePayload(req: NextRequest | null): Promise<JWTPayload | null> {
   if (!req) return null;
+  const known = getVerified(req);
+  if (known) return known;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   try {
@@ -140,11 +144,19 @@ export async function logActivity(
   }
 }
 
+// Presence only answers "seen in the last 5 minutes", so one write per user per
+// minute is indistinguishable from writing on every request.
+const PRESENCE_WRITE_INTERVAL_MS = 60 * 1000;
+const lastPresenceWrite = new Map<string, number>();
+
 export async function touchPresence(
   userId: string,
   userEmail: string,
   userName: string
 ): Promise<void> {
+  const now = Date.now();
+  if (now - (lastPresenceWrite.get(userId) ?? 0) < PRESENCE_WRITE_INTERVAL_MS) return;
+  lastPresenceWrite.set(userId, now);
   try {
     await executeActivity(
       `INSERT OR REPLACE INTO user_presence (user_id, user_email, user_name, last_seen)

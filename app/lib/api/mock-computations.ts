@@ -22,8 +22,13 @@ import {
 // FILTER APPLICATION
 // =============================================================================
 
-// Mock data spans Jan 2023 – Jan 2025; use Jan 28 2025 as the fixed reference date
-const MOCK_REFERENCE_DATE = new Date('2025-01-28');
+// Mock data spans the two years ending today (see app/lib/data/engagements.ts),
+// so period filters are anchored to today's date.
+const MOCK_REFERENCE_DATE = (() => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+})();
 
 function getPeriodCutoffDate(period: string): Date | null {
   const ref = MOCK_REFERENCE_DATE;

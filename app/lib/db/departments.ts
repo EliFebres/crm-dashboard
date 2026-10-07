@@ -8,6 +8,7 @@
  */
 import { query, executeTransaction } from './index';
 import { randomUUID } from 'crypto';
+import { memo } from './requestMemo';
 
 export interface DepartmentRow {
   id: string;
@@ -53,7 +54,11 @@ export async function listDepartments(): Promise<DepartmentRow[]> {
 }
 
 /** Plain list of department names (for filter options / form dropdowns). */
-export async function listDepartmentNames(): Promise<string[]> {
+export function listDepartmentNames(): Promise<string[]> {
+  return memo('listDepartmentNames', loadListDepartmentNames);
+}
+
+async function loadListDepartmentNames(): Promise<string[]> {
   const rows = await query<{ name: string }>(
     `SELECT name FROM departments ORDER BY sort_order, name COLLATE NOCASE`
   );
@@ -61,7 +66,11 @@ export async function listDepartmentNames(): Promise<string[]> {
 }
 
 /** Name → color map (for the department breakdown chart). */
-export async function departmentColorMap(): Promise<Record<string, string>> {
+export function departmentColorMap(): Promise<Record<string, string>> {
+  return memo('departmentColorMap', loadDepartmentColorMap);
+}
+
+async function loadDepartmentColorMap(): Promise<Record<string, string>> {
   const rows = await query<{ name: string; color: string }>(
     `SELECT name, color FROM departments ORDER BY sort_order, name COLLATE NOCASE`
   );

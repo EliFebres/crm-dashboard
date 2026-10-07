@@ -5,7 +5,7 @@ import type { SegmentMatrix } from '@/app/lib/api/kpi';
 import { C, MONO } from './tokens';
 import { fmtCur } from './briefing-utils';
 
-/** Q9 evidence — type × department conversion matrix (hit rate over median NNA). */
+/** Q11 evidence — type × department conversion matrix (hit rate over median NNA). */
 export default function SegmentMatrixTable({ matrix }: { matrix: SegmentMatrix }) {
   const thStyle: React.CSSProperties = {
     textAlign: 'center',

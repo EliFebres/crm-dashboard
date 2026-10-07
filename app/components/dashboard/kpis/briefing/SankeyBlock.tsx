@@ -87,7 +87,7 @@ interface SankeyBlockProps {
   templates: JourneyTemplate[];
 }
 
-/** Q11 evidence (full width) — intake → type → outcome Sankey with a Flow ↔ Top journeys tab. */
+/** Q13 evidence (full width) — intake → type → outcome Sankey with a Flow ↔ Top journeys tab. */
 export default function SankeyBlock({ q, question, sankey, templates }: SankeyBlockProps) {
   const [tab, setTab] = useState<'flow' | 'table'>('flow');
   const [tt, setTt] = useState<Tooltip | null>(null);

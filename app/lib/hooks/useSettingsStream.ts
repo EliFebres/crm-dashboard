@@ -17,6 +17,10 @@ export type SettingsEntity =
 
 type Subscriber = (entity: string) => void;
 
+const SETTINGS_ENTITIES: SettingsEntity[] = [
+  'team', 'office', 'title', 'projectType', 'intakeType', 'team_member', 'user',
+];
+
 // One EventSource shared across every settings manager on the page, multiplexed
 // to all subscribers. Module-level so the Teams/Offices/Titles/Types/roster
 // tables share a single stream instead of opening one connection each.
@@ -27,7 +31,8 @@ function ensureStream(): void {
   if (source || typeof window === 'undefined') return;
   // Registry mutations all flow through logActivity → activityEmitter, so the
   // existing admin activity stream already carries every change we care about.
-  source = new EventSource('/api/activity/events');
+  // The server drops every other row (page views, engagement edits) for us.
+  source = new EventSource(`/api/activity/events?entities=${SETTINGS_ENTITIES.join(',')}`);
   source.onmessage = (e) => {
     let msg: { type?: string; row?: { entityType?: string | null } };
     try {

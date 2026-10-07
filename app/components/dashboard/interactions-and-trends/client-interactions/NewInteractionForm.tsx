@@ -7,7 +7,7 @@ import PortfolioModal from '@/app/components/dashboard/interactions-and-trends/c
 import NotesModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NotesModal';
 import LinkInteractionModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/LinkInteractionModal';
 import { Select } from '@/app/components/ui/Select';
-import { PortfolioHolding, EngagementLinkSummary, Client } from '@/app/lib/types/engagements';
+import { PortfolioHolding, EngagementLinkSummary, Client, type NnaAllocation } from '@/app/lib/types/engagements';
 import {
   getInternalClients, InternalClientOption, searchEngagementsForLink,
   getClients, registerClient, updateClient, getCrnConfig, CrnConfigResponse, ClientConflictError,
@@ -39,6 +39,8 @@ export interface InteractionFormData {
   portfolioUnchanged: boolean; // "Same model, carried over" — follow-up with no change
   portfolio?: PortfolioHolding[];
   nna: number | null;
+  nnaAllocations?: NnaAllocation[]; // Optional per-ticker breakdown of the NNA total
+  nnaNotes?: string | null;         // Optional rich-text NNA notes
   tickersMentioned?: string[]; // Only for Ad-Hoc - tickers discussed during interaction
   linkedFromId?: number | null; // Parent engagement this one is the result of (funnel KPIs)
   linkedFromPreview?: EngagementLinkSummary | null; // Cached preview so we can render the chip without re-fetching
@@ -93,6 +95,8 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     portfolioUnchanged: false,
     portfolio: undefined,
     nna: null,
+    nnaAllocations: [],
+    nnaNotes: null,
     tickersMentioned: [],
     linkedFromId: null,
     linkedFromPreview: null,
@@ -150,6 +154,9 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const internalClientRef = useRef<HTMLDivElement>(null);
   const [teamMembersByOffice, setTeamMembersByOffice] = useState<Record<string, TeamMember[]>>({});
+  // Members of every other team, keyed by team — an interaction can be shared across teams.
+  const [otherTeamMembers, setOtherTeamMembers] = useState<Record<string, TeamMember[]>>({});
+  const [showOtherTeams, setShowOtherTeams] = useState(false);
 
   // Close the searchable internal-client dropdown when clicking outside.
   useEffect(() => {
@@ -188,20 +195,24 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
     return () => clearTimeout(handle);
   }, [isOpen, clientSearch]);
 
-  // Fetch team members for current user's team
+  // Fetch every team's members: the user's own team grouped by office, the rest by team.
   useEffect(() => {
     if (!currentUser) return;
-    fetch(`/api/team-members?team=${encodeURIComponent(currentUser.team)}`)
+    const groupBy = (members: TeamMember[], key: (m: TeamMember) => string) =>
+      members.reduce((acc, m) => {
+        (acc[key(m)] ??= []).push(m);
+        return acc;
+      }, {} as Record<string, TeamMember[]>);
+    fetch('/api/team-members?all=1')
       .then(r => r.json())
       .then((members: TeamMember[]) => {
-        const grouped = members.reduce((acc, m) => {
-          if (!acc[m.office]) acc[m.office] = [];
-          acc[m.office].push(m);
-          return acc;
-        }, {} as Record<string, TeamMember[]>);
-        setTeamMembersByOffice(grouped);
+        setTeamMembersByOffice(groupBy(members.filter(m => m.team === currentUser.team), m => m.office));
+        setOtherTeamMembers(groupBy(members.filter(m => m.team !== currentUser.team), m => m.team));
       })
-      .catch(() => setTeamMembersByOffice({}));
+      .catch(() => {
+        setTeamMembersByOffice({});
+        setOtherTeamMembers({});
+      });
   }, [currentUser]);
 
   // Fetch internal clients + the managed department list fresh each time the form opens
@@ -423,6 +434,30 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         ? prev.teamMembers.filter(m => m !== member)
         : [...prev.teamMembers, member]
     }));
+  };
+
+  // Keeps the other-teams section open whenever someone from it is selected.
+  const otherTeamSelectedCount = Object.values(otherTeamMembers)
+    .flat()
+    .filter(m => formData.teamMembers.includes(m.displayName)).length;
+
+  const renderMemberButton = (member: TeamMember) => {
+    const selected = formData.teamMembers.includes(member.displayName);
+    return (
+      <button
+        key={member.id}
+        type="button"
+        onClick={() => toggleTeamMember(member.displayName)}
+        className={`px-2 py-1.5 text-xs font-medium rounded-md border transition-all flex items-center justify-between ${
+          selected
+            ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
+            : 'bg-zinc-800/50 border-zinc-700 text-muted hover:border-zinc-600'
+        }`}
+      >
+        <span className="truncate">{member.displayName}</span>
+        {selected && <Check className="w-3 h-3 ml-1 flex-shrink-0" />}
+      </button>
+    );
   };
 
   const addTickers = (input: string) => {
@@ -979,25 +1014,31 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                         {Object.keys(teamMembersByOffice).length > 1 && (
                           <p className="text-xs text-muted uppercase tracking-wider mb-1">{office}</p>
                         )}
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {members.map((member) => (
-                            <button
-                              key={member.id}
-                              type="button"
-                              onClick={() => toggleTeamMember(member.displayName)}
-                              className={`px-2 py-1.5 text-xs font-medium rounded-md border transition-all flex items-center justify-between ${
-                                formData.teamMembers.includes(member.displayName)
-                                  ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                                  : 'bg-zinc-800/50 border-zinc-700 text-muted hover:border-zinc-600'
-                              }`}
-                            >
-                              <span className="truncate">{member.displayName}</span>
-                              {formData.teamMembers.includes(member.displayName) && <Check className="w-3 h-3 ml-1 flex-shrink-0" />}
-                            </button>
-                          ))}
-                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">{members.map(renderMemberButton)}</div>
                       </div>
                     ))}
+                  </div>
+                )}
+                {Object.keys(otherTeamMembers).length > 0 && (
+                  <div className="mt-2">
+                    {showOtherTeams || otherTeamSelectedCount > 0 ? (
+                      <div className="space-y-2 pt-2 border-t border-zinc-800">
+                        {Object.entries(otherTeamMembers).map(([team, members]) => (
+                          <div key={team}>
+                            <p className="text-xs text-muted uppercase tracking-wider mb-1">{team}</p>
+                            <div className="grid grid-cols-4 gap-1.5">{members.map(renderMemberButton)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowOtherTeams(true)}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                      >
+                        + Add members from other teams
+                      </button>
+                    )}
                   </div>
                 )}
                 {errors.teamMembers && <p className="mt-1 text-xs text-red-400">{errors.teamMembers}</p>}
@@ -1060,6 +1101,11 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
                   >
                     <DollarSign className="w-4 h-4" />
                     {formData.nna ? <span className="font-mono">{formData.nna.toLocaleString('en-US')}</span> : '+ Add NNA'}
+                    {!!formData.nnaAllocations?.length && (
+                      <span className="text-xs text-muted truncate">
+                        · {formData.nnaAllocations.length} ticker{formData.nnaAllocations.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </button>
                 </div>
 
@@ -1208,8 +1254,15 @@ export default function NewInteractionForm({ isOpen, onClose, onSubmit, onUpdate
         externalClient={formData.externalClient}
         internalClient={formData.internalClient}
         currentNNA={formData.nna ?? undefined}
-        onSave={(_, nna) => {
-          setFormData(prev => ({ ...prev, nna: nna ?? null }));
+        currentAllocations={formData.nnaAllocations}
+        currentNotes={formData.nnaNotes}
+        onSave={(_, update) => {
+          setFormData(prev => ({
+            ...prev,
+            nna: update.nna ?? null,
+            nnaAllocations: update.allocations,
+            nnaNotes: update.notes,
+          }));
         }}
       />
 

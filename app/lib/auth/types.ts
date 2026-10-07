@@ -17,6 +17,8 @@ export interface User {
   createdAt: string;
   approvedAt: string | null;
   approvedById: string | null;
+  /** Only set on the current user (/api/auth/me). Server routes re-check it themselves. */
+  isFounder?: boolean;
 }
 
 export function isReadOnlyUser(user: Pick<User, 'team'> | null | undefined): boolean {

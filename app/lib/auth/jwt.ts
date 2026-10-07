@@ -39,3 +39,15 @@ export async function verifyJWT(token: string): Promise<JWTPayload> {
   const { payload } = await jwtVerify(token, getSecret());
   return payload as unknown as JWTPayload;
 }
+
+// Payloads already verified for a request, so later helpers in the same request
+// (e.g. logActivity) don't re-verify the same cookie.
+const verifiedByRequest = new WeakMap<object, JWTPayload>();
+
+export function rememberVerified(req: object, payload: JWTPayload): void {
+  verifiedByRequest.set(req, payload);
+}
+
+export function getVerified(req: object): JWTPayload | undefined {
+  return verifiedByRequest.get(req);
+}

@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/app/lib/db/requestMemo';
 import {
   requireAuth,
   kpiConstraint,
@@ -14,6 +15,7 @@ import {
   computeJourneyTemplates,
   computeClientDeptBreakdown,
   computeNnaConcentration,
+  computeTickerNna,
   computeStaleEngagements,
   computeDormantClients,
   computeWeeklyFlow,
@@ -28,9 +30,15 @@ import {
 import { resolveStaleThreshold, type KpiFilters } from '@/app/lib/api/kpi';
 
 // POST /api/kpi/dashboard
-// Body: { scope, period, clientDepts, intakeTypes }
-// Returns team-level / cross-team KPI aggregates. No individual-level data.
-export async function POST(req: NextRequest) {
+// Body: { scope, period, clientDepts, intakeTypes, projectTypes }
+// Returns team-level / cross-team KPI aggregates, or the caller's own ('me').
+// Never another individual's data.
+// Registry lookups shared by the aggregations below run once per request.
+export function POST(req: NextRequest) {
+  return withRequestMemo(() => handlePost(req));
+}
+
+async function handlePost(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
 
@@ -51,13 +59,17 @@ export async function POST(req: NextRequest) {
 
   const filters: KpiFilters = {
     scope: scope as KpiScope,
-    period: body.period || '1Y',
+    period: body.period || 'YTD',
     clientDepts: Array.isArray(body.clientDepts) ? body.clientDepts : [],
     intakeTypes: Array.isArray(body.intakeTypes) ? body.intakeTypes : [],
+    projectTypes: Array.isArray(body.projectTypes)
+      ? body.projectTypes.filter((t): t is string => typeof t === 'string')
+      : [],
     staleThreshold: resolveStaleThreshold(body.staleThreshold),
   };
 
-  const constraints = kpiConstraint(filters.scope);
+  const constraints = kpiConstraint(filters.scope, auth.payload);
+  const types = filters.projectTypes ?? [];
 
   try {
     const [
@@ -66,9 +78,10 @@ export async function POST(req: NextRequest) {
       journeyTemplates,
       clientDepts,
       nnaConcentration,
+      tickerNna,
       staleEngagements,
       dormantClients,
-      // Extended "Briefing" metrics — scope(team)-only, fixed intrinsic windows.
+      // Extended "Briefing" metrics — scope + project type only, fixed intrinsic windows.
       weeklyFlow,
       mixDrift,
       cycleTimes,
@@ -83,21 +96,22 @@ export async function POST(req: NextRequest) {
       computeJourneyTemplates(filters, constraints),
       computeClientDeptBreakdown(filters, constraints),
       computeNnaConcentration(filters, constraints),
+      computeTickerNna(filters, constraints),
       computeStaleEngagements(filters, constraints),
       computeDormantClients(filters, constraints),
-      computeWeeklyFlow(constraints),
-      computeMixDrift(constraints),
-      computeCycleTimes(constraints),
-      computeChainRolled(constraints),
-      computeSegmentMatrix(constraints),
-      computeChaseList(constraints),
-      computeSpawnRate(constraints),
-      computeClientBase(constraints),
+      computeWeeklyFlow(constraints, types),
+      computeMixDrift(constraints, types),
+      computeCycleTimes(constraints, types),
+      computeChainRolled(constraints, types),
+      computeSegmentMatrix(constraints, types),
+      computeChaseList(constraints, types),
+      computeSpawnRate(constraints, types),
+      computeClientBase(constraints, types),
     ]);
 
     return NextResponse.json({
-      scope: filters.scope === 'all'
-        ? { kind: 'all' }
+      scope: filters.scope === 'all' || filters.scope === 'me'
+        ? { kind: filters.scope }
         : { kind: 'team', team: filters.scope.slice('team:'.length) },
       periodLabel: heroKpis.periodLabel,
       heroKpis,
@@ -105,6 +119,7 @@ export async function POST(req: NextRequest) {
       journeyTemplates,
       clientDepts,
       nnaConcentration,
+      tickerNna,
       staleEngagements,
       dormantClients,
       extended: {

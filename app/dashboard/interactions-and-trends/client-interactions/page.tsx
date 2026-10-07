@@ -23,6 +23,7 @@ import {
 } from '@/app/lib/api/client-interactions';
 import type { DashboardData, DashboardMetrics, EngagementFilters, SortSpec } from '@/app/lib/api/client-interactions';
 import type { EngagementMetric, Engagement } from '@/app/lib/types/engagements';
+import type { NnaUpdate } from '@/app/lib/nna';
 import DashboardHeader from '@/app/components/dashboard/shared/DashboardHeader';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { toDisplayName, isReadOnlyUser, canUserEditEngagement } from '@/app/lib/auth/types';
@@ -198,6 +199,17 @@ export default function EngagementsDashboard() {
   // -------------------------------------------------------------------------
   const currentUser = user ? toDisplayName(user.firstName, user.lastName) : 'All Team Members';
 
+  // Every dashboard fetch takes a sequence number and stamps when it started.
+  // Only the newest fetch's response is applied, and a live-update event is
+  // skipped when a fetch that started after it is already covering it (e.g. the
+  // explicit reload after the user's own edit).
+  const loadSeqRef = useRef(0);
+  const lastLoadStartedAtRef = useRef(0);
+  const beginLoad = useCallback(() => {
+    lastLoadStartedAtRef.current = performance.now();
+    return ++loadSeqRef.current;
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     const filters: EngagementFilters = {
@@ -215,11 +227,13 @@ export default function EngagementsDashboard() {
     const delay = searchQuery ? 300 : 0;
     const id = setTimeout(async () => {
       setIsLoading(true);
+      const seq = beginLoad();
       try {
         const data = await getDashboardData(filters, controller.signal);
-        setDashboardData(data);
+        if (seq === loadSeqRef.current) setDashboardData(data);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
+        lastLoadStartedAtRef.current = 0; // failed — don't let it cover live updates
         console.error('Failed to load dashboard data:', err);
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -227,7 +241,7 @@ export default function EngagementsDashboard() {
     }, delay);
 
     return () => { clearTimeout(id); controller.abort(); };
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy, beginLoad]);
 
   // Re-fetch with current filters (used after mutations)
   const reloadData = useCallback(async () => {
@@ -242,22 +256,45 @@ export default function EngagementsDashboard() {
       pageSize: 200,
       sortBy,
     };
+    const seq = beginLoad();
     try {
-      setDashboardData(await getDashboardData(filters));
+      const data = await getDashboardData(filters);
+      if (seq === loadSeqRef.current) setDashboardData(data);
     } catch (err) {
+      lastLoadStartedAtRef.current = 0; // failed — don't let it cover live updates
       console.error('Failed to reload dashboard data:', err);
     }
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy, beginLoad]);
 
-  // SSE connection — reloads dashboard whenever any user mutates an engagement
+  const reloadRef = useRef(reloadData);
+  useEffect(() => {
+    reloadRef.current = reloadData;
+  }, [reloadData]);
+
+  // SSE connection — reloads dashboard whenever any user mutates an engagement.
+  // Opened once (filters are read through reloadRef), and bursts of events
+  // collapse into one reload.
   useEffect(() => {
     const es = new EventSource('/api/client-interactions/events');
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastEventAt = 0;
     es.onmessage = (e) => {
-      if (e.data !== 'connected') reloadData();
+      if (e.data === 'connected') return;
+      lastEventAt = performance.now();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (lastLoadStartedAtRef.current > lastEventAt) return; // already covered
+        reloadRef.current();
+      }, 400);
     };
-    es.onerror = () => es.close();
-    return () => es.close();
-  }, [reloadData]);
+    // No onerror handler: the browser's native EventSource reconnect keeps the
+    // page live across transient drops.
+    return () => {
+      if (timer) clearTimeout(timer);
+      es.close();
+    };
+  }, []);
 
   // Click without shift: replace the entire sort with this column (cycle asc → desc → cleared).
   // Shift+click: extend the sort. If the column is already in the sort, cycle its direction
@@ -359,6 +396,8 @@ export default function EngagementsDashboard() {
         portfolioUnchanged: data.portfolioUnchanged,
         portfolio: data.portfolio,
         nna: data.nna || undefined,
+        nnaAllocations: data.nnaAllocations?.length ? data.nnaAllocations : undefined,
+        nnaNotes: data.nnaNotes ?? null,
         notes: data.notes?.trim() || undefined,
         tickersMentioned: data.tickersMentioned?.length ? data.tickersMentioned : undefined,
         linkedFromId: data.linkedFromId ?? null,
@@ -442,11 +481,20 @@ export default function EngagementsDashboard() {
     patchEngagements(e => ({ ...e, filepath }), engagementId);
   };
 
-  const handleNNAChange = (engagementId: number, nna: number | undefined) => {
+  const handleNNAChange = (engagementId: number, update: NnaUpdate) => {
     const target = engagements.find(e => e.id === engagementId);
     if (!target || !canUserEditEngagement(user, target.teamMembers)) return;
-    patchEngagements(e => ({ ...e, nna }), engagementId);
-    updateEngagementNNA(engagementId, nna).catch(console.error);
+    patchEngagements(e => ({
+      ...e,
+      nna: update.nna,
+      nnaAllocations: update.allocations.length ? update.allocations : undefined,
+      nnaNotes: update.notes,
+    }), engagementId);
+    updateEngagementNNA(engagementId, update).catch(err => {
+      console.error(err);
+      // Roll the optimistic edit back to the server's state.
+      reloadData();
+    });
   };
 
   const handleRowClick = (engagement: Engagement) => {
@@ -474,6 +522,8 @@ export default function EngagementsDashboard() {
         portfolioUnchanged: engagement.portfolioUnchanged,
         portfolio: engagement.portfolio,
         nna: engagement.nna || null,
+        nnaAllocations: engagement.nnaAllocations ?? [],
+        nnaNotes: engagement.nnaNotes ?? null,
         tickersMentioned: engagement.tickersMentioned || [],
         linkedFromId: engagement.linkedFromId ?? null,
         linkedFromPreview: null,
@@ -517,7 +567,11 @@ export default function EngagementsDashboard() {
         portfolioLogged: data.portfolioLogged,
         portfolioUnchanged: data.portfolioUnchanged,
         portfolio: data.portfolio,
-        nna: data.nna ?? undefined,
+        // Explicit nulls so clearing the NNA / breakdown / notes in the form persists
+        // (PATCH treats undefined as "leave unchanged").
+        nna: data.nna,
+        nnaAllocations: data.nnaAllocations?.length ? data.nnaAllocations : null,
+        nnaNotes: data.nnaNotes ?? null,
         tickersMentioned: data.tickersMentioned?.length ? data.tickersMentioned : undefined,
         linkedFromId: data.linkedFromId ?? null,
         version,
@@ -711,6 +765,7 @@ export default function EngagementsDashboard() {
 
             <InteractionsTable
               engagements={engagements}
+              typeColors={dashboardData?.typeColors}
               sortBy={sortBy}
               onSort={handleSort}
               onStatusChange={handleStatusChange}

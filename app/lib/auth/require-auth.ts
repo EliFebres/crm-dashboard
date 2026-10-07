@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyJWT, SESSION_COOKIE } from './jwt';
+import { verifyJWT, rememberVerified, SESSION_COOKIE } from './jwt';
 import type { JWTPayload } from './jwt';
 import type { ServerConstraints } from '../db/queries';
 import { READ_ONLY_TEAMS, toDisplayName } from './types';
 import { touchPresence } from '../activity/log';
+import { getFounderId } from '../db/users';
 
 export type AuthResult =
   | { payload: JWTPayload; error: null }
@@ -19,6 +20,7 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult> {
     if (!payload.team && payload.role !== 'admin') {
       return { payload: null, error: NextResponse.json({ error: 'Session expired. Please log in again.' }, { status: 401 }) };
     }
+    rememberVerified(req, payload);
     void touchPresence(
       payload.sub,
       payload.email,
@@ -28,6 +30,16 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult> {
   } catch {
     return { payload: null, error: NextResponse.json({ error: 'Invalid or expired session.' }, { status: 401 }) };
   }
+}
+
+/** requireAuth, plus the caller must be the founder (the first account created). */
+export async function requireFounder(req: NextRequest): Promise<AuthResult> {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth;
+  if ((await getFounderId()) !== auth.payload.sub) {
+    return { payload: null, error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }) };
+  }
+  return auth;
 }
 
 export function isReadOnly(payload: JWTPayload): boolean {
@@ -78,26 +90,31 @@ export function teamConstraint(payload: JWTPayload): ServerConstraints {
   return { team: payload.team };
 }
 
-export type KpiScope = 'all' | `team:${string}`;
+export type KpiScope = 'all' | 'me' | `team:${string}`;
 
 // KPI dashboard allows cross-team aggregates, but non-admins may only scope
 // to 'all' (cross-team totals) or to their own team — no peeking at another
 // team's team-level breakdown. Admins may scope to any team.
-export function kpiConstraint(scope: KpiScope): ServerConstraints {
+//
+// 'me' is the caller's own work: engagements whose team_members includes their
+// display name, across every team. The name comes from the session, never the
+// request, so nobody can read another person's numbers through it.
+export function kpiConstraint(scope: KpiScope, payload: JWTPayload): ServerConstraints {
   if (scope === 'all') return {};
+  if (scope === 'me') return { member: toDisplayName(payload.firstName, payload.lastName) };
   const team = scope.slice('team:'.length);
   return { team };
 }
 
 export function canAccessKpiScope(payload: JWTPayload, scope: KpiScope): boolean {
-  if (scope === 'all') return true;
+  if (scope === 'all' || scope === 'me') return true;
   if (payload.role === 'admin') return true;
   const team = scope.slice('team:'.length);
   return team === payload.team;
 }
 
 export function isValidKpiScope(scope: unknown): scope is KpiScope {
-  if (scope === 'all') return true;
+  if (scope === 'all' || scope === 'me') return true;
   if (typeof scope !== 'string') return false;
   if (!scope.startsWith('team:')) return false;
   const team = scope.slice('team:'.length);

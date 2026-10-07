@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, executeTransaction, hasDb } from '@/app/lib/db';
+import { teamsOfMembers } from '@/app/lib/db/users';
 import { rowToEngagement, CLIENT_JOIN, teamScopeClause } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, canDeleteEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { normalizeCrn } from '@/app/lib/config/crn';
@@ -10,6 +11,7 @@ import { normalizeProjectId } from '@/app/lib/utils/text';
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
+import { normalizeNnaDetails, parseStoredAllocations } from '@/app/lib/nna';
 
 // GET /api/client-interactions/engagements/:id
 export async function GET(
@@ -103,6 +105,14 @@ export async function PATCH(
     if (body.teamMembers !== undefined) {
       setClauses.push('team_members = ?');
       values.push(JSON.stringify(body.teamMembers));
+      // Re-stamp the members' teams only when the members change, so re-saving an old
+      // interaction doesn't move it to whatever team its people are on today.
+      const next = [...((body.teamMembers ?? []) as string[])].sort();
+      const current = [...currentTeamMembers].sort();
+      if (next.length !== current.length || next.some((m, i) => m !== current[i])) {
+        setClauses.push('teams = ?');
+        values.push(JSON.stringify(teamsOfMembers(next)));
+      }
     }
     if (body.dateStarted !== undefined) {
       setClauses.push('date_started = ?');
@@ -128,9 +138,36 @@ export async function PATCH(
       setClauses.push('portfolio = ?');
       values.push(body.portfolio ? JSON.stringify(body.portfolio) : null);
     }
-    if (body.nna !== undefined) {
+    // NNA total + optional per-ticker breakdown + notes are validated together so
+    // the total can never fall below the breakdown. Omitted fields keep their
+    // stored values (and are what the new values are checked against).
+    if (body.nna !== undefined || body.nnaAllocations !== undefined || body.nnaNotes !== undefined) {
+      const stored = await query<{ nna: number | null; nna_allocations: string | null }>(
+        `SELECT nna, nna_allocations FROM engagements WHERE id = ?`,
+        [engagementId]
+      );
+      const nnaResult = normalizeNnaDetails(
+        {
+          nna: body.nna !== undefined ? body.nna : stored[0]?.nna ?? null,
+          allocations: body.nnaAllocations,
+          notes: body.nnaNotes,
+        },
+        parseStoredAllocations(stored[0]?.nna_allocations)
+      );
+      if (!nnaResult.ok) {
+        return NextResponse.json({ error: nnaResult.error }, { status: 400 });
+      }
+      const { nna, allocations, notes } = nnaResult.value;
       setClauses.push('nna = ?');
-      values.push(body.nna ?? null);
+      values.push(nna);
+      if (allocations !== undefined) {
+        setClauses.push('nna_allocations = ?');
+        values.push(allocations ? JSON.stringify(allocations) : null);
+      }
+      if (notes !== undefined) {
+        setClauses.push('nna_notes = ?');
+        values.push(notes);
+      }
     }
     if (body.notes !== undefined) {
       setClauses.push('notes = ?');

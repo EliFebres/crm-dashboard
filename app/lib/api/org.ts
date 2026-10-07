@@ -2,6 +2,7 @@
  * Client-side API for the editable Teams / Offices lists.
  * Backed by the route handlers under /api/teams and /api/offices.
  */
+import { sharedGetJson } from './sharedGet';
 
 export interface OrgItem {
   id: string;
@@ -28,9 +29,9 @@ async function readError(res: Response, fallback: string): Promise<never> {
 // ── Teams ──────────────────────────────────────────────────────────────────
 
 export async function getTeams(): Promise<OrgItem[]> {
-  const res = await fetch('/api/teams');
+  const res = await sharedGetJson<OrgItem[]>('/api/teams');
   if (!res.ok) throw new Error('Failed to load teams.');
-  return res.json();
+  return res.data;
 }
 
 export async function createTeam(name: string): Promise<OrgItem> {
@@ -71,9 +72,9 @@ export async function reorderTeams(ids: string[]): Promise<void> {
 // ── Offices ──────────────────────────────────────────────────────────────────
 
 export async function getOffices(): Promise<OrgItem[]> {
-  const res = await fetch('/api/offices');
+  const res = await sharedGetJson<OrgItem[]>('/api/offices');
   if (!res.ok) throw new Error('Failed to load offices.');
-  return res.json();
+  return res.data;
 }
 
 export async function createOffice(name: string): Promise<OrgItem> {

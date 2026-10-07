@@ -41,6 +41,18 @@ export function toDisplayDate(isoDate: string | null | undefined): string {
 }
 
 /**
+ * The same calendar day `n` months before `from`, clamped to the target month's
+ * last day. `new Date(y, m - n, d)` overflows on the 29th–31st (Mar 31 − 1M →
+ * "Feb 31" → Mar 3), which would silently shorten the period window.
+ */
+function monthsAgo(from: Date, n: number): Date {
+  const target = new Date(from.getFullYear(), from.getMonth() - n, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(from.getDate(), lastDay));
+  return target;
+}
+
+/**
  * Returns the ISO date string marking the start of the given period filter.
  * Returns null for "ALL" (no date constraint).
  */
@@ -50,19 +62,19 @@ export function getPeriodStartISO(period: string): string | null {
     case '1W':
       return localDateISO(new Date(now.getTime() - 7 * 86400000));
     case '1M':
-      return localDateISO(new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()));
+      return localDateISO(monthsAgo(now, 1));
     case '3M':
-      return localDateISO(new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()));
+      return localDateISO(monthsAgo(now, 3));
     case '6M':
-      return localDateISO(new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()));
+      return localDateISO(monthsAgo(now, 6));
     case 'YTD':
       return localDateISO(new Date(now.getFullYear(), 0, 1));
     case '1Y':
-      return localDateISO(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
+      return localDateISO(monthsAgo(now, 12));
     case 'ALL':
       return null;
     default:
-      return localDateISO(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()));
+      return localDateISO(monthsAgo(now, 12));
   }
 }
 
@@ -85,7 +97,7 @@ export function getContributionWindow(
 
   let startISO = getPeriodStartISO(period);
   if (!startISO) {
-    startISO = earliestISO || localDateISO(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()));
+    startISO = earliestISO || localDateISO(monthsAgo(today, 12));
   }
 
   const start = new Date(startISO + 'T00:00:00');
@@ -118,9 +130,9 @@ export function getPreviousPeriodDates(period: string): { start: string; end: st
       };
     }
     case '1M': {
-      const currStart = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      const currStart = monthsAgo(now, 1);
       const prevEnd = new Date(currStart.getTime() - 86400000);
-      const prevStart = new Date(now.getFullYear(), now.getMonth() - 2, now.getDate());
+      const prevStart = monthsAgo(now, 2);
       return {
         start: localDateISO(prevStart),
         end: localDateISO(prevEnd),
@@ -128,9 +140,9 @@ export function getPreviousPeriodDates(period: string): { start: string; end: st
       };
     }
     case '3M': {
-      const currStart = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+      const currStart = monthsAgo(now, 3);
       const prevEnd = new Date(currStart.getTime() - 86400000);
-      const prevStart = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      const prevStart = monthsAgo(now, 6);
       return {
         start: localDateISO(prevStart),
         end: localDateISO(prevEnd),
@@ -138,9 +150,9 @@ export function getPreviousPeriodDates(period: string): { start: string; end: st
       };
     }
     case '6M': {
-      const currStart = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      const currStart = monthsAgo(now, 6);
       const prevEnd = new Date(currStart.getTime() - 86400000);
-      const prevStart = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+      const prevStart = monthsAgo(now, 12);
       return {
         start: localDateISO(prevStart),
         end: localDateISO(prevEnd),
@@ -148,7 +160,7 @@ export function getPreviousPeriodDates(period: string): { start: string; end: st
       };
     }
     case 'YTD': {
-      const prevEnd = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      const prevEnd = monthsAgo(now, 12);
       const prevStart = new Date(now.getFullYear() - 1, 0, 1);
       return {
         start: localDateISO(prevStart),
@@ -160,9 +172,9 @@ export function getPreviousPeriodDates(period: string): { start: string; end: st
       return { start: '2000-01-01', end: '2099-12-31', label: 'All Time' };
     case '1Y':
     default: {
-      const currStart = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      const currStart = monthsAgo(now, 12);
       const prevEnd = new Date(currStart.getTime() - 86400000);
-      const prevStart = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
+      const prevStart = monthsAgo(now, 24);
       return {
         start: localDateISO(prevStart),
         end: localDateISO(prevEnd),

@@ -90,7 +90,9 @@ export function openSqlite(
   const dir = getDbDir();
   if (!dir) throw new Error('SQLITE_DIR environment variable is not set');
 
-  const resolvedDir = path.resolve(dir);
+  // SQLITE_DIR is a runtime location, not a build asset — keep Turbopack's
+  // file tracer from following it (otherwise it traces the whole project).
+  const resolvedDir = path.resolve(/*turbopackIgnore: true*/ dir);
   if (!fs.existsSync(resolvedDir)) fs.mkdirSync(resolvedDir, { recursive: true });
   const file = path.join(resolvedDir, fileName);
 

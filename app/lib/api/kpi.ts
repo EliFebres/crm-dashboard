@@ -5,6 +5,9 @@
  *
  * Team-oriented KPI dashboard. Scope is always team-level or cross-team —
  * no individual-level views. No team-vs-team competitive comparisons.
+ *
+ * The one exception is the downloadable PDF report (getKpiReport), which can cover a
+ * single person: yourself, or anyone if you are the founder. /api/kpi/report enforces that.
  */
 
 const API_BASE_URL = '/api';
@@ -13,13 +16,16 @@ const API_BASE_URL = '/api';
 // TYPES
 // =============================================================================
 
-export type KpiScope = 'all' | `team:${string}`;
+/** 'me' = the signed-in user's own work (engagements they're assigned to, any team). */
+export type KpiScope = 'all' | 'me' | `team:${string}`;
 
 export interface KpiFilters {
   scope: KpiScope;
   period: string;
   clientDepts?: string[];
   intakeTypes?: string[];
+  /** Project types (engagements.type) to include; empty = all. */
+  projectTypes?: string[];
   /** Stale threshold key (see STALE_THRESHOLDS). Defaults server-side to '3m'. */
   staleThreshold?: string;
 }
@@ -87,6 +93,25 @@ export interface ClientDeptRow {
   color: string; // Chart color, resolved from the managed departments table
 }
 
+/** One ticker's share of NNA (or the 'Unallocated' remainder), split by source. */
+export interface TickerNnaRow {
+  ticker: string; // uppercase ticker, or 'Unallocated'
+  nna: number;
+  engagements: number; // engagements contributing to this ticker
+  share: number; // % of total NNA in scope/period
+  byType: Record<string, number>; // project type -> $
+  byDept: Record<string, number>; // internal_client_dept -> $
+}
+
+export interface TickerNnaData {
+  totalNna: number;
+  allocatedPct: number; // % of totalNna assigned to tickers
+  tickers: TickerNnaRow[]; // sorted by nna desc, excludes Unallocated
+  unallocated: TickerNnaRow; // ticker: 'Unallocated'
+  typeColors: Record<string, string>;
+  deptColors: Record<string, string>;
+}
+
 export interface NnaConcentrationPoint {
   rank: number;
   clientName: string;
@@ -123,11 +148,11 @@ export interface DormantClient {
 }
 
 // -----------------------------------------------------------------------------
-// EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q8, Q9, Q10, Q12, Q13)
+// EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q10, Q11, Q12, Q14, Q15)
 //
-// These are intentionally scope(team)-only: they use fixed windows (26 weeks /
-// 12 months / all-completed / all-history) and do NOT respond to the period,
-// clientDepts, or intakeTypes filters. See kpi-aggregations.ts.
+// These use fixed windows (26 weeks / 12 months / all-completed / all-history) and do NOT
+// respond to the period, clientDepts, or intakeTypes filters — only to scope (team or
+// personal) and the projectTypes filter. See kpi-aggregations.ts.
 // -----------------------------------------------------------------------------
 
 /** Q2 — one point per week over the last 26 weeks. */
@@ -157,7 +182,7 @@ export interface CycleTimeRow {
   color: string;
 }
 
-/** Q8 — chain-rolled NNA attribution for one originating project type. */
+/** Q10 — chain-rolled NNA attribution for one originating project type. */
 export interface ChainRolledRow {
   type: string;
   directNna: number;
@@ -168,21 +193,21 @@ export interface ChainRolledRow {
   color: string;
 }
 
-/** Q9 — one cell of the type × department conversion matrix. */
+/** Q11 — one cell of the type × department conversion matrix. */
 export interface SegmentCell {
   n: number;
   hitRate: number;
   medianNna: number;
 }
 
-/** Q9 — the full type × department matrix. `cells` keyed by `"<type>|<dept>"`. */
+/** Q11 — the full type × department matrix. `cells` keyed by `"<type>|<dept>"`. */
 export interface SegmentMatrix {
   depts: string[];
   types: string[];
   cells: Record<string, SegmentCell | null>;
 }
 
-/** Q10 — a "Follow Up" project (delivered, NNA outcome pending) worth chasing. */
+/** Q12 — a "Follow Up" project (delivered, NNA outcome pending) worth chasing. */
 export interface ChaseRow {
   clientName: string;
   clientDept: string;
@@ -195,7 +220,7 @@ export interface ChaseRow {
   assignees: string[];
 }
 
-/** Q12 — follow-up spawn rate for one originating project type. */
+/** Q14 — follow-up spawn rate for one originating project type. */
 export interface SpawnRateRow {
   type: string;
   count: number;
@@ -204,14 +229,14 @@ export interface SpawnRateRow {
   color: string;
 }
 
-/** Q13 — new vs returning unique clients for one month. */
+/** Q15 — new vs returning unique clients for one month. */
 export interface ClientBasePoint {
   label: string;
   newN: number;
   returningN: number;
 }
 
-/** Q13 — unique-client count for one department over the last year. */
+/** Q15 — unique-client count for one department over the last year. */
 export interface UniquePerDeptRow {
   dept: string;
   color: string;
@@ -231,17 +256,88 @@ export interface KpiExtendedData {
 }
 
 export interface KpiDashboardData {
-  scope: { kind: 'all' | 'team'; team?: string };
+  scope: { kind: 'all' | 'me' | 'team'; team?: string };
   periodLabel: string;
   heroKpis: HeroKpis;
   journeySankey: JourneySankeyData;
   journeyTemplates: JourneyTemplate[];
   clientDepts: ClientDeptRow[];
   nnaConcentration: NnaConcentration;
+  tickerNna: TickerNnaData;
   staleEngagements: StaleEngagement[];
   dormantClients: DormantClient[];
-  /** The "Briefing" redesign's extended metrics (Q2–Q13). */
+  /** The "Briefing" redesign's extended metrics (Q2–Q15). */
   extended: KpiExtendedData;
+}
+
+// ---------- PDF report ----------
+
+/** Who a report covers: the page's current scope, or one person by display name. */
+export type KpiReportSubject = { kind: 'team' } | { kind: 'person'; displayName: string };
+
+/** A headline number for the report, with the previous equal-length period's value. */
+export interface KpiReportStat {
+  value: number;
+  prev: number;
+  deltaPercent: number;
+}
+
+export interface KpiReportBreakdownRow {
+  name: string;
+  count: number;
+  nna: number;
+  color: string;
+}
+
+export interface KpiReportData {
+  subject: {
+    kind: 'team' | 'all' | 'person';
+    /** Person's full name, team name, or "All teams". */
+    name: string;
+    /** Person reports only. */
+    title?: string;
+    team?: string;
+  };
+  period: string;
+  /** Inclusive ISO dates the report covers. */
+  range: { start: string; end: string };
+  /** False for ALL, which has no previous period to compare against. */
+  hasComparison: boolean;
+  comparisonLabel: string;
+  generatedAt: string;
+  totals: {
+    interactions: KpiReportStat;
+    completed: KpiReportStat;
+    nna: KpiReportStat;
+    avgNna: KpiReportStat;
+    /** 0–100. */
+    completionRate: KpiReportStat;
+    clientsServed: KpiReportStat;
+    newClients: number;
+    inProgress: number;
+  };
+  /** Opened (by start date) vs completed (by finish date) per bucket. */
+  series: {
+    granularity: 'week' | 'month' | 'year';
+    points: { label: string; opened: number; completed: number }[];
+  };
+  byDept: KpiReportBreakdownRow[];
+  byType: KpiReportBreakdownRow[];
+  topWins: {
+    clientName: string;
+    clientDept: string;
+    externalClient: string | null;
+    type: string;
+    dateFinished: string | null;
+    nna: number;
+  }[];
+  topClients: { clientName: string; clientDept: string; nna: number; share: number }[];
+  cycle: {
+    /** Median days from start to finish over completed work; null when none finished. */
+    overallMedian: number | null;
+    finishedCount: number;
+    byType: { type: string; median: number; count: number; color: string }[];
+  };
 }
 
 // =============================================================================
@@ -260,6 +356,7 @@ export async function getKpiDashboardData(
       period: filters.period,
       clientDepts: filters.clientDepts ?? [],
       intakeTypes: filters.intakeTypes ?? [],
+      projectTypes: filters.projectTypes ?? [],
       staleThreshold: filters.staleThreshold,
     }),
     signal,
@@ -267,6 +364,24 @@ export async function getKpiDashboardData(
   if (!response.ok) {
     if (response.status === 400) throw new Error('Invalid KPI scope.');
     throw new Error('Failed to load KPI dashboard data.');
+  }
+  return response.json();
+}
+
+/** Data for the downloadable PDF report. Throws with a user-facing message on failure. */
+export async function getKpiReport(req: {
+  scope: KpiScope;
+  period: string;
+  subject: KpiReportSubject;
+}): Promise<KpiReportData> {
+  const response = await fetch(`${API_BASE_URL}/kpi/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    if (response.status === 403) throw new Error("You don't have access to that report.");
+    throw new Error("Couldn't build the report.");
   }
   return response.json();
 }

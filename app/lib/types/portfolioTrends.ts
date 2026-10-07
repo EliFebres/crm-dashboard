@@ -8,7 +8,7 @@
 /** The synthetic cohort: each client collapsed to its single main model. */
 export const AVG_CLIENT = 'Avg. Client';
 
-/** The portfolios a model is analysed as. Mirrors portfolio_data's sleeve vocabulary. */
+/** The portfolios a model is analysed as. */
 export type Sleeve =
   | 'total'
   | 'equity'
@@ -104,7 +104,7 @@ export interface PortfolioTrendsFilterOptions {
 }
 
 // ---------------------------------------------------------------------------------
-// Market data — populated from the pf_* tables written by backend/portfolio_data.
+// Market data — populated from the pf_* tables.
 //
 // Everything below is null or empty until an analytics upload lands. Cards check their
 // own slice and fall back to the "requires market data" state individually, so a partial
@@ -114,7 +114,7 @@ export interface PortfolioTrendsFilterOptions {
 
 /**
  * Portfolio characteristics, as decimal fractions where they are ratios — matching how
- * portfolio_data stores them. 8.4% is 0.084 here too; the formatters do the ×100.
+ * the pf_* tables store them. 8.4% is 0.084 here too; the formatters do the ×100.
  */
 export interface Characteristics {
   wtdAvgMarketCap?: number;
@@ -274,7 +274,7 @@ export interface PortfolioTrendsResponse {
   filterOptions: PortfolioTrendsFilterOptions;
   /**
    * Analytics for the style / profitability / fixed-income cards, read from the pf_*
-   * tables that `backend/portfolio_data` writes. Null when no analytics have been
+   * tables. Null when no analytics have been
    * uploaded at all — the cards then render their "requires market data" state rather
    * than an empty plot, which is the honest distinction between "nothing ingested" and
    * "ingested, and the answer is zero".

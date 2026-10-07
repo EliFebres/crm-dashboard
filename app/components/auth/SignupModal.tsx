@@ -135,6 +135,8 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       }
 
       if (data.isFirstUser) {
+        // Full reload on purpose: the session cookie was just set.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = '/dashboard/interactions-and-trends/client-interactions';
         return;
       }

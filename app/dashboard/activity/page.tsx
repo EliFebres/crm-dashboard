@@ -89,6 +89,7 @@ function actionBadge(action: string): { label: string; tone: BadgeTone } {
   if (action.endsWith('.delete')) return { label: 'Deleted', tone: 'red' };
   if (action.endsWith('.update') || action.endsWith('_change')) return { label: 'Updated', tone: 'amber' };
   if (action === 'engagement.export') return { label: 'Exported', tone: 'blue' };
+  if (action === 'kpi.report') return { label: 'Report', tone: 'blue' };
   if (action === 'auth.login') return { label: 'Login', tone: 'emerald' };
   if (action === 'auth.login_failed') return { label: 'Failed', tone: 'red' };
   if (action === 'auth.logout') return { label: 'Logout', tone: 'grey' };
@@ -127,6 +128,11 @@ function detailsSummary(row: LogRow): string {
     case 'engagement.export': {
       const n = typeof d?.rowCount === 'number' ? d.rowCount : 0;
       return `${n} interaction${n === 1 ? '' : 's'} exported`;
+    }
+    case 'kpi.report': {
+      const who = typeof d?.subject === 'string' ? d.subject : 'KPI';
+      const period = typeof d?.period === 'string' ? ` · ${d.period}` : '';
+      return `${who} report generated${period}`;
     }
     case 'note.create': return `Note added to ${interaction}`;
     case 'note.update': return `Note edited on ${interaction}`;
@@ -296,6 +302,9 @@ export default function ActivityDashboardPage() {
   useEffect(() => {
     if (!isAdmin) return;
     const es = new EventSource('/api/activity/events');
+    // Rows land in the feed immediately; the stats recompute (several queries)
+    // waits for a 1s lull so a burst of events triggers it once.
+    let statsTimer: ReturnType<typeof setTimeout> | null = null;
     es.onmessage = (e) => {
       try {
         const parsed = JSON.parse(e.data);
@@ -318,7 +327,11 @@ export default function ActivityDashboardPage() {
             flashTimeouts.current.delete(row.id);
           }, 2000);
           flashTimeouts.current.set(row.id, t);
-          void loadStats();
+          if (statsTimer) clearTimeout(statsTimer);
+          statsTimer = setTimeout(() => {
+            statsTimer = null;
+            void loadStats();
+          }, 1000);
         }
       } catch { /* ignore malformed frames */ }
     };
@@ -326,6 +339,7 @@ export default function ActivityDashboardPage() {
     const timeoutsMap = flashTimeouts.current;
     return () => {
       es.close();
+      if (statsTimer) clearTimeout(statsTimer);
       timeoutsMap.forEach(clearTimeout);
       timeoutsMap.clear();
     };
