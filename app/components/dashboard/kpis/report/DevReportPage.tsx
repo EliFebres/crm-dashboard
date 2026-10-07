@@ -84,7 +84,10 @@ export default function DevReportPage({
   const avgPerWeek = usage.avgPerDay * 7;
   const avgPerMonth = usage.avgPerDay * DAYS_PER_MONTH;
 
-  const inventory = [...tools.list].sort((a, b) => b.uses - a.uses).slice(0, MAX_INVENTORY_ROWS);
+  // The "+ N more tools" line takes the last row's slot, so the column never grows past
+  // MAX_INVENTORY_ROWS and pushes onto a new page.
+  const inventoryRows = tools.list.length > MAX_INVENTORY_ROWS ? MAX_INVENTORY_ROWS - 1 : MAX_INVENTORY_ROWS;
+  const inventory = [...tools.list].sort((a, b) => b.uses - a.uses).slice(0, inventoryRows);
   const moreTools = tools.list.length - inventory.length;
 
   return (
