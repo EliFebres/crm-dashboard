@@ -379,6 +379,16 @@ function weekStart(iso: string): string {
   return utcToIso(t - ((dow + 6) % 7) * DAY_MS);
 }
 
+/** Weekdays (Mon–Fri) from `start` through `end`, inclusive. Holidays aren't excluded. */
+function weekdaysBetween(start: string, end: string): number {
+  let n = 0;
+  for (let t = isoToUTC(start); t <= isoToUTC(end); t += DAY_MS) {
+    const dow = new Date(t).getUTCDay();
+    if (dow !== 0 && dow !== 6) n++;
+  }
+  return n;
+}
+
 /** YYYY-MM one month after `ym`. */
 function nextMonth(ym: string): string {
   const y = Number(ym.slice(0, 4));
@@ -400,7 +410,7 @@ function emptyReport(): DevReportData {
     generatedAt: new Date().toISOString(),
     code: { commits: 0, added: 0, deleted: 0, net: 0, monthsEntered: 0, months: [] },
     usage: { total: 0, firstDay: null, lastDay: null, avgPerDay: 0, busiestDay: null, weekly: [], byTool: [], growth: null },
-    impact: { hoursSaved: 0, workWeeks: 0, byTool: [], toolsMissingEstimate: [] },
+    impact: { hoursSaved: 0, hoursPerWorkday: 0, byTool: [], toolsMissingEstimate: [] },
     tools: { live: 0, beta: 0, retired: 0, largestAudience: null, list: [] },
   };
 }
@@ -511,6 +521,7 @@ export async function computeDevReport(): Promise<DevReportData> {
     }))
     .sort((a, b) => b.hours - a.hours);
   const hoursSaved = impactByTool.reduce((s, t) => s + t.hours, 0);
+  const workdays = firstDay && lastDay ? weekdaysBetween(firstDay, lastDay) : 0;
 
   const audience = tools
     .filter(t => (t.usersReached ?? 0) > 0)
@@ -536,7 +547,7 @@ export async function computeDevReport(): Promise<DevReportData> {
     },
     impact: {
       hoursSaved,
-      workWeeks: hoursSaved / 40,
+      hoursPerWorkday: workdays ? hoursSaved / workdays : 0,
       byTool: impactByTool,
       toolsMissingEstimate: usedTools.filter(u => !((minutesOf.get(u.name.toLowerCase()) ?? 0) > 0)).map(u => u.name),
     },

@@ -136,7 +136,7 @@ export default function DevReportPage({
         <StatTile
           label="Hours saved"
           value={formatNumber(Math.round(impact.hoursSaved))}
-          sub={impact.hoursSaved > 0 ? `About ${impact.workWeeks.toFixed(1)} work weeks` : undefined}
+          sub={impact.hoursSaved > 0 ? `About ${impact.hoursPerWorkday.toFixed(1)} hours per workday` : undefined}
         />
         <StatTile
           label="People reached"

@@ -106,7 +106,7 @@ export function buildDemoDevReport(): DevReportData {
     usage: { total, firstDay, lastDay, avgPerDay: total / Math.max(1, Math.round((Date.parse(lastDay ?? today) - Date.parse(firstDay ?? today)) / DAY_MS) + 1), busiestDay: busiest, weekly, byTool, growth },
     impact: {
       hoursSaved,
-      workWeeks: hoursSaved / 40,
+      hoursPerWorkday: hoursSaved / Math.max(1, days.length), // demo usage is weekdays only
       byTool: impactByTool,
       toolsMissingEstimate: TOOLS.filter(t => !t.minutes && (perTool.get(t.name) ?? 0) > 0).map(t => t.name),
     },

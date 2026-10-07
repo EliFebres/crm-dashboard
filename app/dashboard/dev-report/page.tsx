@@ -154,7 +154,7 @@ export default function DevReportPage() {
                 r.impact.toolsMissingEstimate.length
                   ? `${r.impact.toolsMissingEstimate.length} tool${r.impact.toolsMissingEstimate.length === 1 ? '' : 's'} missing an estimate`
                   : r.impact.hoursSaved > 0
-                    ? `About ${r.impact.workWeeks.toFixed(1)} work weeks`
+                    ? `About ${r.impact.hoursPerWorkday.toFixed(1)} hours per workday`
                     : undefined
               }
             />
