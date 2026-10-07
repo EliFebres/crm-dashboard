@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyJWT, SESSION_COOKIE } from './jwt';
+import { verifyJWT, rememberVerified, SESSION_COOKIE } from './jwt';
 import type { JWTPayload } from './jwt';
 import type { ServerConstraints } from '../db/queries';
 import { READ_ONLY_TEAMS, toDisplayName } from './types';
 import { touchPresence } from '../activity/log';
+import { getFounderId } from '../db/users';
 
 export type AuthResult =
   | { payload: JWTPayload; error: null }
@@ -19,6 +20,7 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult> {
     if (!payload.team && payload.role !== 'admin') {
       return { payload: null, error: NextResponse.json({ error: 'Session expired. Please log in again.' }, { status: 401 }) };
     }
+    rememberVerified(req, payload);
     void touchPresence(
       payload.sub,
       payload.email,
@@ -28,6 +30,16 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult> {
   } catch {
     return { payload: null, error: NextResponse.json({ error: 'Invalid or expired session.' }, { status: 401 }) };
   }
+}
+
+/** requireAuth, plus the caller must be the founder (the first account created). */
+export async function requireFounder(req: NextRequest): Promise<AuthResult> {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth;
+  if ((await getFounderId()) !== auth.payload.sub) {
+    return { payload: null, error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }) };
+  }
+  return auth;
 }
 
 export function isReadOnly(payload: JWTPayload): boolean {

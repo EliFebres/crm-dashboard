@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { toDisplayName } from '@/app/lib/auth/types';
-import { getEngagements, getEngagementNotes } from '@/app/lib/api/client-interactions';
+import { getEngagements, getNotesForEngagements } from '@/app/lib/api/client-interactions';
 import { useToastPublisher } from '@/app/lib/hooks/useToasts';
 import type { Alert } from '@/app/lib/types/alerts';
 
@@ -125,8 +125,9 @@ export function useAlerts() {
         });
       }
 
-      // Alert 3: New notes on engagements the user is on
-      const notePromises: Promise<void>[] = [];
+      // Alert 3: New notes on engagements the user is on. Engagements whose note
+      // count grew are collected, then their notes come back in one request.
+      const grown: { eng: (typeof engagements)[number]; currentCount: number; lastSeen: number }[] = [];
       for (const eng of engagements) {
         if (!eng.teamMembers.includes(displayName)) continue;
         const currentCount = eng.noteCount ?? 0;
@@ -141,31 +142,32 @@ export function useAlerts() {
           state.seenNoteCounts[key] = currentCount;
           continue;
         }
-        notePromises.push(
-          (async () => {
-            try {
-              const notes = await getEngagementNotes(eng.id);
-              const newCount = Math.min(currentCount - lastSeen, notes.length);
-              for (let i = 0; i < newCount; i++) {
-                const note = notes[i];
-                if (note.authorId === user.id) continue;
-                const alertId = `note-${eng.id}-${note.id}`;
-                if (state.dismissedNoteIds.includes(alertId)) continue;
-                result.push({
-                  id: alertId,
-                  type: 'note-added',
-                  engagement: eng,
-                  note,
-                  timestamp: new Date(note.createdAt).getTime(),
-                });
-              }
-            } catch (err) {
-              console.error('[useAlerts] failed to fetch notes for', eng.id, err);
-            }
-          })(),
-        );
+        grown.push({ eng, currentCount, lastSeen });
       }
-      await Promise.all(notePromises);
+      if (grown.length > 0) {
+        try {
+          const notesById = await getNotesForEngagements(grown.map(g => g.eng.id));
+          for (const { eng, currentCount, lastSeen } of grown) {
+            const notes = notesById[eng.id] ?? [];
+            const newCount = Math.min(currentCount - lastSeen, notes.length);
+            for (let i = 0; i < newCount; i++) {
+              const note = notes[i];
+              if (note.authorId === user.id) continue;
+              const alertId = `note-${eng.id}-${note.id}`;
+              if (state.dismissedNoteIds.includes(alertId)) continue;
+              result.push({
+                id: alertId,
+                type: 'note-added',
+                engagement: eng,
+                note,
+                timestamp: new Date(note.createdAt).getTime(),
+              });
+            }
+          }
+        } catch (err) {
+          console.error('[useAlerts] failed to fetch notes for', grown.map(g => g.eng.id), err);
+        }
+      }
 
       // Alert 4: Pending signups (admin-only)
       if (user.role === 'admin') {

@@ -8,7 +8,6 @@ import SignupModal from '@/app/components/auth/SignupModal';
 import HeroSection from '@/app/components/landing-page/HeroSection';
 import DashboardPreview from '@/app/components/landing-page/DashboardPreview';
 import FeatureSections from '@/app/components/landing-page/FeatureSections';
-import PlatformRoadmap from '@/app/components/landing-page/PlatformRoadmap';
 
 /* ────────────────────────────────────────────────────────────────
    Linear-style landing page — faithful reproduction of layout,
@@ -170,35 +169,6 @@ export default function Home() {
           { gradient: 'linear-gradient(180deg, #22d3ee, #0e7490)', label: 'Engagements' },
           { gradient: 'linear-gradient(180deg, #34d399, #047857)', label: 'Portfolios' },
           { gradient: 'linear-gradient(180deg, #38bdf8, #0369a1)', label: 'Reports' },
-        ]}
-      />
-
-      {/* ── Platform roadmap ───────────────────────────────────── */}
-      <PlatformRoadmap
-        className="scroll-fade-in"
-        heading="Platform Roadmap"
-        description="Follow what's shipping, what's next, and where the platform is headed."
-        months={[
-          { label: 'Jan', year: '26' }, { label: 'Feb', year: '26' }, { label: 'Mar', year: '26' },
-          { label: 'Apr', year: '26' }, { label: 'May', year: '26' }, { label: 'Jun', year: '26' },
-          { label: 'Jul', year: '26' }, { label: 'Aug', year: '26' }, { label: 'Sep', year: '26' },
-          { label: 'Oct', year: '26' }, { label: 'Nov', year: '26' }, { label: 'Dec', year: '26' },
-          { label: 'Jan', year: '27' },
-        ]}
-        currentMonthIndex={3}
-        projects={[
-          { name: 'Client Interactions', color: '#0891b2', borderColor: '#0891b2', start: 0, width: 46 },
-          { name: 'Portfolio Trends', color: '#e90e0e', borderColor: '#e90e0e', start: 46, width: 31 },
-          { name: 'Landing Page and User Management', color: '#10b981', borderColor: '#10b981', start: 15, width: 39 },
-          { name: 'Ticker Trends', color: '#f59e0b', borderColor: '#f59e0b', start: 31, width: 31 },
-        ]}
-        features={[
-          { title: 'Multi-team projects', desc: 'Collaborate across teams and departments.' },
-          { title: 'Interaction automation', desc: 'Auto-log client engagements and reduce manual data entry.' },
-          { title: 'Leadership report automation', desc: 'Generate executive summaries and team activity reports on demand.' },
-          { title: 'Cross-dashboard insights', desc: 'Data flows between dashboards so actions in one surface automatically in others.' },
-          { title: 'Market monitoring dashboard', desc: 'Track yield curves, spreads, and macro signals in one place.' },
-          { title: 'Notifications', desc: 'Stay informed with personal project updates.' },
         ]}
       />
 

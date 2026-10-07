@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileDown, Loader2 } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { getTeams } from '@/app/lib/api/org';
+import { getProjectTypes } from '@/app/lib/api/types';
 import { toDisplayName, type TeamMember } from '@/app/lib/auth/types';
 import type { KpiReportSubject, KpiScope } from '@/app/lib/api/kpi';
 import { C, MONO } from './tokens';
@@ -16,6 +17,9 @@ interface MastheadProps {
   period: string;
   onScopeChange: (s: KpiScope) => void;
   onPeriodChange: (p: string) => void;
+  /** Selected project types; empty = all. */
+  projectTypes: string[];
+  onProjectTypesChange: (types: string[]) => void;
   loading: boolean;
   /** Builds and downloads the PDF report for the current scope and period. */
   onGenerateReport: (subject: KpiReportSubject) => Promise<void>;
@@ -122,16 +126,29 @@ function BylineMenu({
   );
 }
 
+/** Project-type menu value that clears the selection (back to all types). */
+const TYPES_ALL = '__all__';
+
 /** Report menu values. Picking a teammate uses `person:<display name>`. */
 const REPORT_ME = 'me';
 const REPORT_TEAM = 'team';
 const REPORT_SOMEONE = 'someone';
 const REPORT_BACK = 'back';
 
-export default function Masthead({ scope, period, onScopeChange, onPeriodChange, loading, onGenerateReport }: MastheadProps) {
+export default function Masthead({
+  scope,
+  period,
+  onScopeChange,
+  onPeriodChange,
+  projectTypes,
+  onProjectTypesChange,
+  loading,
+  onGenerateReport,
+}: MastheadProps) {
   const { user } = useCurrentUser();
   const [teams, setTeams] = useState<string[]>([]);
-  const [openMenu, setOpenMenu] = useState<'scope' | 'period' | 'report' | null>(null);
+  const [typeNames, setTypeNames] = useState<string[]>([]);
+  const [openMenu, setOpenMenu] = useState<'scope' | 'period' | 'types' | 'report' | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Report menu: the founder can drill into "Someone else…" to pick from the roster.
@@ -142,6 +159,7 @@ export default function Masthead({ scope, period, onScopeChange, onPeriodChange,
 
   useEffect(() => {
     getTeams().then(items => setTeams(items.map(t => t.name))).catch(() => setTeams([]));
+    getProjectTypes().then(items => setTypeNames(items.map(t => t.name))).catch(() => setTypeNames([]));
   }, []);
 
   // Close any open menu on an outside click.
@@ -172,6 +190,29 @@ export default function Masthead({ scope, period, onScopeChange, onPeriodChange,
     () => PERIODS.map(pk => ({ label: `${PERIOD_LONG[pk]} (${pk})`, value: pk, active: pk === period })),
     [period]
   );
+
+  const typeOptions = useMemo<MenuOption[]>(
+    () => [
+      { label: 'All project types', value: TYPES_ALL, active: projectTypes.length === 0 },
+      ...typeNames.map(t => ({ label: t, value: t, active: projectTypes.includes(t) })),
+    ],
+    [typeNames, projectTypes]
+  );
+
+  // Toggling a type keeps the menu open so several can be picked in one go.
+  const handleTypeSelect = (value: string) => {
+    if (value === TYPES_ALL) return onProjectTypesChange([]);
+    const next = projectTypes.includes(value) ? projectTypes.filter(t => t !== value) : [...projectTypes, value];
+    // Keep the registry's order so the selection reads the same however it was built.
+    onProjectTypesChange(typeNames.filter(t => next.includes(t)));
+  };
+
+  const typesTrigger =
+    projectTypes.length === 0
+      ? 'all project types'
+      : projectTypes.length === 1
+        ? projectTypes[0]
+        : `${projectTypes.length} project types`;
 
   // In the personal view, team-level report actions target the user's own team.
   const teamName = teamOf(scope) ?? (scope === 'me' ? user?.team || null : null);
@@ -320,6 +361,15 @@ export default function Masthead({ scope, period, onScopeChange, onPeriodChange,
             onPeriodChange(v);
           }}
           minWidth={170}
+        />
+        <span>for</span>
+        <BylineMenu
+          triggerLabel={typesTrigger}
+          open={openMenu === 'types'}
+          onToggle={() => setOpenMenu(m => (m === 'types' ? null : 'types'))}
+          options={typeOptions}
+          onSelect={handleTypeSelect}
+          minWidth={210}
         />
         <span style={{ color: C.textFaint }}>·</span>
         <span style={{ color: C.textFaint }}>{comparisonLabel(period)}</span>

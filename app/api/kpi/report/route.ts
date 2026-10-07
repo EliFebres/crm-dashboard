@@ -1,6 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/app/lib/db/requestMemo';
 import {
   requireAuth,
   kpiConstraint,
@@ -25,7 +26,12 @@ const PERIODS = ['1M', '3M', '6M', 'YTD', '1Y', 'ALL'];
 // - Person report: yourself, always. Anyone else only if you are the founder
 //   (earliest-created account). This is the one place individual-level KPI data is
 //   served, so the check lives here on the server, not just in the UI.
-export async function POST(req: NextRequest) {
+// Registry lookups shared by the aggregations below run once per request.
+export function POST(req: NextRequest) {
+  return withRequestMemo(() => handlePost(req));
+}
+
+async function handlePost(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
   const payload = auth.payload;

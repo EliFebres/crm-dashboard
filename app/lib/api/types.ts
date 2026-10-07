@@ -3,6 +3,7 @@
  * Backed by /api/project-types and /api/intake-types. Mirrors app/lib/api/internal-clients.ts.
  */
 import { RegistryConflictError } from '@/app/lib/api/internal-clients';
+import { sharedGetJson } from './sharedGet';
 
 export { RegistryConflictError };
 
@@ -36,10 +37,9 @@ async function readError(res: Response, fallback: string): Promise<never> {
 // ── Project Types ─────────────────────────────────────────────────────────────
 
 export async function getProjectTypes(): Promise<ProjectTypeItem[]> {
-  const res = await fetch('/api/project-types');
+  const res = await sharedGetJson<{ projectTypes: ProjectTypeItem[] }>('/api/project-types');
   if (!res.ok) throw new Error('Failed to load project types.');
-  const data = await res.json();
-  return data.projectTypes as ProjectTypeItem[];
+  return res.data.projectTypes;
 }
 
 export async function createProjectType(name: string, color?: string): Promise<ProjectTypeItem> {
@@ -83,10 +83,9 @@ export async function reorderProjectTypes(ids: string[]): Promise<void> {
 // ── Intake Types ──────────────────────────────────────────────────────────────
 
 export async function getIntakeTypes(): Promise<IntakeTypeItem[]> {
-  const res = await fetch('/api/intake-types');
+  const res = await sharedGetJson<{ intakeTypes: IntakeTypeItem[] }>('/api/intake-types');
   if (!res.ok) throw new Error('Failed to load intake types.');
-  const data = await res.json();
-  return data.intakeTypes as IntakeTypeItem[];
+  return res.data.intakeTypes;
 }
 
 export async function createIntakeType(name: string, color?: string): Promise<IntakeTypeItem> {

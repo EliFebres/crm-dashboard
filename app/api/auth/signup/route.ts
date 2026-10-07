@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { queryUsers, executeUsers } from '@/app/lib/db/users';
+import { queryUsers, executeUsers, invalidateFounderId } from '@/app/lib/db/users';
 import { hashPassword } from '@/app/lib/auth/password';
 import { signJWT, SESSION_COOKIE, COOKIE_OPTIONS } from '@/app/lib/auth/jwt';
 import { rowToUser } from '@/app/lib/auth/types';
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
         [id, email.toLowerCase(), firstName.trim(), lastName.trim(), title.trim(), team, office, role, status, passwordHash]
       );
     }
+    invalidateFounderId();
 
     if (!isFirstUser) {
       emitUserChange('created');

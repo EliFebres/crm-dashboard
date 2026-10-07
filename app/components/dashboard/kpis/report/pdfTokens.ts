@@ -9,6 +9,8 @@ export const P = {
   ink: '#0a0a0f',
   strong: '#09090b',
   muted: '#3f3f46',
+  /** Section and metric titles (eyebrows). */
+  eyebrow: '#09090b',
   faint: '#52525b',
   hairline: '#e4e4e7',
   axis: '#d4d4d8',
@@ -24,3 +26,10 @@ export const P = {
 export const SANS_FONT = 'Helvetica';
 export const SANS_BOLD = 'Helvetica-Bold';
 export const MONO_FONT = 'Courier';
+export const MONO_BOLD = 'Courier-Bold';
+
+/** Light red fill for "lines deleted" bars (the text red above is too heavy for a fill). */
+export const RED_FILL = '#fb7185';
+
+/** Yellow for dashed average/reference lines drawn over charts. */
+export const YELLOW_LINE = '#eab308';

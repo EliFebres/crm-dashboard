@@ -130,6 +130,13 @@ export interface DashboardData {
   contributionData: ContributionDataResponse;
   engagements: EngagementsResponse;
   filterOptions: FilterOptions;
+  /** Registry badge colors (name → hex). Absent in no-DB mock mode. */
+  typeColors?: TypeColors | null;
+}
+
+export interface TypeColors {
+  intake: Record<string, string>;
+  project: Record<string, string>;
 }
 
 /** Available filter options */
@@ -401,6 +408,17 @@ export async function getEngagementNotes(id: number): Promise<NoteEntry[]> {
   if (!response.ok) throw new Error('Failed to fetch notes');
   const data = await response.json();
   return data.notes as NoteEntry[];
+}
+
+/**
+ * Fetches the notes of several engagements in one request (each list oldest first).
+ * Endpoint: GET /api/client-interactions/engagements/notes?ids=1,2,3
+ */
+export async function getNotesForEngagements(ids: number[]): Promise<Record<number, NoteEntry[]>> {
+  const response = await fetch(`${API_BASE_URL}/client-interactions/engagements/notes?ids=${ids.join(',')}`);
+  if (!response.ok) throw new Error('Failed to fetch notes');
+  const data = await response.json();
+  return data.notes as Record<number, NoteEntry[]>;
 }
 
 /**

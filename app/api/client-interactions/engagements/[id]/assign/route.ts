@@ -72,6 +72,7 @@ export async function PATCH(
     // Resolve every requested name against the live roster. An unrecognized name would
     // produce an engagement nobody can edit, so reject rather than store it.
     let nextTeam: string | null = null;
+    let resolvedTeams: string[] = [];
     if (requested.length > 0) {
       const placeholders = requested.map(() => '?').join(', ');
       const resolved = await queryUsers<{ display_name: string; team: string }>(
@@ -88,38 +89,42 @@ export async function PATCH(
         );
       }
 
-      // The engagement's team follows its assignees. A roster spanning two teams has no
-      // single owner, and `team` is a scalar — so refuse rather than pick arbitrarily.
-      const teams = [...new Set(resolved.map(r => r.team))];
-      if (teams.length > 1) {
-        return NextResponse.json(
-          { error: `Assignees span multiple teams: ${teams.join(', ')}` },
-          { status: 400 }
-        );
+      // Assignees may span teams: a shared interaction counts for every team involved
+      // (see teamMatchCondition). `team` records a single owner — the assigner's team
+      // when it's represented, otherwise the team most assignees are on.
+      const teamOf = new Map(resolved.map(r => [r.display_name, r.team]));
+      resolvedTeams = resolved.map(r => r.team);
+      const counts = new Map<string, number>();
+      for (const m of requested) {
+        const t = teamOf.get(m);
+        if (t) counts.set(t, (counts.get(t) ?? 0) + 1);
       }
-      nextTeam = teams[0];
 
-      // Anti-grief: without this, any user could shove an inbox item into a stranger's
-      // team, where they'd never find it. Admins are trusted to move work across teams.
-      if (auth.payload.role !== 'admin' && nextTeam !== auth.payload.team) {
+      // Anti-grief: without this, any user could shove an inbox item entirely into a
+      // stranger's team, where they'd never find it. Admins may move work across teams.
+      if (auth.payload.role !== 'admin' && !counts.has(auth.payload.team)) {
         return NextResponse.json(
-          { error: 'You can only assign members of your own team.' },
+          { error: 'Include at least one member of your own team.' },
           { status: 403 }
         );
       }
+      nextTeam = counts.has(auth.payload.team)
+        ? auth.payload.team
+        : [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
     }
 
     // Optimistic locking, matching the generic PATCH: if the client sends the version
     // it read, a concurrent edit makes this match zero rows and we report the conflict.
     const clientVersion = typeof version === 'number' ? version : null;
     const versionClause = clientVersion !== null ? 'AND version = ?' : '';
-    const values: unknown[] = [JSON.stringify(requested), nextTeam, engagementId];
+    const nextTeams = [...new Set(resolvedTeams)].sort();
+    const values: unknown[] = [JSON.stringify(requested), JSON.stringify(nextTeams), nextTeam, engagementId];
     if (clientVersion !== null) values.push(clientVersion);
     values.push(...teamParams);
 
     const updated = await queryWrite<{ id: number }>(
       `UPDATE engagements
-       SET team_members = ?, team = ?, version = version + 1
+       SET team_members = ?, teams = ?, team = ?, version = version + 1
        WHERE id = ? ${versionClause} ${teamClause}
        RETURNING id`,
       values

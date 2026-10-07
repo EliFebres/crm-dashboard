@@ -35,7 +35,7 @@ function bootstrap(db: DB): void {
 
   // Retention: drop activity_logs older than 30 days on connection init.
   try {
-    db.exec(`DELETE FROM activity_logs WHERE datetime(timestamp) < datetime('now', '-30 days')`);
+    db.exec(`DELETE FROM activity_logs WHERE timestamp < date('now', '-29 days') AND datetime(timestamp) < datetime('now', '-30 days')`);
   } catch (err) {
     console.error('[activity] retention cleanup failed at init:', err);
   }

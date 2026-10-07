@@ -8,6 +8,11 @@ import { queryUsers } from '@/app/lib/db/users';
 type Range = '24h' | '7d' | '30d';
 
 // Returns a SQLite datetime() modifier for the selected range.
+//
+// Stored timestamps are a mix of ISO ('…T…Z', live writes) and SQLite
+// ('YYYY-MM-DD HH:MM:SS', seeds), so the exact filters go through date()/datetime().
+// Each one is paired with a plain `timestamp >= <date>` prefilter that is implied
+// by it for both formats and lets SQLite use idx_activity_ts.
 function rangeToInterval(range: Range): string {
   switch (range) {
     case '24h': return '-1 day';
@@ -47,11 +52,12 @@ export async function GET(req: NextRequest) {
 
     // Event counts
     const eventsToday = await queryActivity<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM activity_logs WHERE date(timestamp) >= date('now')`
+      `SELECT COUNT(*) AS count FROM activity_logs WHERE timestamp >= date('now') AND date(timestamp) >= date('now')`
     );
     const eventsYesterday = await queryActivity<{ count: number }>(
       `SELECT COUNT(*) AS count FROM activity_logs
-       WHERE date(timestamp) >= date('now', '-1 day')
+       WHERE timestamp >= date('now', '-1 day')
+         AND date(timestamp) >= date('now', '-1 day')
          AND date(timestamp) <  date('now')`
     );
 
@@ -77,7 +83,7 @@ export async function GET(req: NextRequest) {
          END AS entity_type,
          COUNT(*) AS count
        FROM activity_logs
-       WHERE datetime(timestamp) >= datetime('now', '${interval}')
+       WHERE timestamp >= date('now', '${interval}') AND datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY 1
        ORDER BY count DESC`
     );
@@ -86,7 +92,7 @@ export async function GET(req: NextRequest) {
     const byAction = await queryActivity<{ action: string; count: number }>(
       `SELECT action, COUNT(*) AS count
        FROM activity_logs
-       WHERE datetime(timestamp) >= datetime('now', '${interval}')
+       WHERE timestamp >= date('now', '${interval}') AND datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY action
        ORDER BY count DESC
        LIMIT 10`
@@ -96,7 +102,7 @@ export async function GET(req: NextRequest) {
     const byDay = await queryActivity<{ day: string; count: number }>(
       `SELECT date(timestamp) AS day, COUNT(*) AS count
        FROM activity_logs
-       WHERE datetime(timestamp) >= datetime('now', '${interval}')
+       WHERE timestamp >= date('now', '${interval}') AND datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY 1
        ORDER BY 1 ASC`
     );
@@ -109,7 +115,7 @@ export async function GET(req: NextRequest) {
          COUNT(*) AS count
        FROM activity_logs
        WHERE action = 'page.view'
-         AND datetime(timestamp) >= datetime('now', '${interval}')
+         AND timestamp >= date('now', '${interval}') AND datetime(timestamp) >= datetime('now', '${interval}')
        GROUP BY 1, 2
        ORDER BY 1 ASC`
     );
@@ -118,7 +124,7 @@ export async function GET(req: NextRequest) {
     const topUsers = await queryActivity<{ user_name: string | null; user_email: string | null; count: number }>(
       `SELECT user_name, user_email, COUNT(*) AS count
        FROM activity_logs
-       WHERE datetime(timestamp) >= datetime('now', '${interval}')
+       WHERE timestamp >= date('now', '${interval}') AND datetime(timestamp) >= datetime('now', '${interval}')
          AND user_id IS NOT NULL
        GROUP BY user_name, user_email
        ORDER BY count DESC

@@ -42,7 +42,9 @@ export default function KpiDashboard() {
 
   // null until auth resolves, so the first fetch is already the default scope.
   const [scope, setScope] = useState<KpiScope | null>(null);
-  const [period, setPeriod] = useState('1Y');
+  const [period, setPeriod] = useState('YTD');
+  // Selected project types; empty = all.
+  const [projectTypes, setProjectTypes] = useState<string[]>([]);
   const [data, setData] = useState<KpiDashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -53,9 +55,9 @@ export default function KpiDashboard() {
     setScope(s => s ?? 'me');
   }, [authLoading, user]);
 
-  // Fetch the dashboard for the current (scope, period). `silent` skips the
+  // Fetch the dashboard for the current (scope, period, projectTypes). `silent` skips the
   // masthead "updating…" note — used for realtime background refreshes so live
-  // updates never flicker, while user-initiated scope/period changes still show it.
+  // updates never flicker, while user-initiated filter changes still show it.
   const abortRef = useRef<AbortController | null>(null);
   const reloadData = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -66,7 +68,7 @@ export default function KpiDashboard() {
       if (!opts?.silent) setIsLoading(true);
       try {
         const result = await getKpiDashboardData(
-          { scope, period, clientDepts: [], intakeTypes: [], staleThreshold: '3w' },
+          { scope, period, clientDepts: [], intakeTypes: [], projectTypes, staleThreshold: '3w' },
           controller.signal
         );
         if (!controller.signal.aborted) setData(result);
@@ -78,10 +80,10 @@ export default function KpiDashboard() {
         if (!controller.signal.aborted) setIsLoading(false);
       }
     },
-    [scope, period, authLoading]
+    [scope, period, projectTypes, authLoading]
   );
 
-  // Initial load + refetch when the user changes scope/period (non-silent → "updating…").
+  // Initial load + refetch when the user changes a filter (non-silent → "updating…").
   useEffect(() => {
     reloadData();
   }, [reloadData]);
@@ -155,6 +157,8 @@ export default function KpiDashboard() {
             period={period}
             onScopeChange={setScope}
             onPeriodChange={setPeriod}
+            projectTypes={projectTypes}
+            onProjectTypesChange={setProjectTypes}
             loading={isLoading}
             onGenerateReport={handleGenerateReport}
           />

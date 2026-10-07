@@ -24,6 +24,8 @@ export interface KpiFilters {
   period: string;
   clientDepts?: string[];
   intakeTypes?: string[];
+  /** Project types (engagements.type) to include; empty = all. */
+  projectTypes?: string[];
   /** Stale threshold key (see STALE_THRESHOLDS). Defaults server-side to '3m'. */
   staleThreshold?: string;
 }
@@ -148,9 +150,9 @@ export interface DormantClient {
 // -----------------------------------------------------------------------------
 // EXTENDED METRICS (the "Briefing" redesign — Q2, Q3, Q4, Q10, Q11, Q12, Q14, Q15)
 //
-// These are intentionally scope-only (team or personal): they use fixed windows (26 weeks /
-// 12 months / all-completed / all-history) and do NOT respond to the period,
-// clientDepts, or intakeTypes filters. See kpi-aggregations.ts.
+// These use fixed windows (26 weeks / 12 months / all-completed / all-history) and do NOT
+// respond to the period, clientDepts, or intakeTypes filters — only to scope (team or
+// personal) and the projectTypes filter. See kpi-aggregations.ts.
 // -----------------------------------------------------------------------------
 
 /** Q2 — one point per week over the last 26 weeks. */
@@ -354,6 +356,7 @@ export async function getKpiDashboardData(
       period: filters.period,
       clientDepts: filters.clientDepts ?? [],
       intakeTypes: filters.intakeTypes ?? [],
+      projectTypes: filters.projectTypes ?? [],
       staleThreshold: filters.staleThreshold,
     }),
     signal,

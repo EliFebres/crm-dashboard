@@ -2,7 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/app/lib/db';
-import { CLIENT_JOIN } from '@/app/lib/db/queries';
+import { CLIENT_JOIN, teamMatchCondition } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint } from '@/app/lib/auth/require-auth';
 import { toDisplayDate } from '@/app/lib/db/dateUtils';
 import type { EngagementLinkSummary } from '@/app/lib/types/engagements';
@@ -28,8 +28,9 @@ export async function GET(req: NextRequest) {
 
     // Unassigned engagements (team IS NULL) are searchable by everyone.
     if (sc.team) {
-      conditions.push('(e.team = ? OR e.team IS NULL)');
-      params.push(sc.team);
+      const team = teamMatchCondition(sc.team, c => `e.${c}`);
+      conditions.push(`(${team.condition} OR e.team IS NULL)`);
+      params.push(...team.params);
     }
 
     // Exact id lookup (used to rehydrate the preview chip on form open)

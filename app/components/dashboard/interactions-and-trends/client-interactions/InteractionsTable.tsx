@@ -6,7 +6,7 @@ import NotesModal from '@/app/components/dashboard/interactions-and-trends/clien
 import NNAModal from '@/app/components/dashboard/interactions-and-trends/client-interactions/NNAModal';
 import { Select } from '@/app/components/ui/Select';
 import type { Engagement } from '@/app/lib/types/engagements';
-import type { SortSpec } from '@/app/lib/api/client-interactions';
+import type { SortSpec, TypeColors } from '@/app/lib/api/client-interactions';
 import type { ChangeFlash, EngagementField } from '@/app/lib/hooks/useDashboardChanges';
 import { FLASH_CLASS, FLASH_TEXT_CLASS } from '@/app/lib/hooks/useDashboardChanges';
 import { VALID_STATUSES } from '@/app/lib/statusHelpers';
@@ -86,6 +86,8 @@ interface InteractionsTableProps {
   rowFieldChanges?: Map<number, Partial<Record<EngagementField, ChangeFlash>>>;
   readOnly?: boolean;
   currentUser?: User | null;
+  /** Badge colors delivered with the dashboard data; fetched here when absent (mock mode). */
+  typeColors?: TypeColors | null;
 }
 
 interface GhostRow {
@@ -93,7 +95,7 @@ interface GhostRow {
   expiresAt: number;
 }
 
-const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortBy, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onFilepathSaved, onNNAChange, onAssignSelf, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false, currentUser }) => {
+const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sortBy, onSort, onStatusChange, onNoteAdded, onNoteDeleted, onFilepathSaved, onNNAChange, onAssignSelf, onRowClick, onExport, isExporting, newRowIds, removedRowIds, rowFieldChanges, readOnly = false, currentUser, typeColors }) => {
   // O(1) lookup from column name → its position in sortBy + direction.
   const sortIndex = useMemo(() => {
     const map = new Map<string, { direction: 'asc' | 'desc'; index: number }>();
@@ -106,16 +108,20 @@ const InteractionsTable: React.FC<InteractionsTableProps> = ({ engagements, sort
   const [nnaModalEngagement, setNnaModalEngagement] = useState<Engagement | null>(null);
   // Live intake/project-type chart colors from the managed registries, so a badge
   // reflects the color set in Settings (and keeps working after a type is renamed).
-  const [intakeColors, setIntakeColors] = useState<Record<string, string>>({});
-  const [projectColors, setProjectColors] = useState<Record<string, string>>({});
+  const [fetchedIntakeColors, setIntakeColors] = useState<Record<string, string>>({});
+  const [fetchedProjectColors, setProjectColors] = useState<Record<string, string>>({});
+  const hasTypeColors = Boolean(typeColors);
   useEffect(() => {
+    if (hasTypeColors) return;
     getIntakeTypes()
       .then(items => setIntakeColors(Object.fromEntries(items.map(t => [t.name, t.color]))))
       .catch(() => setIntakeColors({}));
     getProjectTypes()
       .then(items => setProjectColors(Object.fromEntries(items.map(t => [t.name, t.color]))))
       .catch(() => setProjectColors({}));
-  }, []);
+  }, [hasTypeColors]);
+  const intakeColors = typeColors?.intake ?? fetchedIntakeColors;
+  const projectColors = typeColors?.project ?? fetchedProjectColors;
   const pageSize = 10;
 
   // Ghost-row tracking: keep just-removed rows around briefly so they can fade out red.

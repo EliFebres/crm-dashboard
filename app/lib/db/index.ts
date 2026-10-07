@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 import { openSqlite, dbAll, dbGet, dbRun, columnExists, type DB } from './connection';
 import { maybeRunDailyAutoBackup } from './autoBackup';
+import { DEV_REPORT_SCHEMA } from './devReportSchema';
+import { loadMemberTeams } from './users';
 
 // Re-export the db-presence helper so routes can gate mock-vs-real data via the
 // barrel without importing the connection module directly.
@@ -122,6 +124,14 @@ function bootstrap(db: DB): void {
     db.exec(`UPDATE engagements SET team = 'Default Team' WHERE team IS NULL`);
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_team ON engagements (team)`);
+
+  // The teams of an interaction's members, stamped whenever its members are saved
+  // (JSON array). `team` is the single owner; `teams` is what lets an interaction
+  // shared across teams count for each of them (see teamMatchCondition). A snapshot,
+  // so moving someone to another team doesn't carry their history with them.
+  if (!columnExists(db, 'engagements', 'teams')) {
+    db.exec(`ALTER TABLE engagements ADD COLUMN teams TEXT NOT NULL DEFAULT '[]'`);
+  }
 
   // One-time migration: the office an interaction was logged from, captured once at
   // creation. Deliberately NOT derived from the assigned members' offices on read:
@@ -449,6 +459,48 @@ function bootstrap(db: DB): void {
     FROM (SELECT DISTINCT type FROM engagements)
     WHERE type IS NOT NULL AND trim(type) != ''
   `);
+
+  // Founder-only development report tables (see devReportSchema.ts).
+  for (const sql of DEV_REPORT_SCHEMA) db.exec(sql);
+}
+
+/** Re-derive every interaction's `teams` from the current roster; returns rows changed. */
+function restampTeams(db: DB): number {
+  const teamsOf = loadMemberTeams();
+  const rows = dbAll<{ id: number; team_members: string; teams: string }>(
+    db,
+    `SELECT id, team_members, teams FROM engagements`
+  );
+  const update = db.prepare(`UPDATE engagements SET teams = ? WHERE id = ?`);
+  let changed = 0;
+  let staffed = 0;
+  let resolved = 0;
+  db.transaction(() => {
+    for (const r of rows) {
+      let members: unknown = [];
+      try {
+        members = JSON.parse(r.team_members || '[]');
+      } catch {}
+      const names = Array.isArray(members) ? members.filter((n): n is string => typeof n === 'string') : [];
+      const teams = teamsOf(names);
+      if (names.length > 0) staffed++;
+      if (teams.length > 0) resolved++;
+      const next = JSON.stringify(teams);
+      if (next !== r.teams) {
+        update.run(next, r.id);
+        changed++;
+      }
+    }
+    // Staffed interactions but no roster match at all means the roster is missing or
+    // empty, not that nobody has a team — abort (rolls back) rather than stamp nothing.
+    if (staffed > 0 && resolved === 0) throw new Error('team roster is empty; no members resolved to a team');
+  })();
+  return changed;
+}
+
+/** For the mock seed, which adds roster members after inserting interactions. */
+export async function restampEngagementTeams(): Promise<number> {
+  return restampTeams(getDb());
 }
 
 function getDb(): DB {

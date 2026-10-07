@@ -12,7 +12,7 @@ import type { EngagementFilters, SortSpec } from '@/app/lib/api/client-interacti
 import { emitEngagementChange } from '@/app/lib/events';
 import { logActivity } from '@/app/lib/activity/log';
 import { ensureInternalClient } from '@/app/lib/db/internalClients';
-import { getUserOffice } from '@/app/lib/db/users';
+import { getUserOffice, teamsOfMembers } from '@/app/lib/db/users';
 import { normalizeNnaDetails } from '@/app/lib/nna';
 import type { NnaAllocation } from '@/app/lib/types/engagements';
 
@@ -132,11 +132,11 @@ export async function POST(req: NextRequest) {
     const insertRows = await queryWrite<{ id: number }>(
       `INSERT INTO engagements (
         client_crn, internal_client_name, internal_client_dept,
-        intake_type, ad_hoc_channel, type, team_members, office, department,
+        intake_type, ad_hoc_channel, type, team_members, teams, office, department,
         date_started, date_finished, status, portfolio_logged, portfolio_unchanged, portfolio,
         nna, notes, tickers_mentioned, team, created_by_id, created_by_name,
         linked_from_id, project_id, nna_allocations, nna_notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id`,
       [
         clientCrn,
@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
         body.adHocChannel ?? null,
         body.type,
         JSON.stringify(body.teamMembers || []),
+        JSON.stringify(teamsOfMembers(body.teamMembers || [])),
         office,
         department,
         toISODate(body.dateStarted),

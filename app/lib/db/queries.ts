@@ -4,6 +4,7 @@ import { queryUsers } from './users';
 import type { Engagement } from '../types/engagements';
 import { parseStoredAllocations } from '../nna';
 import type { EngagementFilters } from '../api/client-interactions';
+import { memo } from './requestMemo';
 
 // Internal-only extension of EngagementFilters: when teamMember is an Office
 // pseudo-value, callers must populate this field with the live member-name list
@@ -36,18 +37,25 @@ export async function resolveOfficeMembers(
   if (!teamMember || teamMember === 'All Team Members' || teamMember === 'All Teams') {
     return filters;
   }
-  const isOffice = await queryUsers(
-    `SELECT 1 FROM offices WHERE name = ? COLLATE NOCASE LIMIT 1`,
-    [teamMember]
-  );
-  if (isOffice.length === 0) {
+  const members = await memo(`officeMembers:${teamMember}`, () => loadOfficeMembers(teamMember));
+  if (members === null) {
     return filters; // an individual member name, not an office
   }
+  return { ...filters, _officeMembers: [...members] };
+}
+
+/** Active members of the office named `name`, or null when it isn't an office. */
+async function loadOfficeMembers(name: string): Promise<string[] | null> {
+  const isOffice = await queryUsers(
+    `SELECT 1 FROM offices WHERE name = ? COLLATE NOCASE LIMIT 1`,
+    [name]
+  );
+  if (isOffice.length === 0) return null;
   const rows = await queryUsers<{ display_name: string }>(
     `SELECT display_name FROM team_members WHERE office = ? AND status = 'active'`,
-    [teamMember]
+    [name]
   );
-  return { ...filters, _officeMembers: rows.map(r => r.display_name) };
+  return rows.map(r => r.display_name);
 }
 
 // Shared JOIN that resolves an engagement's external client from the registry.
@@ -79,6 +87,23 @@ export interface ServerConstraints {
 }
 
 /**
+ * SQL matching engagements that belong to `team`: ones it owns (`team = ?`) plus any
+ * whose `teams` — the members' teams, stamped when the members were saved — includes
+ * it. An interaction shared across teams therefore counts for, and is visible to,
+ * every team involved. Because `teams` is a snapshot, moving someone to another team
+ * doesn't carry their past interactions with them.
+ */
+export function teamMatchCondition(
+  team: string,
+  col: (c: string) => string
+): { condition: string; params: unknown[] } {
+  return {
+    condition: `(${col('team')} = ? OR EXISTS (SELECT 1 FROM json_each(${col('teams')}) WHERE value = ?))`,
+    params: [team, team],
+  };
+}
+
+/**
  * Team-scope SQL for a team-constrained user.
  *
  * An engagement with `team IS NULL` is UNASSIGNED — it belongs to no team yet and
@@ -98,8 +123,9 @@ export function teamScopeClause(
   tableAlias = ''
 ): { clause: string; params: unknown[] } {
   if (!serverConstraints.team) return { clause: '', params: [] };
-  const col = tableAlias ? `${tableAlias}.team` : 'team';
-  return { clause: `AND (${col} = ? OR ${col} IS NULL)`, params: [serverConstraints.team] };
+  const col = (c: string) => (tableAlias ? `${tableAlias}.${c}` : c);
+  const { condition, params } = teamMatchCondition(serverConstraints.team, col);
+  return { clause: `AND (${condition} OR ${col('team')} IS NULL)`, params };
 }
 
 /**
@@ -119,8 +145,9 @@ export function buildFilterClause(
   // Server-enforced team isolation — applied before all client filters. Rows with
   // team IS NULL are unassigned and visible to everyone (see teamScopeClause).
   if (serverConstraints.team) {
-    conditions.push(`(${col('team')} = ? OR ${col('team')} IS NULL)`);
-    params.push(serverConstraints.team);
+    const team = teamMatchCondition(serverConstraints.team, col);
+    conditions.push(`(${team.condition} OR ${col('team')} IS NULL)`);
+    params.push(...team.params);
   }
 
   // Period filter: applies to date_started

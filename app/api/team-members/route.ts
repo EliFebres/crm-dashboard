@@ -20,14 +20,20 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const team = searchParams.get('team');
-    if (!team) {
-      return NextResponse.json({ error: 'team query parameter is required.' }, { status: 400 });
+    // all=1: every team's active members, so an interaction can be shared across teams.
+    const all = searchParams.get('all') === '1';
+    if (!team && !all) {
+      return NextResponse.json({ error: 'team (or all=1) query parameter is required.' }, { status: 400 });
     }
 
-    const rows = await queryUsers(
-      `SELECT * FROM team_members WHERE team = ? AND status = 'active' ORDER BY office, last_name, first_name`,
-      [team]
-    );
+    const rows = all
+      ? await queryUsers(
+          `SELECT * FROM team_members WHERE status = 'active' ORDER BY team, office, last_name, first_name`
+        )
+      : await queryUsers(
+          `SELECT * FROM team_members WHERE team = ? AND status = 'active' ORDER BY office, last_name, first_name`,
+          [team]
+        );
 
     return NextResponse.json(rows.map(r => rowToTeamMember(r as Record<string, unknown>)));
   } catch (err) {

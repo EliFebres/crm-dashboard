@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { queryUsers, executeUsers, getFounderId } from '@/app/lib/db/users';
+import { queryUsers, executeUsers, getFounderId, invalidateFounderId } from '@/app/lib/db/users';
 import { verifyJWT, SESSION_COOKIE } from '@/app/lib/auth/jwt';
 import { rowToUser, toDisplayName } from '@/app/lib/auth/types';
 import { emitUserChange } from '@/app/lib/events';
@@ -180,6 +180,7 @@ export async function DELETE(
     }
 
     await executeUsers('DELETE FROM users WHERE id = ?', [id]);
+    invalidateFounderId();
     emitUserChange('deleted');
     void logActivity(req, {
       action: 'user.delete',

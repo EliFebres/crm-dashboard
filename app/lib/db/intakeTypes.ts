@@ -13,6 +13,7 @@
  */
 import { query, executeTransaction } from './index';
 import { randomUUID } from 'crypto';
+import { memo } from './requestMemo';
 
 export interface IntakeTypeRow {
   id: string;
@@ -63,7 +64,11 @@ export async function listIntakeTypes(): Promise<IntakeTypeRow[]> {
 }
 
 /** Plain list of intake-type names (for filter options / form dropdowns). */
-export async function listIntakeTypeNames(): Promise<string[]> {
+export function listIntakeTypeNames(): Promise<string[]> {
+  return memo('listIntakeTypeNames', loadListIntakeTypeNames);
+}
+
+async function loadListIntakeTypeNames(): Promise<string[]> {
   const rows = await query<{ name: string }>(
     `SELECT name FROM intake_types ORDER BY sort_order, name COLLATE NOCASE`
   );
@@ -71,7 +76,11 @@ export async function listIntakeTypeNames(): Promise<string[]> {
 }
 
 /** Name → color map (for chart coloring). */
-export async function intakeColorMap(): Promise<Record<string, string>> {
+export function intakeColorMap(): Promise<Record<string, string>> {
+  return memo('intakeColorMap', loadIntakeColorMap);
+}
+
+async function loadIntakeColorMap(): Promise<Record<string, string>> {
   const rows = await query<{ name: string; color: string }>(
     `SELECT name, color FROM intake_types ORDER BY sort_order, name COLLATE NOCASE`
   );
@@ -85,7 +94,11 @@ export async function intakeColorMap(): Promise<Record<string, string>> {
  * an admin renamed it to). Lets metric SQL reference roles instead of hardcoded
  * literals so a rename never breaks a KPI. Falls back to the canonical literal.
  */
-export async function intakeNameForRole(role: string): Promise<string> {
+export function intakeNameForRole(role: string): Promise<string> {
+  return memo(`intakeNameForRole:${role}`, () => loadIntakeNameForRole(role));
+}
+
+async function loadIntakeNameForRole(role: string): Promise<string> {
   const rows = await query<{ name: string }>(`SELECT name FROM intake_types WHERE role = ? LIMIT 1`, [role]);
   return rows[0]?.name ?? ROLE_FALLBACK[role] ?? role;
 }

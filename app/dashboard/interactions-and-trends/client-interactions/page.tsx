@@ -199,6 +199,17 @@ export default function EngagementsDashboard() {
   // -------------------------------------------------------------------------
   const currentUser = user ? toDisplayName(user.firstName, user.lastName) : 'All Team Members';
 
+  // Every dashboard fetch takes a sequence number and stamps when it started.
+  // Only the newest fetch's response is applied, and a live-update event is
+  // skipped when a fetch that started after it is already covering it (e.g. the
+  // explicit reload after the user's own edit).
+  const loadSeqRef = useRef(0);
+  const lastLoadStartedAtRef = useRef(0);
+  const beginLoad = useCallback(() => {
+    lastLoadStartedAtRef.current = performance.now();
+    return ++loadSeqRef.current;
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     const filters: EngagementFilters = {
@@ -216,11 +227,13 @@ export default function EngagementsDashboard() {
     const delay = searchQuery ? 300 : 0;
     const id = setTimeout(async () => {
       setIsLoading(true);
+      const seq = beginLoad();
       try {
         const data = await getDashboardData(filters, controller.signal);
-        setDashboardData(data);
+        if (seq === loadSeqRef.current) setDashboardData(data);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
+        lastLoadStartedAtRef.current = 0; // failed — don't let it cover live updates
         console.error('Failed to load dashboard data:', err);
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -228,7 +241,7 @@ export default function EngagementsDashboard() {
     }, delay);
 
     return () => { clearTimeout(id); controller.abort(); };
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy, beginLoad]);
 
   // Re-fetch with current filters (used after mutations)
   const reloadData = useCallback(async () => {
@@ -243,22 +256,45 @@ export default function EngagementsDashboard() {
       pageSize: 200,
       sortBy,
     };
+    const seq = beginLoad();
     try {
-      setDashboardData(await getDashboardData(filters));
+      const data = await getDashboardData(filters);
+      if (seq === loadSeqRef.current) setDashboardData(data);
     } catch (err) {
+      lastLoadStartedAtRef.current = 0; // failed — don't let it cover live updates
       console.error('Failed to reload dashboard data:', err);
     }
-  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy]);
+  }, [period, teamMemberFilter, departmentFilter, intakeTypeFilter, projectTypeFilter, statusFilter, searchQuery, sortBy, beginLoad]);
 
-  // SSE connection — reloads dashboard whenever any user mutates an engagement
+  const reloadRef = useRef(reloadData);
+  useEffect(() => {
+    reloadRef.current = reloadData;
+  }, [reloadData]);
+
+  // SSE connection — reloads dashboard whenever any user mutates an engagement.
+  // Opened once (filters are read through reloadRef), and bursts of events
+  // collapse into one reload.
   useEffect(() => {
     const es = new EventSource('/api/client-interactions/events');
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastEventAt = 0;
     es.onmessage = (e) => {
-      if (e.data !== 'connected') reloadData();
+      if (e.data === 'connected') return;
+      lastEventAt = performance.now();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (lastLoadStartedAtRef.current > lastEventAt) return; // already covered
+        reloadRef.current();
+      }, 400);
     };
-    es.onerror = () => es.close();
-    return () => es.close();
-  }, [reloadData]);
+    // No onerror handler: the browser's native EventSource reconnect keeps the
+    // page live across transient drops.
+    return () => {
+      if (timer) clearTimeout(timer);
+      es.close();
+    };
+  }, []);
 
   // Click without shift: replace the entire sort with this column (cycle asc → desc → cleared).
   // Shift+click: extend the sort. If the column is already in the sort, cycle its direction
@@ -729,6 +765,7 @@ export default function EngagementsDashboard() {
 
             <InteractionsTable
               engagements={engagements}
+              typeColors={dashboardData?.typeColors}
               sortBy={sortBy}
               onSort={handleSort}
               onStatusChange={handleStatusChange}
