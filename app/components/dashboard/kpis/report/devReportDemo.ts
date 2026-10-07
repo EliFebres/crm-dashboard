@@ -92,7 +92,7 @@ export function buildDemoDevReport(): DevReportData {
   const byTool = TOOLS.map((t, i) => ({ name: t.name, uses: perTool.get(t.name) ?? 0, color: color(i) }))
     .filter(t => t.uses > 0)
     .sort((a, b) => b.uses - a.uses);
-  const impactByTool = TOOLS.map((t, i) => ({ name: t.name, hours: ((perTool.get(t.name) ?? 0) * (t.minutes ?? 0)) / 60, color: color(i) }))
+  const impactByTool = TOOLS.map((t, i) => ({ name: t.name, hours: ((perTool.get(t.name) ?? 0) * (t.minutes ?? 0)) / 60, minutesPerUse: t.minutes ?? 0, color: color(i) }))
     .filter(t => t.hours > 0)
     .sort((a, b) => b.hours - a.hours);
   const hoursSaved = impactByTool.reduce((s, t) => s + t.hours, 0);

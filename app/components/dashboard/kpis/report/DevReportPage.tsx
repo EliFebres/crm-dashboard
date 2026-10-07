@@ -17,6 +17,8 @@ import { ColumnChart, ColumnPairChart, HBarList, Swatch } from './pdfCharts';
 import { PAGE_STYLE, Eyebrow, Rule, StatTile, Empty, ReportHeader, SummaryLine, ReportFooter } from './reportParts';
 
 const MAX_BAR_ROWS = 6;
+/** Fewer than MAX_BAR_ROWS: each hours-saved row carries a per-use subtitle, so rows are taller. */
+const MAX_HOURS_ROWS = 5;
 /** Average month length (365.25 / 12), for turning a daily rate into a monthly one. */
 const DAYS_PER_MONTH = 30.44;
 const MAX_INVENTORY_ROWS = 6;
@@ -39,10 +41,17 @@ function plural(n: number, word: string): string {
   return `${formatNumber(n)} ${word}${n === 1 ? '' : 's'}`;
 }
 
+/** 25 → "25 mins"; 90 → "1.5 hrs". */
+function perUse(minutes: number): string {
+  if (minutes < 60) return `${formatNumber(minutes)} min${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${formatNumber(hours)} hr${hours === 1 ? '' : 's'}`;
+}
+
 /** Top rows plus an "Other" rollup, so a long tail never overflows the page. */
-function topWithOther(rows: { name: string; value: number; color: string }[]) {
-  const top = rows.slice(0, MAX_BAR_ROWS);
-  const rest = rows.slice(MAX_BAR_ROWS).reduce((s, r) => s + r.value, 0);
+function topWithOther(rows: { name: string; value: number; color: string; note?: string }[], max = MAX_BAR_ROWS) {
+  const top = rows.slice(0, max);
+  const rest = rows.slice(max).reduce((s, r) => s + r.value, 0);
   return rest > 0 ? [...top, { name: 'Other', value: rest, color: P.faint }] : top;
 }
 
@@ -241,7 +250,13 @@ export default function DevReportPage({
         <View style={{ flex: 0.9 }}>
           <Eyebrow>Hours saved by tool</Eyebrow>
           {impact.byTool.length > 0 ? (
-            <HBarList rows={topWithOther(impact.byTool.map(t => ({ name: t.name, value: t.hours, color: t.color })))} format={compact} />
+            <HBarList
+              rows={topWithOther(
+                impact.byTool.map(t => ({ name: t.name, value: t.hours, color: t.color, note: `Est. ${perUse(t.minutesPerUse)} saved per use` })),
+                MAX_HOURS_ROWS
+              )}
+              format={compact}
+            />
           ) : (
             <Empty>Add minutes saved per use to see hours saved.</Empty>
           )}

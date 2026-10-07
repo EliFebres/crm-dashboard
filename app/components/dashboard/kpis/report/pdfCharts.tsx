@@ -147,9 +147,12 @@ export function HBarList({
     <View style={{ gap: 5 }}>
       {rows.map(r => (
         <View key={r.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ width: 82, fontSize: 7.5, color: P.ink, maxLines: 1, textOverflow: 'ellipsis' }}>
-            {r.name}
-          </Text>
+          <View style={{ width: 82 }}>
+            <Text style={{ fontSize: 7.5, color: P.ink, maxLines: 1, textOverflow: 'ellipsis' }}>{r.name}</Text>
+            {r.note ? (
+              <Text style={{ fontSize: 6, color: P.muted, marginTop: 1, maxLines: 1, textOverflow: 'ellipsis' }}>{r.note}</Text>
+            ) : null}
+          </View>
           <View style={{ flex: 1, height: 7, backgroundColor: P.track }}>
             <View style={{ width: `${(r.value / max) * 100}%`, height: 7, backgroundColor: r.color }} />
           </View>

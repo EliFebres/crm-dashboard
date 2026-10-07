@@ -517,6 +517,7 @@ export async function computeDevReport(): Promise<DevReportData> {
     .map(u => ({
       name: u.name,
       hours: (u.uses * (minutesOf.get(u.name.toLowerCase()) ?? 0)) / 60,
+      minutesPerUse: minutesOf.get(u.name.toLowerCase()) ?? 0,
       color: colorOf.get(u.name.toLowerCase()) ?? '#71717a',
     }))
     .sort((a, b) => b.hours - a.hours);

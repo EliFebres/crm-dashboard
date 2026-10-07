@@ -97,7 +97,8 @@ export interface DevReportData {
     hoursSaved: number;
     /** hoursSaved / weekdays (Mon–Fri) from usage firstDay through lastDay. */
     hoursPerWorkday: number;
-    byTool: { name: string; hours: number; color: string }[];
+    /** `minutesPerUse` is the tool's estimated minutes saved per use. */
+    byTool: { name: string; hours: number; minutesPerUse: number; color: string }[];
     /** Tools used this year that have no minutes-saved estimate yet. */
     toolsMissingEstimate: string[];
   };
