@@ -9,7 +9,7 @@ import { P, SANS_FONT, SANS_BOLD, MONO_FONT, MONO_BOLD } from './pdfTokens';
 /** A4 landscape page style used by every report page. */
 export const PAGE_STYLE = { backgroundColor: P.page, color: P.ink, fontFamily: SANS_FONT, padding: 36, paddingBottom: 44 };
 
-export function Eyebrow({ children, color = P.muted }: { children: React.ReactNode; color?: string }) {
+export function Eyebrow({ children, color = P.eyebrow }: { children: React.ReactNode; color?: string }) {
   return (
     <Text style={{ fontFamily: MONO_FONT, fontSize: 7, letterSpacing: 1.2, textTransform: 'uppercase', color, marginBottom: 6 }}>
       {children}

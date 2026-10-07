@@ -9,6 +9,8 @@ export const P = {
   ink: '#0a0a0f',
   strong: '#09090b',
   muted: '#3f3f46',
+  /** Section and metric titles (eyebrows). */
+  eyebrow: '#09090b',
   faint: '#52525b',
   hairline: '#e4e4e7',
   axis: '#d4d4d8',
