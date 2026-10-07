@@ -295,21 +295,6 @@ function bootstrap(db: DB): void {
     dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [BACKFILL_MODEL_ATTRIBUTION]);
   }
 
-  // TEMPORARY one-time backfill: stamp `teams` on interactions saved before the column
-  // existed, from the current roster. Remove once verified. Must never throw out of
-  // bootstrap (that fails the open), so a failure logs, skips the marker, and retries
-  // on the next start.
-  const BACKFILL_ENGAGEMENT_TEAMS = 'backfill_engagement_teams_v1';
-  if (!dbGet(db, `SELECT 1 AS x FROM app_migrations WHERE name = ?`, [BACKFILL_ENGAGEMENT_TEAMS])) {
-    try {
-      const updated = restampTeams(db);
-      dbRun(db, `INSERT INTO app_migrations (name) VALUES (?)`, [BACKFILL_ENGAGEMENT_TEAMS]);
-      console.log(`[engagements] teams backfill: ${updated} interaction(s) stamped`);
-    } catch (err) {
-      console.error('[engagements] teams backfill skipped, will retry on next start:', err);
-    }
-  }
-
   // Managed internal-client departments. The department NAME lives denormalized on
   // engagements.internal_client_dept; this table makes the set editable (add/rename/
   // delete + a chart color) and a rename cascades into engagements + internal_clients
