@@ -56,7 +56,7 @@ function summarySentence(d: DevReportData, name: string): string {
     let tools = `runs ${plural(d.tools.live, 'live tool')}${beta}`;
     if (d.usage.total > 0 && d.usage.firstDay) {
       tools += `, used ${plural(d.usage.total, 'time')} since ${shortDate(d.usage.firstDay)}`;
-      if (d.impact.hoursSaved >= 1) tools += ` and saving an estimated ${plural(Math.round(d.impact.hoursSaved), 'hour')}`;
+      if (d.impact.hoursSaved >= 1) tools += `, saving an estimated ${plural(Math.round(d.impact.hoursSaved), 'hour')}`;
     }
     parts.push(tools);
   }
@@ -183,7 +183,7 @@ export default function DevReportPage({
                 }
               />
               <Text style={{ fontSize: 6.5, color: P.muted, marginTop: 4 }}>
-                {`Weeks start Monday · the latest week is still in progress · dashed line: average week (${formatNumber(Math.round(avgPerWeek))} uses)`}
+                {`Weeks start Monday · the latest week is still in progress · average week: ${formatNumber(Math.round(avgPerWeek))} uses`}
               </Text>
             </View>
           ) : (
