@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { View, Text } from '@react-pdf/renderer';
-import { P, SANS_FONT, SANS_BOLD, MONO_FONT } from './pdfTokens';
+import { P, SANS_FONT, SANS_BOLD, MONO_FONT, MONO_BOLD } from './pdfTokens';
 
 /** A4 landscape page style used by every report page. */
 export const PAGE_STYLE = { backgroundColor: P.page, color: P.ink, fontFamily: SANS_FONT, padding: 36, paddingBottom: 44 };
@@ -66,7 +66,9 @@ export function ReportHeader({
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
       <View style={{ flex: 1 }}>
-        <Eyebrow color={P.cyan}>{eyebrow}</Eyebrow>
+        <Text style={{ fontFamily: MONO_BOLD, fontSize: 7, letterSpacing: 1.2, textTransform: 'uppercase', color: P.cyanFill, marginBottom: 6 }}>
+          {eyebrow}
+        </Text>
         <Text style={{ fontSize: 24, color: P.ink, letterSpacing: -0.4 }}>{name}</Text>
         {subjectLine ? <Text style={{ fontSize: 9, color: P.muted, marginTop: 4 }}>{subjectLine}</Text> : null}
       </View>
