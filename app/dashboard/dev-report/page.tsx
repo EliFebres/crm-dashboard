@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { CodeXml, FileDown, Loader2 } from 'lucide-react';
+import { CodeXml, FileDown, FlaskConical, Loader2 } from 'lucide-react';
 import { useCurrentUser } from '@/app/lib/auth/context';
 import { toDisplayName } from '@/app/lib/auth/types';
 import { getDevReport, getDevReportInputs, type DevReportData, type DevReportInputs } from '@/app/lib/api/dev-report';
@@ -11,7 +11,7 @@ import ToolsEditor from '@/app/components/dashboard/dev-report/ToolsEditor';
 import UsageImport from '@/app/components/dashboard/dev-report/UsageImport';
 import { PRIMARY_BTN, SECONDARY_BTN } from '@/app/components/dashboard/dev-report/ui';
 
-type PdfKind = 'review' | 'coding';
+type PdfKind = 'review' | 'coding' | 'demo';
 
 function SummaryTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -61,6 +61,7 @@ export default function DevReportPage() {
       await generateDevReport({
         displayName: toDisplayName(user.firstName, user.lastName),
         includeKpi: kind !== 'coding',
+        demo: kind === 'demo',
       });
     } catch (err) {
       console.error('Dev report generation failed:', err);
@@ -106,6 +107,16 @@ export default function DevReportPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {pdfError && <span className="text-xs text-red-400">{pdfError}</span>}
+              {/* TEMPORARY: preview the PDF with dummy data (see devReportDemo.ts). */}
+              <button
+                onClick={() => download('demo')}
+                disabled={generating !== null}
+                className={SECONDARY_BTN}
+                title="Preview the review PDF with dummy development data. Nothing is saved."
+              >
+                {spin('demo') ?? <FlaskConical className="w-4 h-4" />}
+                Demo
+              </button>
               <button onClick={() => download('coding')} disabled={generating !== null} className={SECONDARY_BTN}>
                 {spin('coding') ?? <FileDown className="w-4 h-4" />}
                 Coding page only
