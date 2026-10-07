@@ -73,16 +73,7 @@ function summarySentence(d: DevReportData, name: string): string {
   return `${name} ${parts.join(' and ')}.`;
 }
 
-export default function DevReportPage({
-  data,
-  subject,
-  demo = false,
-}: {
-  data: DevReportData;
-  subject: KpiReportData['subject'];
-  /** TEMPORARY: marks a page built from dummy data (the Dev Report page's Demo button). */
-  demo?: boolean;
-}) {
+export default function DevReportPage({ data, subject }: { data: DevReportData; subject: KpiReportData['subject'] }) {
   const range = `${toDisplayDate(data.range.start)} – ${toDisplayDate(data.range.end)}`;
   const generated = toDisplayDate(data.generatedAt.slice(0, 10));
   const subjectLine = [subject.title, subject.team].filter(Boolean).join(' · ');
@@ -106,13 +97,7 @@ export default function DevReportPage({
         name={subject.name}
         subjectLine={subjectLine}
         range={range}
-        note={
-          demo
-            ? 'DEMO DATA · not real figures'
-            : usage.firstDay
-              ? `Tool usage tracked since ${toDisplayDate(usage.firstDay)}`
-              : undefined
-        }
+        note={usage.firstDay ? `Tool usage tracked since ${toDisplayDate(usage.firstDay)}` : undefined}
         generated={generated}
       />
 
