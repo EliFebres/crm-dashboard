@@ -204,6 +204,39 @@ export async function queryUsers<T = Record<string, unknown>>(
   return dbAll<T>(getDb(), sql, params);
 }
 
+/**
+ * Loads the roster once and returns a resolver from member display names to the
+ * distinct teams they're on — what engagements.teams stores. A name's active roster
+ * entries win; a name with none falls back to its inactive ones. Synchronous so the
+ * engagements bootstrap can use it.
+ */
+export function loadMemberTeams(): (names: string[]) => string[] {
+  const rows = dbAll<{ display_name: string; team: string; status: string }>(
+    getDb(),
+    `SELECT display_name, team, status FROM team_members`
+  );
+  const active = new Map<string, Set<string>>();
+  const any = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!any.has(r.display_name)) any.set(r.display_name, new Set());
+    any.get(r.display_name)!.add(r.team);
+    if (r.status === 'active') {
+      if (!active.has(r.display_name)) active.set(r.display_name, new Set());
+      active.get(r.display_name)!.add(r.team);
+    }
+  }
+  return names => {
+    const teams = new Set<string>();
+    for (const n of names) for (const t of active.get(n) ?? any.get(n) ?? []) teams.add(t);
+    return [...teams].sort();
+  };
+}
+
+/** The teams `names` are on right now, for stamping engagements.teams on a write. */
+export function teamsOfMembers(names: string[]): string[] {
+  return names.length === 0 ? [] : loadMemberTeams()(names);
+}
+
 export async function executeUsers(sql: string, params: unknown[] = []): Promise<void> {
   dbRun(getDb(), sql, params);
 }

@@ -35,7 +35,7 @@ import { config } from 'dotenv';
 config({ path: '.env' });
 
 import { randomUUID } from 'crypto';
-import { query, executeTransaction } from '../app/lib/db';
+import { query, executeTransaction, restampEngagementTeams } from '../app/lib/db';
 import {
   engagements,
   clients,
@@ -187,6 +187,7 @@ async function main() {
     await seedEngagements(usersByDisplay);
     await seedClientModels();
     await seedActivityLogs(usersByDisplay);
+    await restampEngagementTeams();
   }
 
   // Last: the projection reads engagements (Part A) AND the offices/roster (Part B),

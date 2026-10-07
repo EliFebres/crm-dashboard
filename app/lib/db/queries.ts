@@ -87,6 +87,23 @@ export interface ServerConstraints {
 }
 
 /**
+ * SQL matching engagements that belong to `team`: ones it owns (`team = ?`) plus any
+ * whose `teams` — the members' teams, stamped when the members were saved — includes
+ * it. An interaction shared across teams therefore counts for, and is visible to,
+ * every team involved. Because `teams` is a snapshot, moving someone to another team
+ * doesn't carry their past interactions with them.
+ */
+export function teamMatchCondition(
+  team: string,
+  col: (c: string) => string
+): { condition: string; params: unknown[] } {
+  return {
+    condition: `(${col('team')} = ? OR EXISTS (SELECT 1 FROM json_each(${col('teams')}) WHERE value = ?))`,
+    params: [team, team],
+  };
+}
+
+/**
  * Team-scope SQL for a team-constrained user.
  *
  * An engagement with `team IS NULL` is UNASSIGNED — it belongs to no team yet and
@@ -106,8 +123,9 @@ export function teamScopeClause(
   tableAlias = ''
 ): { clause: string; params: unknown[] } {
   if (!serverConstraints.team) return { clause: '', params: [] };
-  const col = tableAlias ? `${tableAlias}.team` : 'team';
-  return { clause: `AND (${col} = ? OR ${col} IS NULL)`, params: [serverConstraints.team] };
+  const col = (c: string) => (tableAlias ? `${tableAlias}.${c}` : c);
+  const { condition, params } = teamMatchCondition(serverConstraints.team, col);
+  return { clause: `AND (${condition} OR ${col('team')} IS NULL)`, params };
 }
 
 /**
@@ -127,8 +145,9 @@ export function buildFilterClause(
   // Server-enforced team isolation — applied before all client filters. Rows with
   // team IS NULL are unassigned and visible to everyone (see teamScopeClause).
   if (serverConstraints.team) {
-    conditions.push(`(${col('team')} = ? OR ${col('team')} IS NULL)`);
-    params.push(serverConstraints.team);
+    const team = teamMatchCondition(serverConstraints.team, col);
+    conditions.push(`(${team.condition} OR ${col('team')} IS NULL)`);
+    params.push(...team.params);
   }
 
   // Period filter: applies to date_started

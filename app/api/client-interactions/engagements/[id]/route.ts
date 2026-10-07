@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryWrite, executeTransaction, hasDb } from '@/app/lib/db';
+import { teamsOfMembers } from '@/app/lib/db/users';
 import { rowToEngagement, CLIENT_JOIN, teamScopeClause } from '@/app/lib/db/queries';
 import { requireAuth, teamConstraint, canModify, readOnlyError, canEditEngagement, canDeleteEngagement, notTeamMemberError } from '@/app/lib/auth/require-auth';
 import { normalizeCrn } from '@/app/lib/config/crn';
@@ -104,6 +105,14 @@ export async function PATCH(
     if (body.teamMembers !== undefined) {
       setClauses.push('team_members = ?');
       values.push(JSON.stringify(body.teamMembers));
+      // Re-stamp the members' teams only when the members change, so re-saving an old
+      // interaction doesn't move it to whatever team its people are on today.
+      const next = [...((body.teamMembers ?? []) as string[])].sort();
+      const current = [...currentTeamMembers].sort();
+      if (next.length !== current.length || next.some((m, i) => m !== current[i])) {
+        setClauses.push('teams = ?');
+        values.push(JSON.stringify(teamsOfMembers(next)));
+      }
     }
     if (body.dateStarted !== undefined) {
       setClauses.push('date_started = ?');

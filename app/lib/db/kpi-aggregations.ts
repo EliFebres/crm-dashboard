@@ -17,7 +17,7 @@ import { hasDb } from './connection';
 import { departmentColorMap, listDepartmentNames } from './departments';
 import { intakeColorMap } from './intakeTypes';
 import { projectTypeColorMap, listProjectTypeNames } from './projectTypes';
-import type { ServerConstraints } from './queries';
+import { teamMatchCondition, type ServerConstraints } from './queries';
 import { getPeriodStartISO, getPreviousPeriodDates } from './dateUtils';
 import { SQL_COMPLETED, SQL_OPEN } from '../statusHelpers';
 import { STALE_THRESHOLDS, resolveStaleThreshold } from '../api/kpi';
@@ -106,8 +106,9 @@ function scopeConditions(
   const conditions: string[] = [];
   const params: unknown[] = [];
   if (constraints.team) {
-    conditions.push(`${col('team')} = ?`);
-    params.push(constraints.team);
+    const team = teamMatchCondition(constraints.team, col);
+    conditions.push(team.condition);
+    params.push(...team.params);
   }
   if (member) {
     conditions.push(`EXISTS (SELECT 1 FROM json_each(${col('team_members')}) WHERE value = ?)`);

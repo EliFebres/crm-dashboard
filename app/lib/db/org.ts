@@ -105,6 +105,12 @@ export async function renameOrg(kind: OrgKind, id: string, rawName: string): Pro
 
   if (kind === 'team' && previousName !== name && hasDb()) {
     await execute(`UPDATE engagements SET team = ? WHERE team = ?`, [name, previousName]);
+    await execute(
+      `UPDATE engagements
+          SET teams = (SELECT json_group_array(CASE WHEN value = ? THEN ? ELSE value END) FROM json_each(engagements.teams))
+        WHERE EXISTS (SELECT 1 FROM json_each(engagements.teams) WHERE value = ?)`,
+      [previousName, name, previousName]
+    );
   }
   return result;
 }
